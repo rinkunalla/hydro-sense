@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:rules": "vitest run --config vitest.rules.config.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -21,8 +22,10 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@firebase/rules-unit-testing": "6.0.0",
     "@types/node": "22.20.5",
     "eslint": "10.14.0",
+    "firebase": "13.2.0",
     "globals": "17.14.0",
     "prettier": "3.9.10",
     "typescript": "6.0.3",
