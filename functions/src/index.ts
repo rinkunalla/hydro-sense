@@ -1,6 +1,6 @@
-import { setGlobalOptions } from "firebase-functions";
-import { MAX_INSTANCES, REGION } from "./config";
+import "./globalOptions";
 
-setGlobalOptions({ region: REGION, maxInstances: MAX_INSTANCES });
-
-// Functions are added phase by phase (KICKOFF.md).
+export { registerDevice } from "./device/registerDevice";
+export { deviceIngest } from "./device/deviceIngest";
+export { monitorDevices } from "./monitor/monitorDevices";
+export { addAllowedDevice } from "./admin/addAllowedDevice";

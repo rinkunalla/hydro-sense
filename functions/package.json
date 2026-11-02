@@ -14,6 +14,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:rules": "vitest run --config vitest.rules.config.ts",
+    "test:emulator": "vitest run --config vitest.emulator.config.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@firebase/rules-unit-testing": "6.0.0",
+    "@types/express": "5.0.6",
     "@types/node": "22.20.5",
     "eslint": "10.14.0",
     "firebase": "13.2.0",

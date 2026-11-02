@@ -42,6 +42,8 @@ Never commit `.env`, `.env.local`, `.secret.local` or `secrets.h` (all gitignore
 | Start all emulators | `npm run emulators` (UI at http://localhost:4000) |
 | Functions tests / lint | `npm --prefix functions test`, `npm --prefix functions run lint` |
 | Firestore rules tests | `npm run test:rules` (starts the Firestore emulator, runs `functions/test-rules`) |
+| API integration tests | `npm run test:emulator` (Auth, Firestore, Functions emulators; `functions/test-emulator`) |
+| Device simulator | `npm run simulate:emulator` (3 devices, 150 s), or `npm run simulate -- [options]` against already running emulators (options at the top of `tools/simulate-device.ts`) |
 | Deploy rules and indexes | `firebase deploy --only firestore` |
 | App analyze / tests | `cd app && flutter analyze && flutter test` |
 | Firmware build | `cd firmware && pio run` |

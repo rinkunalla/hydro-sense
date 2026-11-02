@@ -53,6 +53,7 @@
   "fieldOverrides": [
     { "collectionGroup": "flow_logs", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "battery_logs", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
-    { "collectionGroup": "error_logs", "fieldPath": "expireAt", "ttl": true, "indexes": [] }
+    { "collectionGroup": "error_logs", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "rate_limits", "fieldPath": "expireAt", "ttl": true, "indexes": [] }
   ]
 }
