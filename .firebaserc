@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "hydro-sense-dc836"
+  },
+  "targets": {
+    "hydro-sense-dc836": {
+      "hosting": {
+        "admin": ["hydro-sense-dc836"]
+      }
+    }
+  }
+}

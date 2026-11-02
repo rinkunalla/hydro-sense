@@ -1,0 +1,59 @@
+# Secrets (never commit; see CLAUDE.md working rule 4)
+firmware/include/secrets.h
+.env
+.env.*
+!.env.example
+*.local
+!*.local.example
+.secret.local
+service-account*.json
+*-firebase-adminsdk-*.json
+*.pem
+*.p12
+*.keystore
+*.jks
+app/android/key.properties
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+database-debug.log
+pubsub-debug.log
+.emulator-data/
+
+# Node
+node_modules/
+functions/lib/
+coverage/
+npm-debug.log*
+
+# Firmware (PlatformIO)
+firmware/.pio/
+firmware/.vscode/
+
+# Flutter / Dart
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/.pub-cache/
+app/.pub/
+app/android/.gradle/
+app/android/local.properties
+app/android/app/debug/
+app/android/app/profile/
+app/android/app/release/
+*.iml
+.idea/
+
+# Claude Code personal settings
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini

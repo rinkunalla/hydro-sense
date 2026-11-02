@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// Phase 0 placeholder: deny everything. Phase 1 replaces this with the rules
+// from CLAUDE.md section 4. Functions use the Admin SDK and bypass rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
