@@ -1,4 +1,4 @@
-// Hardware sensors: YF-S201 pulse interrupt and the battery divider ADC.
+// Hardware sensors: YF-S201 pulse interrupt (GPIO 27) and the battery divider ADC (GPIO 34).
 #pragma once
 
 #include <stdint.h>

@@ -34,6 +34,11 @@ npm-debug.log*
 # Firmware (PlatformIO)
 firmware/.pio/
 firmware/.vscode/
+# Editor setup generated per machine (`node scripts/pio.mjs run -t compiledb`)
+firmware/compile_commands.json
+firmware/.clangd
+.vscode/c_cpp_properties.json
+.vscode/settings.json
 
 # Flutter / Dart
 app/.dart_tool/
