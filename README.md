@@ -35,6 +35,10 @@ The specification is `CLAUDE.md`, `KICKOFF.md` and `docs/`.
 
 Never commit `.env`, `.env.local`, `.secret.local` or `secrets.h` (all gitignored).
 
+**The emulator never sends real SMS or email and never calls Gemini.** It logs `sms_dry_run` /
+`email_dry_run` instead, so simulator runs cannot spend Semaphore credits. To test real
+delivery on the emulator, set `HYDROSENSE_REAL_PROVIDERS=1` in `functions/.env.local`.
+
 ## Everyday commands
 
 | Task | Command |

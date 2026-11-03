@@ -1,8 +1,13 @@
 import { onSchedule } from "firebase-functions/scheduler";
+import { refreshSummary } from "../ai/summary";
+import { runAlertPass, type AlertPassResult } from "../alerts/alertPass";
 import { OFFLINE_AFTER_S, TIME_ZONE } from "../config";
 import { C, db, ms, ts } from "../lib/db";
 import { isStale } from "../lib/decisions";
 import { logError } from "../lib/logError";
+import { ALERT_SECRETS, MODEL_SECRETS } from "../lib/providers";
+
+const SOURCE = "monitorDevices";
 
 /**
  * Flips one device offline only if a fresh read inside the transaction still
@@ -18,8 +23,10 @@ export async function flipOfflineIfStale(deviceId: string, nowMs: number): Promi
   });
 }
 
-/** One monitor pass. Phase 2: online flags only; alerts and the summary call arrive in Phase 3. */
-export async function runMonitorPass(nowMs = Date.now()): Promise<{ flipped: string[] }> {
+/** One monitor pass: offline flips, the offline summary exception, then alerts. */
+export async function runMonitorPass(
+  nowMs = Date.now(),
+): Promise<{ flipped: string[]; alerts: AlertPassResult | null }> {
   const candidates = await db
     .collection(C.deviceHealth)
     .where("online", "==", true)
@@ -31,24 +38,34 @@ export async function runMonitorPass(nowMs = Date.now()): Promise<{ flipped: str
     try {
       if (await flipOfflineIfStale(doc.id, nowMs)) flipped.push(doc.id);
     } catch (e) {
-      await logError({
-        source: "monitorDevices",
-        code: "INTERNAL",
-        message: String(e),
-        deviceId: doc.id,
-      });
+      await logError({ source: SOURCE, code: "INTERNAL", message: String(e), deviceId: doc.id });
     }
   }
   if (flipped.length > 0) {
     console.log(
       JSON.stringify({ severity: "INFO", event: "devices_offline", count: flipped.length }),
     );
+    // The devices trigger cannot see device_health, so Offline reaches the summary here.
+    await refreshSummary(nowMs).catch((e) =>
+      logError({ source: SOURCE, code: "INTERNAL", message: `summary: ${String(e)}` }),
+    );
   }
-  return { flipped };
+
+  let alerts: AlertPassResult | null = null;
+  try {
+    alerts = await runAlertPass(nowMs);
+  } catch (e) {
+    await logError({ source: SOURCE, code: "INTERNAL", message: `alerts: ${String(e)}` });
+  }
+  return { flipped, alerts };
 }
 
 export const monitorDevices = onSchedule(
-  { schedule: "every 1 minutes", timeZone: TIME_ZONE },
+  {
+    schedule: "every 1 minutes",
+    timeZone: TIME_ZONE,
+    secrets: [...ALERT_SECRETS, ...MODEL_SECRETS],
+  },
   async () => {
     await runMonitorPass();
   },

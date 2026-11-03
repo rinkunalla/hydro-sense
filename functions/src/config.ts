@@ -48,12 +48,24 @@ export const ERROR_LOG_DEDUPE_S = 3600;
 export const ERROR_LOG_TTL_DAYS = 30;
 export const ERROR_LOG_MESSAGE_MAX = 300;
 
-// AI
+// AI (Gemini; model id from the GEMINI_MODEL env var, CLAUDE.md D1)
+export const GEMINI_MODEL_DEFAULT = "gemini-3.5-flash-lite";
 export const AI_COOLDOWN_S = 900;
 export const AI_TIMEOUT_MS = 15000;
 export const AI_MAX_OUTPUT_TOKENS = 256;
+export const AI_THINKING_LEVEL = "MINIMAL"; // thought tokens count toward the output cap
+export const AI_SUMMARY_MAX_CHARS = 400;
+export const ADMIN_REPORT_MAX_CHARS = 1200;
+export const ADMIN_REPORT_ERROR_WINDOW_H = 24;
+export const ADMIN_REPORT_SCHEDULE = "0 6 * * *"; // daily 06:00 Asia/Manila
+
+// Outbound providers
+export const SEMAPHORE_URL = "https://api.semaphore.co/api/v4/messages";
+export const PROVIDER_TIMEOUT_MS = 10000;
+export const ALERT_EMAIL_FROM_NAME = "Hydro Sense";
 
 // Calibration
+export const CALIBRATE_SCHEDULE = "0 0 * * 0"; // weekly, Sunday 00:00 Asia/Manila
 export const CALIBRATE_BUCKET_S = 300;
 export const CALIBRATE_WINDOW_H = 24;
 export const CALIBRATE_MIN_SAMPLES = 36;
@@ -73,3 +85,8 @@ export const ADMIN_REPORT_COOLDOWN_S = 3600;
 export const REGISTER_MAX_PER_HOUR = 20;
 export const NICKNAME_MAX = 24;
 export const DEVICE_ID_PATTERN = /^[0-9A-F]{12}$/;
+
+// Client account
+export const CLIENT_NAME_MAX = 60;
+export const PH_MOBILE_PATTERN = /^(?:09|\+639|639)(\d{9})$/;
+export const TEMP_PASSWORD_LENGTH = 12;

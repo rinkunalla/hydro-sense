@@ -4,6 +4,10 @@ import { C, db, ts } from "./db";
 const ALREADY_EXISTS = 6;
 const DAY_MS = 86_400_000;
 
+/** Removes email addresses and phone-number-like digit runs (provider errors can echo them). */
+export const scrub = (s: string) =>
+  s.replace(/[^\s@<>"']+@[^\s@<>"']+/g, "[email]").replace(/\+?\d[\d\s-]{8,}\d/g, "[number]");
+
 export interface ErrorLogInput {
   source: string;
   code: string;
@@ -30,7 +34,7 @@ export async function logError(input: ErrorLogInput): Promise<void> {
         ...(input.deviceId ? { deviceId: input.deviceId } : {}),
         source: input.source,
         code: input.code,
-        message: input.message.slice(0, ERROR_LOG_MESSAGE_MAX),
+        message: scrub(input.message).slice(0, ERROR_LOG_MESSAGE_MAX),
         ts: ts(nowMs),
         expireAt: ts(nowMs + ERROR_LOG_TTL_DAYS * DAY_MS),
       });
