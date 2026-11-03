@@ -63,6 +63,41 @@ on the emulators; the real project is for short deploy checks, user testing and 
 To be completed in Phase 7: writes and reads per device per day, the free-tier limits, and the
 Google Cloud budget alert (CLAUDE.md section 8).
 
+## Client app (Android)
+
+Debug builds use the emulators by default; release builds use the real project
+(`--dart-define=USE_EMULATOR=false` points a debug build at the real project).
+
+1. `npm run emulators` (leave running), then `npm run seed:emulator` once. It creates
+   `client@hydrosense.test` / `hydrosense-dev` (and `admin@hydrosense.test`). Add `--temp`
+   (`npm run seed:emulator -- --temp`) to test the temporary-password flow.
+2. `npm run simulate -- --devices 3 --duration 600 --heartbeat 10` feeds live devices.
+   In PowerShell, quote the separator so npm passes the options through:
+   `npm run simulate '--' --devices 3 --duration 600 --heartbeat 10` (or call
+   `node --experimental-strip-types tools/simulate-device.ts --devices 3 ...` directly).
+3. `cd app && flutter run` on the Android emulator (it reaches the host at `10.0.2.2`).
+
+Tests: `cd app && flutter test` (contrast of every color pair, fleet logic, router redirects,
+Devices screen states with 1, 3 and 10 devices, 1.5x text at 360 dp).
+
+**Android build notes (learned in Phase 5)**
+
+* The build downloads Android and Firebase libraries from `dl.google.com`; that host must not be
+  blocked (for example by a Windows Name Resolution Policy rule that blocks browser updates).
+* On a machine with about 8 GB of RAM, build with the Android emulator closed, then install:
+  `flutter build apk --debug`, start the emulator, then
+  `adb install -r build/app/outputs/flutter-apk/app-debug.apk`. Gradle is capped at 2 GB in
+  `android/gradle.properties`; stop idle daemons afterwards with `android\gradlew --stop`.
+* Kotlin Gradle plugin 2.3.21 (in `android/settings.gradle.kts`) is needed because firebase-auth 25
+  ships Kotlin 2.4 metadata; Kotlin 2.3 also requires the `compilerOptions` DSL used in
+  `android/app/build.gradle.kts`.
+* Debug builds may use plain HTTP only to the emulator hosts (`10.0.2.2`, `localhost`,
+  `127.0.0.1`), via `android/app/src/debug/res/xml/network_security_config.xml`. Release builds are
+  HTTPS-only.
+
+Admins: `npm run create-admin -- --email you@example.com` (real project: prints a
+password-setup link) or add `--emulator`.
+
 ## Firmware
 
 | Task | Command |

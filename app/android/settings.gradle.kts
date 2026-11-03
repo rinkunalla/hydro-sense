@@ -20,7 +20,8 @@ pluginManagement {
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "8.11.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    // 2.3 can read Kotlin 2.4 metadata, which firebase-auth 25 is compiled with.
+    id("org.jetbrains.kotlin.android") version "2.3.21" apply false
 }
 
 include(":app")

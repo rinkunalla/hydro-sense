@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
+
 // Every app tunable lives here (CLAUDE.md working rule 5). Values come from
 // CLAUDE.md sections 4 and 9 and docs/UI_UX_SPEC.md.
 
@@ -6,7 +8,14 @@ abstract final class AppConfig {
   static const String firebaseProjectId = 'hydro-sense-dc836';
   static const String functionsRegion = 'asia-east1';
 
-  // Emulator Suite (debug builds only; ports match firebase.json)
+  // Emulator Suite: on by default in debug builds, off in release. Override with
+  // --dart-define=USE_EMULATOR=false to point a debug build at the real project.
+  static const bool useEmulator = bool.fromEnvironment(
+    'USE_EMULATOR',
+    defaultValue: kDebugMode,
+  );
+
+  // Emulator Suite ports (match firebase.json)
   static const String emulatorHostWeb = 'localhost';
   static const String emulatorHostAndroid = '10.0.2.2';
   static const int authEmulatorPort = 9099;
