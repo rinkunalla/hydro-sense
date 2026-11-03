@@ -98,6 +98,19 @@ Devices screen states with 1, 3 and 10 devices, 1.5x text at 360 dp).
 Admins: `npm run create-admin -- --email you@example.com` (real project: prints a
 password-setup link) or add `--emulator`.
 
+## Admin website (Flutter web)
+
+* Dev against the emulators: `npm run emulators`, `npm run seed:emulator`, then
+  `cd app && flutter build web --dart-define=USE_EMULATOR=true`; the Hosting emulator serves it at
+  http://127.0.0.1:5000. Sign in as `admin@hydrosense.test` / `hydrosense-dev`.
+  (`flutter run -d chrome` also works and uses the emulators in debug.)
+* Production build: `cd app && flutter build web` (release, real project), then
+  `firebase deploy --only hosting:admin`. Create real admins with `npm run create-admin -- --email ...`.
+* Privacy: the admin site reads only `device_health` (and its `battery_logs`), `allowed_devices`,
+  `removed_devices`, `error_logs`, `ai_insights/admin_diagnostics` and `config/system`.
+  `app/test/admin_privacy_test.dart` fails if admin code names `devices`, `flow_logs` or
+  `client_summary`, and the Firestore rules deny those reads to admins anyway.
+
 ## Firmware
 
 | Task | Command |

@@ -45,7 +45,7 @@ class AccountScreen extends ConsumerWidget {
             ),
             onPressed: () => showDialog<void>(
               context: context,
-              builder: (_) => const _ChangePassword(),
+              builder: (_) => const ChangePasswordDialog(),
             ),
           ),
           const SizedBox(height: AppSpace.m),
@@ -70,14 +70,14 @@ String _displayPhone(String? p) {
   return '${local.substring(0, 4)} ${local.substring(4, 7)} ${local.substring(7)}';
 }
 
-class _ChangePassword extends ConsumerStatefulWidget {
-  const _ChangePassword();
+class ChangePasswordDialog extends ConsumerStatefulWidget {
+  const ChangePasswordDialog({super.key});
 
   @override
-  ConsumerState<_ChangePassword> createState() => _ChangePasswordState();
+  ConsumerState<ChangePasswordDialog> createState() => _ChangePasswordState();
 }
 
-class _ChangePasswordState extends ConsumerState<_ChangePassword> {
+class _ChangePasswordState extends ConsumerState<ChangePasswordDialog> {
   final _current = TextEditingController();
   final _a = TextEditingController();
   final _b = TextEditingController();

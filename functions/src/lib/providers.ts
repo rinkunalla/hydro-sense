@@ -124,7 +124,7 @@ class DryRun implements Providers {
   model: TextModel = {
     generate: async (req) => {
       if (req.jsonSchema) throw new Error("Dry run: no model output");
-      return "Dry run: the water flow summary appears here when real providers are enabled.";
+      return "Dry run: AI-written text appears here when real providers are enabled.";
     },
   };
 }

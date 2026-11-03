@@ -11,6 +11,7 @@ abstract final class Messages {
   static const resetSent =
       'If that email has an account, a reset link is on its way.';
   static const adminOnPhone = 'This account is for the admin website.';
+  static const notAdmin = 'This account does not have admin access.';
   static const noAccess = 'This account does not have access to Hydro Sense.';
   static const signInAgain = 'Please sign in again.';
   static const generic = 'Something went wrong. Please try again.';

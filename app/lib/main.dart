@@ -16,7 +16,8 @@ Future<void> main() async {
   if (AppConfig.useEmulator) await _useEmulators();
   runApp(
     ProviderScope(
-      child: kIsWeb ? const _AdminComingSoon() : const HydroSenseApp(),
+      // Web = admin website, Android = client app (CLAUDE.md section 9).
+      child: kIsWeb ? const AdminApp() : const HydroSenseApp(),
     ),
   );
 }
@@ -33,18 +34,4 @@ Future<void> _useEmulators() async {
   FirebaseFunctions.instanceFor(
     region: AppConfig.functionsRegion,
   ).useFunctionsEmulator(host, AppConfig.functionsEmulatorPort);
-}
-
-/// The web build is the admin website (Phase 6).
-class _AdminComingSoon extends StatelessWidget {
-  const _AdminComingSoon();
-
-  @override
-  Widget build(BuildContext context) => const MaterialApp(
-    home: Scaffold(
-      body: Center(
-        child: Text('Hydro Sense admin website: coming in Phase 6.'),
-      ),
-    ),
-  );
 }

@@ -14,7 +14,8 @@ import 'features/client/home_shell.dart';
 import 'features/client/map_screen.dart';
 
 /// Where the person should be, given auth state (pure, unit-tested).
-/// Android is client-only (CLAUDE.md section 9): other roles go back to Login.
+/// Android is client-only and the web build admin-only (CLAUDE.md section 9):
+/// any other role goes back to Login with `refused` set.
 String? redirectFor({
   required String location,
   required bool signedIn,
@@ -22,20 +23,26 @@ String? redirectFor({
   required String? role,
   required bool profileLoaded,
   required bool mustChangePassword,
+  String requiredRole = 'client',
+  String home = '/devices',
 }) {
   final onAuthPage = location == '/login' || location == '/reset';
   if (!signedIn) return onAuthPage ? null : '/login';
   if (!roleLoaded) return location == '/loading' ? null : '/loading';
-  if (role != 'client') {
-    final target = '/login?refused=${role == 'admin' ? 'admin' : 'other'}';
-    return location.startsWith('/login') ? null : target;
+  if (role != requiredRole) {
+    final reason = requiredRole == 'admin'
+        ? 'notadmin'
+        : (role == 'admin' ? 'admin' : 'other');
+    return location.startsWith('/login') ? null : '/login?refused=$reason';
   }
-  if (!profileLoaded) return location == '/loading' ? null : '/loading';
-  if (mustChangePassword) {
-    return location == '/set-password' ? null : '/set-password';
+  if (requiredRole == 'client') {
+    if (!profileLoaded) return location == '/loading' ? null : '/loading';
+    if (mustChangePassword) {
+      return location == '/set-password' ? null : '/set-password';
+    }
   }
   if (onAuthPage || location == '/loading' || location == '/set-password') {
-    return '/devices';
+    return home;
   }
   return null;
 }

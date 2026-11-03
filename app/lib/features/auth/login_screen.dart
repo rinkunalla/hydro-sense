@@ -27,9 +27,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void initState() {
     super.initState();
     if (widget.refused != null) {
-      _error = widget.refused == 'admin'
-          ? Messages.adminOnPhone
-          : Messages.noAccess;
+      _error = switch (widget.refused) {
+        'admin' => Messages.adminOnPhone,
+        'notadmin' => Messages.notAdmin,
+        _ => Messages.noAccess,
+      };
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => ref.read(authProvider).signOut(),
       );

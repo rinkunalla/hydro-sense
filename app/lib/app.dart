@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'admin_router.dart';
 import 'core/config.dart';
 import 'core/theme.dart';
 import 'router.dart';
@@ -25,6 +26,22 @@ class HydroSenseApp extends ConsumerWidget {
       title: 'Hydro Sense',
       theme: buildLightTheme(),
       routerConfig: ref.watch(routerProvider),
+      builder: clampTextScale,
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+/// The web build is the admin website.
+class AdminApp extends ConsumerWidget {
+  const AdminApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return MaterialApp.router(
+      title: 'Hydro Sense admin',
+      theme: buildLightTheme(),
+      routerConfig: ref.watch(adminRouterProvider),
       builder: clampTextScale,
       debugShowCheckedModeBanner: false,
     );
