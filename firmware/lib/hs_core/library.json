@@ -1,0 +1,10 @@
+{
+  "name": "hs_core",
+  "version": "0.1.0",
+  "description": "Hydro Sense pure firmware logic (no Arduino headers); unit-tested on the host",
+  "dependencies": {
+    "bblanchon/ArduinoJson": "7.4.3"
+  },
+  "frameworks": "*",
+  "platforms": "*"
+}

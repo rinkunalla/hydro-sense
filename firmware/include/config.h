@@ -71,6 +71,10 @@ constexpr uint32_t LOW_VOLTAGE_CHECK_S = 1800;
 // Power
 constexpr uint32_t CPU_FREQ_MHZ = 80;
 
+// Housekeeping
+constexpr uint32_t BATTERY_READ_S = 60;           // also feeds the low-voltage guard
+constexpr uint32_t NETWORK_STALL_RESTART_S = 120;  // software watchdog for the network task
+
 static_assert(HEARTBEAT_S < 90, "Heartbeat must stay under 90 s so the 3 min offline limit holds");
 static_assert(STARTER_LOW_FLOW_CUTOFF < STARTER_NORMAL_FLOW_CUTOFF, "Cutoffs out of order");
 static_assert(LOW_VOLTAGE_SLEEP_CELL_V < LOW_VOLTAGE_RESUME_CELL_V, "Sleep needs hysteresis");

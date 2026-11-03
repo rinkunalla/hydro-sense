@@ -63,6 +63,53 @@ on the emulators; the real project is for short deploy checks, user testing and 
 To be completed in Phase 7: writes and reads per device per day, the free-tier limits, and the
 Google Cloud budget alert (CLAUDE.md section 8).
 
+## Firmware
+
+| Task | Command |
+|---|---|
+| Build | `npm run fw:build` |
+| Logic tests (host) | `npm run fw:test` (uses `~/mingw64/bin/g++` or `HYDROSENSE_MINGW_BIN`; see `scripts/pio.mjs`) |
+| Flash over USB | `npm run fw:upload` |
+| Serial monitor (115200) | `npm run fw:monitor` |
+
+Toolchain: PlatformIO `espressif32@7.1.3` (Arduino-ESP32 core 2.0.17), C++17, `huge_app.csv`
+partition (no OTA in v1). Libraries: ArduinoJson 7.4.3, TinyGPSPlus 1.1.0, WiFiManager 2.0.17.
+TLS trusts only the Google roots in `firmware/include/google_roots.h` (regenerate from
+`https://pki.goog/repo/certs/` if Google rotates roots).
+
+### Before the first flash
+
+1. Do the three wiring checks in `docs/hardware/NOTES.md` and record them in the bench log.
+2. Create `firmware/include/secrets.h` (gitignored) from `secrets.h.example`. Set `PROVISIONING_KEY`
+   to the real key: `firebase functions:secrets:access PROVISIONING_KEY`. Without `secrets.h` the
+   build still succeeds (with a warning) but the device cannot register.
+3. Add the device ID to the allowlist. Until the admin website exists (Phase 6), create the
+   document by hand: Firebase console → Firestore → collection `allowed_devices` → document ID =
+   the 12-character device ID (see "Reading the device ID") → one field `addedAt` (timestamp, now).
+
+### Manual tests
+
+**Reading the device ID.** Connect USB, run `npm run fw:monitor`, press EN (reset). The first lines
+show `Hydro Sense 0.1.0  Device ID: A1B2C3D4E5F6`. The setup portal page shows the same ID.
+
+**Captive portal (first boot, or after a BOOT reset).**
+1. Power the device with no saved Wi-Fi. The onboard LED blinks fast (4 times a second).
+2. On a phone, join the Wi-Fi network `HydroSense-XXXX` (the last 4 characters of the device ID).
+   The setup page opens by itself; if not, browse to `http://192.168.4.1`.
+3. Check the page shows "Device ID: …". Tap **Configure WiFi**, pick the network, enter the password, **Save**.
+4. The LED blinks slowly while connecting, then stays on. The serial log shows `Registered`
+   (first time) or `Token loaded from NVS`, and the device appears in Firestore within about a minute.
+5. Portal timeout: leave the portal untouched for 10 minutes. The device reboots and retries the saved Wi-Fi.
+
+**BOOT reset (clear Wi-Fi).**
+1. With the device running (LED solid), hold the BOOT button for 5 seconds. Do not hold it while
+   powering on: that enters the bootloader instead.
+2. The serial log shows `BOOT held: clearing Wi-Fi settings` and the device restarts into the portal (step 1 above).
+
+**LED meanings.** Solid: connected and uploading. Slow blink (1 Hz): connecting to Wi-Fi. Fast blink
+(4 Hz): setup hotspot active. Two quick blinks every 3 s: the server is rejecting the device (for
+example not on the allowlist, or removed by the admin).
+
 ## Deployment, wiring, user guide
 
-To be completed in Phases 4 and 7.
+To be completed in Phase 7.
