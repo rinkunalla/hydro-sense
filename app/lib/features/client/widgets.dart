@@ -105,7 +105,8 @@ class BatteryLine extends StatelessWidget {
 }
 
 /// Animates children to their new positions when the order changes ("FLIP"),
-/// so cards glide instead of jumping while the person is tapping.
+/// so cards glide instead of jumping while the person is tapping; a removed
+/// child fades and collapses instead of vanishing (docs/UI_UX_SPEC.md 4.2).
 class FlipColumn extends StatefulWidget {
   const FlipColumn({
     super.key,
@@ -121,13 +122,17 @@ class FlipColumn extends StatefulWidget {
   State<FlipColumn> createState() => _FlipColumnState();
 }
 
-class _FlipColumnState extends State<FlipColumn>
-    with SingleTickerProviderStateMixin {
+class _FlipColumnState extends State<FlipColumn> with TickerProviderStateMixin {
   final _keys = <Key, GlobalKey>{};
   final _offsets = <Key, double>{};
+  final _leaving = <Key, ({int index, Widget child})>{};
   late final AnimationController _anim = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 300),
+  );
+  late final AnimationController _fade = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 250),
   );
 
   double? _top(Key k) {
@@ -143,6 +148,20 @@ class _FlipColumnState extends State<FlipColumn>
     final oldOrder = old.children.map((c) => c.key).toList();
     final newOrder = widget.children.map((c) => c.key).toList();
     if (_sameOrder(oldOrder, newOrder)) return;
+
+    final kept = newOrder.toSet();
+    _leaving.removeWhere((k, _) => kept.contains(k));
+    for (var i = 0; i < old.children.length; i++) {
+      final k = old.children[i].key;
+      if (k != null && !kept.contains(k)) {
+        _leaving[k] = (index: i, child: old.children[i]);
+      }
+    }
+    if (_leaving.isNotEmpty) {
+      _fade.forward(from: 0).whenCompleteOrCancel(() {
+        if (mounted) setState(_leaving.clear);
+      });
+    }
     final before = {for (final k in oldOrder) ?k: _top(k)};
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -169,13 +188,36 @@ class _FlipColumnState extends State<FlipColumn>
   @override
   void dispose() {
     _anim.dispose();
+    _fade.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final children = [...widget.children];
+    final going = _leaving.entries.toList()
+      ..sort((a, b) => a.value.index.compareTo(b.value.index));
+    final vanish = ReverseAnimation(
+      CurvedAnimation(parent: _fade, curve: Curves.easeOut),
+    );
+    for (final e in going) {
+      children.insert(
+        e.value.index.clamp(0, children.length),
+        KeyedSubtree(
+          key: ValueKey(('leaving', e.key)),
+          child: SizeTransition(
+            sizeFactor: vanish,
+            child: FadeTransition(
+              opacity: vanish,
+              child: IgnorePointer(child: e.value.child),
+            ),
+          ),
+        ),
+      );
+    }
+
     final out = <Widget>[];
-    for (final child in widget.children) {
+    for (final child in children) {
       final k = child.key!;
       final gk = _keys.putIfAbsent(k, GlobalKey.new);
       if (out.isNotEmpty) out.add(SizedBox(height: widget.spacing));

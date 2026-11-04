@@ -65,7 +65,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
         automaticallyImplyLeading: false,
         actions: [
           TextButton(
-            onPressed: () => ref.read(authProvider).signOut(),
+            onPressed: () => signOut(ref),
             child: const Text('Sign out'),
           ),
         ],

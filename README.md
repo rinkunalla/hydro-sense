@@ -12,7 +12,12 @@ The specification is `CLAUDE.md`, `KICKOFF.md` and `docs/`.
 | `functions/` | Cloud Functions, 2nd gen, Node 22, TypeScript (`src/config.ts`) |
 | `app/` | Flutter app: Android build = client, web build = admin (`lib/core/config.dart`) |
 | `tools/` | Admin seeding and the device simulator |
-| `docs/` | UI/UX spec, error handling, hardware notes and schematic |
+| `docs/` | UI/UX spec, error handling, hardware notes and schematic, plus the guides below |
+| `scripts/` | Launchers that supply JDK 21 (emulators) and MinGW g++ (firmware tests) |
+
+Guides: [Deployment](docs/DEPLOYMENT.md) · [User guide](docs/USER_GUIDE.md) ·
+[Wiring and parts](docs/hardware/WIRING.md) · [Hardware notes and bench log](docs/hardware/NOTES.md) ·
+[Final report](docs/FINAL_REPORT.md)
 
 ## Prerequisites
 
@@ -23,15 +28,23 @@ The specification is `CLAUDE.md`, `KICKOFF.md` and `docs/`.
   Plain `firebase emulators:start` still uses the system Java and fails below 21.
 * Flutter (stable) with Android tooling
 * PlatformIO Core (the VS Code extension installs it at `~/.platformio/penv/Scripts/pio`)
-* For `pio test -e native` (Phase 4): a host C++ compiler on `PATH` (for example MinGW-w64 g++)
+* For the firmware logic tests: a host C++ compiler. `npm run fw:test` uses
+  `HYDROSENSE_MINGW_BIN` if set, otherwise a portable WinLibs MinGW-w64 in `~/mingw64/bin`, otherwise
+  `g++` on `PATH`.
 
 ## Setup
 
-1. `npm --prefix functions install`
-2. Copy `functions/.env.example` to `functions/.env.local` (emulator) and `functions/.env` (deploy).
-3. Copy `functions/.secret.local.example` to `functions/.secret.local` for the emulator.
-   In the real project, set each secret with `firebase functions:secrets:set <NAME>`.
-4. Copy `firmware/include/secrets.h.example` to `firmware/include/secrets.h` and fill it in.
+1. `npm --prefix functions ci`
+2. `cd app && flutter pub get`
+3. Copy `functions/.env.example` to `functions/.env.local` (emulator) and `functions/.env` (deploy).
+4. Copy `functions/.secret.local.example` to `functions/.secret.local` for the emulator; only
+   `PROVISIONING_KEY` must be set (any random string). The real project uses Secret Manager
+   ([Deployment](docs/DEPLOYMENT.md#2-secrets-secret-manager)).
+5. For a real device: copy `firmware/include/secrets.h.example` to `firmware/include/secrets.h` and
+   fill it in. The firmware builds without it, but the device cannot register.
+
+Then check everything works: `npm --prefix functions test`, `npm run test:rules`,
+`npm run test:emulator`, `cd app && flutter test`, `npm run fw:test`, `npm run fw:build`.
 
 Never commit `.env`, `.env.local`, `.secret.local` or `secrets.h` (all gitignored).
 
@@ -46,12 +59,12 @@ delivery on the emulator, set `HYDROSENSE_REAL_PROVIDERS=1` in `functions/.env.l
 | Start all emulators | `npm run emulators` (UI at http://localhost:4000) |
 | Functions tests / lint | `npm --prefix functions test`, `npm --prefix functions run lint` |
 | Firestore rules tests | `npm run test:rules` (starts the Firestore emulator, runs `functions/test-rules`) |
-| API integration tests | `npm run test:emulator` (Auth, Firestore, Functions emulators; `functions/test-emulator`) |
+| API integration tests | `npm run test:emulator`: endpoint tests with the Functions emulator (`test:endpoints`), then the in-process alert/AI/calibration/admin tests with Auth + Firestore only (`test:inprocess`, so real triggers cannot race them) |
 | Device simulator | `npm run simulate:emulator` (3 devices, 150 s), or `npm run simulate -- [options]` against already running emulators (options at the top of `tools/simulate-device.ts`) |
 | Deploy rules and indexes | `firebase deploy --only firestore` |
 | App analyze / tests | `cd app && flutter analyze && flutter test` |
-| Firmware build | `cd firmware && pio run` |
-| Firmware logic tests | `cd firmware && pio test -e native` |
+| Firmware build | `npm run fw:build` |
+| Firmware logic tests | `npm run fw:test` |
 
 ## Firebase project
 
@@ -60,8 +73,24 @@ on the emulators; the real project is for short deploy checks, user testing and 
 
 ## Cost
 
-To be completed in Phase 7: writes and reads per device per day, the free-tier limits, and the
-Google Cloud budget alert (CLAUDE.md section 8).
+Blaze plan, pay as you go. Normal use of a few devices stays inside the free tier; the project
+has a **USD 1 budget alert** (Google Cloud console -> Billing -> Budgets & alerts), which warns but
+does not stop spending.
+
+| Item | Per device per day | Free tier (per day unless noted) | Fits about |
+|---|---|---|---|
+| Firestore writes | about 2,100: 1,440 `device_health` (one per 60 s heartbeat), up to 288 `devices`, 288 `flow_logs`, 96 `battery_logs`; a status change costs about 3 | 20,000 | **9 devices** (the binding limit) |
+| Firestore reads | about 2,900 from `monitorDevices` (2 docs per device per minute, plus `alert_state` only for active faults), plus one read per open app listener per write | 50,000 | 15 devices |
+| Function invocations | about 1,440 `deviceIngest` + about 300 trigger runs that return at once | 2 million per month | about 40 devices |
+| Scheduler jobs | 3 in total (`monitorDevices` every minute, weekly calibration, daily report) | 3 per billing account | |
+| Secret Manager | 5 secrets | 6 active versions per billing account | destroy old versions after rotating |
+| SMS | at most 10 per day (daily cap), batched | Semaphore prepaid credits | 1 credit per 160-character SMS |
+| Gemini | about 100 summaries per day at most (15 min cooldown), 1 to 2 reports, weekly calibration | free tier with a key from a project without billing | |
+| Hosting, Storage | admin site only, a few MB | 10 GB storage, 360 MB/day transfer | |
+
+Notes: build images are deleted after a day (Artifact Registry cleanup policy, set on the first
+functions deploy). Past about 9 devices, Firestore writes become a few cents a month; the biggest
+lever is the 60 s heartbeat (`HEARTBEAT_S`, must stay under 90 for the 3 min offline limit).
 
 ## Client app (Android)
 
@@ -160,4 +189,9 @@ example not on the allowlist, or removed by the admin).
 
 ## Deployment, wiring, user guide
 
-To be completed in Phase 7.
+* [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): project setup, secrets, deploy commands, accounts,
+  going live.
+* [docs/USER_GUIDE.md](docs/USER_GUIDE.md): for the client (screens, alerts, Wi-Fi setup, BOOT
+  reset, troubleshooting).
+* [docs/hardware/WIRING.md](docs/hardware/WIRING.md): parts list and connections.
+* Firmware updates need a site visit with USB: there are no over-the-air updates in v1.

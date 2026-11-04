@@ -55,7 +55,7 @@ class AccountScreen extends ConsumerWidget {
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
             ),
-            onPressed: () => ref.read(authProvider).signOut(),
+            onPressed: () => signOut(ref),
           ),
         ],
       ),

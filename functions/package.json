@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:rules": "vitest run --config vitest.rules.config.mts",
     "test:emulator": "vitest run --config vitest.emulator.config.mts",
+    "test:inprocess": "vitest run --config vitest.inprocess.config.mts",
     "test:watch": "vitest"
   },
   "dependencies": {

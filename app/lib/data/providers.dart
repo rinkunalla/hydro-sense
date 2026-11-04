@@ -12,6 +12,15 @@ import 'repository.dart';
 
 final authProvider = Provider<FirebaseAuth>((ref) => FirebaseAuth.instance);
 
+/// True while a sign-out was asked for by the person, so the app can tell it
+/// apart from an expired or revoked session ("Please sign in again.").
+final explicitSignOutProvider = StateProvider<bool>((ref) => false);
+
+Future<void> signOut(WidgetRef ref) async {
+  ref.read(explicitSignOutProvider.notifier).state = true;
+  await ref.read(authProvider).signOut();
+}
+
 final repositoryProvider = Provider<ClientRepository>(
   (ref) => FirestoreClientRepository(
     FirebaseFirestore.instance,

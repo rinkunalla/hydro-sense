@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
+import '../../core/config.dart';
 import '../../core/theme.dart';
 import '../../data/admin_logic.dart';
 import '../../data/admin_repository.dart';
@@ -11,7 +12,6 @@ const _line = AppColors.primary; // single series: the title names it, no legend
 const _grid = AppColors.surfaceAlt; // recessive hairlines, solid
 const _lowColor = Color(0xFFA86F00); // status: low battery
 const _sleepColor = Color(0xFF6B7682);
-const _sleepV = 6.8; // LOW_VOLTAGE_SLEEP_CELL_V x 2 (firmware config.h)
 const _gap = Duration(
   hours: 1,
 ); // longer gaps break the line instead of bridging them
@@ -39,7 +39,7 @@ class _BatteryChartState extends State<BatteryChart> {
 
   @override
   Widget build(BuildContext context) {
-    final lowV = packVoltageAtPercent(20);
+    final lowV = packVoltageAtPercent(AppConfig.lowBatteryPercent);
     return LayoutBuilder(
       builder: (context, c) {
         final geo = _Geometry(
@@ -76,7 +76,10 @@ class _Geometry {
   _Geometry(this.points, this.now, this.days, this.size, double lowV) {
     final volts = points.map((p) => p.voltage);
     final lo =
-        math.min(_sleepV, volts.isEmpty ? _sleepV : volts.reduce(math.min)) -
+        math.min(
+          lowVoltageSleepPackV,
+          volts.isEmpty ? lowVoltageSleepPackV : volts.reduce(math.min),
+        ) -
         0.2;
     final hi =
         math.max(8.4, volts.isEmpty ? 8.4 : volts.reduce(math.max)) + 0.1;
@@ -199,15 +202,19 @@ class _ChartPainter extends CustomPainter {
 
     // Reference lines, labeled in text ink at the right edge.
     final lowY = g.y(lowV);
-    final sleepY = g.y(_sleepV);
+    final sleepY = g.y(lowVoltageSleepPackV);
     _dashed(canvas, lowY, _lowColor);
     _dashed(canvas, sleepY, _sleepColor);
     final labelX = _Geometry.left + g.plotW + 8;
     final apart = (lowY - sleepY).abs() < 14;
-    _text(canvas, 'Low battery 20%', Offset(labelX, apart ? lowY - 7 : lowY));
     _text(
       canvas,
-      'Sleep ${_sleepV.toStringAsFixed(1)} V',
+      'Low battery ${AppConfig.lowBatteryPercent}%',
+      Offset(labelX, apart ? lowY - 7 : lowY),
+    );
+    _text(
+      canvas,
+      'Sleep ${lowVoltageSleepPackV.toStringAsFixed(1)} V',
       Offset(labelX, apart ? sleepY + 7 : sleepY),
     );
 

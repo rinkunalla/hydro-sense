@@ -97,6 +97,12 @@ Comparable<Object> sortKey(AdminRow r, int column) => switch (column) {
   _ => r.lastError?.code ?? '',
 };
 
-/// Pack voltage at a battery percent for 2S (inverse of the D2 formula).
-double packVoltageAtPercent(int percent, {int cells = 2}) =>
-    cells * (3.3 + 0.9 * percent / 100);
+/// Pack voltage at a battery percent (inverse of the D2 formula).
+double packVoltageAtPercent(
+  int percent, {
+  int cells = AppConfig.batterySeriesCells,
+}) => cells * (3.3 + 0.9 * percent / 100);
+
+/// The firmware's low-voltage sleep level for the whole pack.
+double get lowVoltageSleepPackV =>
+    AppConfig.lowVoltageSleepCellV * AppConfig.batterySeriesCells;

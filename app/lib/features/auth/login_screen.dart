@@ -32,9 +32,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         'notadmin' => Messages.notAdmin,
         _ => Messages.noAccess,
       };
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => ref.read(authProvider).signOut(),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) => signOut(ref));
     }
   }
 

@@ -25,6 +25,9 @@ abstract final class AppConfig {
   // Data rules mirrored from the backend
   static const int nicknameMax = 24;
   static const int lowBatteryPercent = 20;
+  static const int batterySeriesCells = 2;
+  static const double lowVoltageSleepCellV =
+      3.4; // firmware LOW_VOLTAGE_SLEEP_CELL_V
   static const int pauseMaxDays = 7;
   static const List<Duration> pauseOptions = [
     Duration(hours: 1),

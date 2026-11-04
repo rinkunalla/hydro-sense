@@ -123,8 +123,10 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
                 'no flow below ${v.device.lowFlowCutoff.toStringAsFixed(1)} L/min',
               ),
               subtitle: Text(
+                // Cutoffs reach the device only through its next upload (CLAUDE.md section 3).
                 v.device.calibratedAt != null
-                    ? 'Calibrated ${clockTime(v.device.calibratedAt!, now)}'
+                    ? 'Calibrated ${clockTime(v.device.calibratedAt!, now)}. '
+                          "Applied on the device's next update."
                     : 'Using starter limits',
               ),
             ),

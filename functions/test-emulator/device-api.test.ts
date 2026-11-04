@@ -4,7 +4,9 @@
 import { readFileSync } from "node:fs";
 import { getAuth } from "firebase-admin/auth";
 import { Timestamp } from "firebase-admin/firestore";
+import type { CallableRequest } from "firebase-functions/https";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { allowDevice, removeDevice } from "../src/admin/deviceAdmin";
 import { C, db } from "../src/lib/db";
 import { flipOfflineIfStale, runMonitorPass } from "../src/monitor/monitorDevices";
 
@@ -310,6 +312,26 @@ describe("monitorDevices", () => {
     await ingest(token); // lands between the candidate query and the transaction
     expect(await flipOfflineIfStale(ID, Date.now())).toBe(false);
     expect((await get(health())).online).toBe(true);
+  });
+});
+
+describe("removeDevice and allowDevice", () => {
+  const admin = <T>(data: T) =>
+    ({ auth: { uid: "admin1", token: { role: "admin" } }, data }) as unknown as CallableRequest<T>;
+
+  it("removes a device so it cannot register until Allow again", async () => {
+    await allow();
+    expect((await register()).status).toBe(200);
+
+    await removeDevice.run(admin({ deviceId: ID.toLowerCase() }));
+    expect((await dev().get()).exists).toBe(false);
+    expect((await db.collection(C.allowedDevices).doc(ID).get()).exists).toBe(false);
+    const blocked = await register();
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.code).toBe("DEVICE_REMOVED");
+
+    await allowDevice.run(admin({ deviceId: ID }));
+    expect((await register()).status).toBe(200);
   });
 });
 

@@ -36,7 +36,7 @@ class AdminAccountScreen extends ConsumerWidget {
                   FilledButton.icon(
                     icon: const Icon(Icons.logout),
                     label: const Text('Sign out'),
-                    onPressed: () => ref.read(authProvider).signOut(),
+                    onPressed: () => signOut(ref),
                   ),
                 ],
               ),
