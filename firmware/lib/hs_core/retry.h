@@ -34,4 +34,25 @@ struct Reaction {
 Reaction reactToIngest(int httpStatus);
 Reaction reactToRegister(int httpStatus);
 
+enum class Stuck : uint8_t { No, WifiLost, NoResponse };
+
+/**
+ * Decides when the network task should restart the device instead of staying silent:
+ * Wi-Fi down for WIFI_LOST_RESTART_S outside the setup portal (the core stops
+ * reconnecting after some disconnect reasons), or registered and online with no HTTP
+ * response at all for NO_RESPONSE_RESTART_S (a stuck TLS or network stack). Any HTTP
+ * status counts as a response, so a server that answers with errors never causes a restart.
+ */
+class NetWatchdog {
+ public:
+  void noteResponse(uint32_t nowMs) { lastResponseMs_ = nowMs; }
+  Stuck check(uint32_t nowMs, bool online, bool portalActive, bool registered);
+
+ private:
+  bool offline_ = false;
+  uint32_t offlineSinceMs_ = 0;
+  bool waiting_ = false;  // online and registered: expecting server replies
+  uint32_t lastResponseMs_ = 0;
+};
+
 }  // namespace hs

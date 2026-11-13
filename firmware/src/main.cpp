@@ -174,6 +174,9 @@ void setup() {
     strncpy(app.resetReason, why, sizeof app.resetReason - 1);
   }
   Serial.printf("\nHydro Sense %s  Device ID: %s\n", FIRMWARE_VERSION, app.deviceId);
+  const sensors::Battery battery = sensors::readBattery();
+  Serial.printf("Battery: %.2f V%s\n", battery.packV,
+                battery.fault ? " (outside the plausible range: sent as no reading)" : "");
 
   storage::begin();
   app.cutoffs = storage::loadCutoffs();

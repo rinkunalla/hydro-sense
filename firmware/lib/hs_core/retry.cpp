@@ -30,4 +30,25 @@ Reaction reactToRegister(int s) {
   }
 }
 
+Stuck NetWatchdog::check(uint32_t nowMs, bool online, bool portalActive, bool registered) {
+  if (online || portalActive) {
+    offline_ = false;  // the portal has its own timeout
+  } else if (!offline_) {
+    offline_ = true;
+    offlineSinceMs_ = nowMs;
+  }
+  if (offline_ && nowMs - offlineSinceMs_ >= WIFI_LOST_RESTART_S * 1000UL) return Stuck::WifiLost;
+
+  if (!online || !registered) {
+    waiting_ = false;
+    return Stuck::No;
+  }
+  if (!waiting_) {  // the silence clock starts when the device could first talk to the server
+    waiting_ = true;
+    lastResponseMs_ = nowMs;
+  }
+  if (nowMs - lastResponseMs_ >= NO_RESPONSE_RESTART_S * 1000UL) return Stuck::NoResponse;
+  return Stuck::No;
+}
+
 }  // namespace hs

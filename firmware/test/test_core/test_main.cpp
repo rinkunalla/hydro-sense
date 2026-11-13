@@ -233,6 +233,63 @@ static void test_ingest_reactions() {
   TEST_ASSERT_EQUAL(Action::Backoff, reactToIngest(0).action);
 }
 
+// ---------- network watchdog ----------
+
+static const uint32_t MIN_MS = 60000;
+
+static void test_watchdog_restarts_after_5_min_without_wifi() {
+  NetWatchdog w;
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(0, true, false, true));
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(1000, false, false, true));  // Wi-Fi lost at 1 s
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(1000 + 5 * MIN_MS - 1, false, false, true));
+  TEST_ASSERT_EQUAL(Stuck::WifiLost, w.check(1000 + 5 * MIN_MS, false, false, true));
+}
+
+static void test_watchdog_ignores_the_portal_and_short_drops() {
+  NetWatchdog w;
+  // Setup portal open for 20 min: the portal's own timeout handles it.
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(0, false, true, false));
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(20 * MIN_MS, false, true, false));
+  // Two 4-minute drops with a reconnect between them never add up.
+  const uint32_t t = 30 * MIN_MS;
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(t, false, false, true));
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(t + 4 * MIN_MS, false, false, true));
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(t + 4 * MIN_MS + 1000, true, false, true));
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(t + 4 * MIN_MS + 2000, false, false, true));
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(t + 8 * MIN_MS + 2000, false, false, true));
+}
+
+static void test_watchdog_restarts_after_15_min_without_any_reply() {
+  NetWatchdog w;
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(0, true, false, true));
+  w.noteResponse(10 * MIN_MS);  // any HTTP status counts, even an error
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(25 * MIN_MS - 1, true, false, true));
+  TEST_ASSERT_EQUAL(Stuck::NoResponse, w.check(25 * MIN_MS, true, false, true));
+}
+
+static void test_watchdog_counts_silence_only_while_online_and_registered() {
+  NetWatchdog w;
+  // Not registered (for example waiting 1 h after a 403): never a restart.
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(0, true, false, false));
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(60 * MIN_MS, true, false, false));
+  // Registered at 60 min: the silence clock starts then, not at boot.
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(60 * MIN_MS, true, false, true));
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(74 * MIN_MS, true, false, true));
+  // A 1-minute Wi-Fi drop restarts the clock too.
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(74 * MIN_MS + 1000, false, false, true));
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(75 * MIN_MS, true, false, true));
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(90 * MIN_MS - 1, true, false, true));
+  TEST_ASSERT_EQUAL(Stuck::NoResponse, w.check(90 * MIN_MS, true, false, true));
+}
+
+static void test_watchdog_survives_millis_wraparound() {
+  NetWatchdog w;
+  const uint32_t nearWrap = 0xFFFFFFFFu - MIN_MS;
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(nearWrap, false, false, true));
+  TEST_ASSERT_EQUAL(Stuck::No, w.check(nearWrap + 4 * MIN_MS, false, false, true));
+  TEST_ASSERT_EQUAL(Stuck::WifiLost, w.check(nearWrap + 5 * MIN_MS, false, false, true));
+}
+
 // ---------- small helpers ----------
 
 static void test_device_id_from_mac() {
@@ -365,6 +422,11 @@ int main() {
   RUN_TEST(test_backoff_doubles_to_5_min);
   RUN_TEST(test_retry_timings_for_409_403_429);
   RUN_TEST(test_ingest_reactions);
+  RUN_TEST(test_watchdog_restarts_after_5_min_without_wifi);
+  RUN_TEST(test_watchdog_ignores_the_portal_and_short_drops);
+  RUN_TEST(test_watchdog_restarts_after_15_min_without_any_reply);
+  RUN_TEST(test_watchdog_counts_silence_only_while_online_and_registered);
+  RUN_TEST(test_watchdog_survives_millis_wraparound);
   RUN_TEST(test_device_id_from_mac);
   RUN_TEST(test_distance_for_gps_move_check);
   RUN_TEST(test_ubx_backup_request_matches_known_bytes);

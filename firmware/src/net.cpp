@@ -35,6 +35,7 @@ static uint32_t nextAttemptMs = 0;
 static uint32_t registerAfterMs = 0;
 static uint32_t rejectingUntilMs = 0;
 static Backoff backoff;
+static NetWatchdog watchdog;
 
 static bool due(uint32_t now, uint32_t at) { return static_cast<int32_t>(now - at) >= 0; }
 
@@ -46,7 +47,10 @@ static void setLed(LedMode m) {
 /** POSTs a JSON body; returns the HTTP status (0 on network/TLS error) and the response. */
 static int post(const char* path, const char* body, String& response, bool withToken) {
   String url = String(API_BASE_URL) + path;
-  if (!http.begin(tls, url)) return 0;
+  if (!http.begin(tls, url)) {
+    Serial.println("HTTP error: bad URL");
+    return 0;
+  }
   http.addHeader("Content-Type", "application/json");
   if (withToken) {
     http.addHeader("X-Device-Id", app.deviceId);
@@ -55,9 +59,31 @@ static int post(const char* path, const char* body, String& response, bool withT
     http.addHeader("X-Provisioning-Key", PROVISIONING_KEY);
   }
   const int code = http.POST(String(body));
-  response = code > 0 ? http.getString() : String();
+  if (code > 0) {
+    watchdog.noteResponse(millis());
+    response = http.getString();
+  } else {
+    response = String();
+    Serial.printf("HTTP error %d: %s\n", code, HTTPClient::errorToString(code).c_str());
+  }
   http.end();  // with setReuse(true) the TLS connection stays open (keep-alive)
   return code > 0 ? code : 0;
+}
+
+/** One line per upload on the serial monitor (local only; nothing here is sent anywhere). */
+static void logUpload(const Reading& r, int code) {
+  char battery[32];
+  if (r.batteryFault) {
+    snprintf(battery, sizeof battery, "no reading (%.2f V)", r.batteryVoltage);
+  } else {
+    snprintf(battery, sizeof battery, "%.2f V", r.batteryVoltage);
+  }
+  const char* status = statusName(r.status);
+  const char* trigger = triggerName(r.trigger);
+  Serial.printf("Upload %s: HTTP %d | %s %.2f L/min (%.1f pulses/s) | battery %s | GPS %s | RSSI %d dBm | heap %u\n",
+                trigger ? trigger : "?", code, status ? status : "?", r.flowRate, r.pulseHz, battery,
+                r.gpsValid ? "fix saved" : "no fix yet", r.rssi,
+                static_cast<unsigned>(ESP.getFreeHeap()));
 }
 
 static void applyCutoffs(const String& response) {
@@ -117,10 +143,13 @@ static void sendOutbox(uint32_t now) {
       reaction = reactToIngest(code);
     } else {
       nextAttemptMs = now + REAUTH_FAIL_BACKOFF_S * 1000UL;
+      Serial.printf("Re-registration failed: next try in %u s\n",
+                    static_cast<unsigned>(REAUTH_FAIL_BACKOFF_S));
       return;
     }
   }
 
+  logUpload(r, code);
   switch (reaction.action) {
     case Action::Ok:
       applyCutoffs(response);
@@ -134,9 +163,12 @@ static void sendOutbox(uint32_t now) {
       if (reaction.action == Action::Drop) rejectingUntilMs = now + 3000;
       break;
     }
-    default:
-      nextAttemptMs = now + backoff.next() * 1000UL;
+    default: {
+      const uint32_t waitS = backoff.next();
+      nextAttemptMs = now + waitS * 1000UL;
+      Serial.printf("Upload failed: retrying in %u s\n", static_cast<unsigned>(waitS));
       break;
+    }
   }
 }
 
@@ -185,6 +217,7 @@ static void networkTask(void*) {
   bool portalWasActive = !connected;
 
   tls.setCACert(GOOGLE_ROOTS_PEM);
+  tls.setHandshakeTimeout(TLS_HANDSHAKE_TIMEOUT_S);
   http.setReuse(true);
   http.setTimeout(HTTP_TIMEOUT_S * 1000UL);
   if (storage::loadToken(token, sizeof token)) Serial.println("Token loaded from NVS");
@@ -220,10 +253,25 @@ static void networkTask(void*) {
 
     const bool online = WiFi.isConnected();
     if (online && !wasConnected) {
+      Serial.printf("Wi-Fi connected (RSSI %d dBm)\n", WiFi.RSSI());
       Locked l;
       app.reconnected = true;  // Rule A: upload the current state at once
+    } else if (!online && wasConnected) {
+      Serial.println("Wi-Fi lost");
     }
     wasConnected = online;
+
+    const Stuck stuck = watchdog.check(now, online, portalActive, token[0] != '\0');
+    if (stuck != Stuck::No) {
+      if (stuck == Stuck::WifiLost) {
+        Serial.printf("Wi-Fi down for %u s: restarting\n", static_cast<unsigned>(WIFI_LOST_RESTART_S));
+      } else {
+        Serial.printf("No server response for %u s: restarting\n",
+                      static_cast<unsigned>(NO_RESPONSE_RESTART_S));
+      }
+      Serial.flush();
+      ESP.restart();
+    }
 
     if (portalActive) {
       setLed(LedMode::Hotspot);
