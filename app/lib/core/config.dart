@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 // CLAUDE.md sections 4 and 9 and docs/UI_UX_SPEC.md.
 
 abstract final class AppConfig {
+  // Shown on Account (keep in step with pubspec.yaml version).
+  static const String appVersion = '1.0.0';
+
   // Backend
   static const String firebaseProjectId = 'hydro-sense-dc836';
   static const String functionsRegion = 'asia-east1';
@@ -35,6 +38,14 @@ abstract final class AppConfig {
   static const int recentStatusChanges = 10;
   static const int adminDevicesRefreshS = 60; // ADMIN_DEVICES_REFRESH_S
   static const int skeletonCards = 3;
+  static const int toastS = 4; // TOAST_S
+  static const int liveLateAfterS = 90; // LIVE_LATE_AFTER_S (D35)
+  static const int flowChartHours = 24; // FLOW_CHART_HOURS
+  static const int flowLogChartLimit =
+      400; // ~288 samples + status changes per day
+  static const int resetCodeLength = 6;
+  static const int resetCodeTtlS = 300; // RESET_CODE_TTL_S
+  static const int resetResendS = 60; // RESET_RESEND_S
 
   // Layout and accessibility
   static const double adminMaxContentWidth = 1200;

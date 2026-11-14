@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/glass.dart';
 import 'data/providers.dart';
 import 'features/auth/login_screen.dart';
-import 'features/auth/reset_password_screen.dart';
+import 'features/auth/sms_reset_screen.dart';
+import 'features/client/phone_change_screen.dart';
 import 'features/client/account_screen.dart';
 import 'features/client/device_detail_screen.dart';
 import 'features/client/devices_screen.dart';
@@ -75,11 +77,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, s) =>
             LoginScreen(refused: s.uri.queryParameters['refused']),
       ),
-      GoRoute(path: '/reset', builder: (_, _) => const ResetPasswordScreen()),
+      GoRoute(path: '/reset', builder: (_, _) => const SmsResetScreen()),
       GoRoute(
         path: '/loading',
-        builder: (_, _) =>
-            const Scaffold(body: Center(child: CircularProgressIndicator())),
+        builder: (_, _) => const AppBackground(
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            body: Center(child: CircularProgressIndicator()),
+          ),
+        ),
       ),
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => HomeShell(shell: shell),
@@ -109,6 +115,12 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/account',
                 builder: (_, _) => const AccountScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'phone',
+                    builder: (_, _) => const PhoneChangeScreen(),
+                  ),
+                ],
               ),
             ],
           ),

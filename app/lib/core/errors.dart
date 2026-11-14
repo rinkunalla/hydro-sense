@@ -3,7 +3,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 /// User-facing wording (docs/UI_UX_SPEC.md section 4, docs/ERROR_HANDLING.md section 4).
 abstract final class Messages {
-  static const wrongCredentials = 'Email or password is incorrect.';
+  static const wrongCredentials =
+      'That email or password is not right. Try again.';
+  static const suspended = 'This account is suspended. Contact your installer.';
+  static const wrongPassword = 'That password is not right.';
   static const tooManyAttempts =
       'Too many tries. Wait a few minutes or reset your password.';
   static const noInternet =
@@ -17,14 +20,23 @@ abstract final class Messages {
   static const generic = 'Something went wrong. Please try again.';
   static const permissionDenied = "You don't have permission to do that.";
   static const passwordsDontMatch = "Passwords don't match.";
-  static const renameFailed = "Couldn't save the name. Check your connection.";
+  static const renameFailed = "Couldn't save the name. Check your internet.";
   static const nameEmpty = "Name can't be empty.";
-  static const saveFailed = "Couldn't save. Check your connection.";
+  static const saveFailed = "Couldn't save. Check your internet.";
   static const devicesFailed = "Can't load your devices right now.";
-  static const offlineBanner =
-      'You are offline. Showing the last data this phone received. (may be outdated)';
-  static const deviceRemoved = 'This device was removed.';
-  static const mapFailed = "Map can't load. Device list still works.";
+  static const offlineBanner = 'No internet · Showing the last saved readings';
+  static const deviceGone = 'This device is no longer on your account.';
+  static const mapFailed = "Map can't load. Your devices list still works.";
+  static const codeSent = 'If this number has an account, we sent a code.';
+  static const codeExpired = 'This code has expired. Send a new one.';
+  static const codeLocked = 'Too many wrong codes. Send a new one.';
+  static const dailyLimit =
+      'You have asked for too many codes today. Try again tomorrow.';
+  static const phoneHint =
+      'Enter a Philippine mobile number, for example 0917 123 4567.';
+  static const phoneInUse = 'Another account already uses this number.';
+  static const emailInUse = 'Another account already uses this email.';
+  static const resetExpired = 'This reset has expired. Start again.';
 }
 
 /// Maps a FirebaseAuthException code to the spec wording.
@@ -35,8 +47,11 @@ String authMessage(Object error) {
       case 'wrong-password':
       case 'user-not-found':
       case 'invalid-email':
-      case 'user-disabled':
         return Messages.wrongCredentials;
+      case 'user-disabled':
+        return Messages.suspended;
+      case 'email-already-in-use':
+        return Messages.emailInUse;
       case 'too-many-requests':
         return Messages.tooManyAttempts;
       case 'network-request-failed':
@@ -50,20 +65,20 @@ String authMessage(Object error) {
   return Messages.generic;
 }
 
-/// A callable's app code (details.code) and retryAfterSeconds, if any.
-({String? code, int? retryAfterSeconds}) callableDetails(Object error) {
-  if (error is FirebaseFunctionsException) {
-    final d = error.details;
-    if (d is Map) {
-      final retry = d['retryAfterSeconds'];
-      return (
-        code: d['code'] as String?,
-        retryAfterSeconds: retry is num ? retry.toInt() : null,
-      );
-    }
-    return (code: null, retryAfterSeconds: null);
+/// A callable's app code (details.code), retryAfterSeconds and triesLeft, if any.
+({String? code, int? retryAfterSeconds, int? triesLeft}) callableDetails(
+  Object error,
+) {
+  int? n(Object? v) => v is num ? v.toInt() : null;
+  if (error is FirebaseFunctionsException && error.details is Map) {
+    final d = error.details as Map;
+    return (
+      code: d['code'] as String?,
+      retryAfterSeconds: n(d['retryAfterSeconds']),
+      triesLeft: n(d['triesLeft']),
+    );
   }
-  return (code: null, retryAfterSeconds: null);
+  return (code: null, retryAfterSeconds: null, triesLeft: null);
 }
 
 /// Wording for a failed callable that has no screen-specific message.

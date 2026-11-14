@@ -11,6 +11,29 @@ String relativeAge(DateTime then, DateTime now) {
   return '${d.inDays} d ago';
 }
 
+/// "12 s", "4 min", "2 h" for the Live cue on a card (D35).
+String shortAge(DateTime then, DateTime now) {
+  final d = now.difference(then);
+  if (d.inSeconds < 5) return 'now';
+  if (d.inSeconds < 60) return '${d.inSeconds} s';
+  if (d.inMinutes < 60) return '${d.inMinutes} min';
+  if (d.inHours < 24) return '${d.inHours} h';
+  return '${d.inDays} d';
+}
+
+/// "0917 123 4567" from 639171234567.
+String displayPhone(String? p) {
+  if (p == null || p.length != 12 || !p.startsWith('63')) return p ?? '-';
+  final local = '0${p.substring(2)}';
+  return '${local.substring(0, 4)} ${local.substring(4, 7)} ${local.substring(7)}';
+}
+
+/// "0917 ••• 4567" (docs/UI_UX_SPEC.md 5.2).
+String maskedPhone(String? p) {
+  final d = displayPhone(p);
+  return d.length == 13 ? '${d.substring(0, 4)} ••• ${d.substring(9)}' : d;
+}
+
 /// "3:12 PM" today, "Nov 2, 3:12 PM" otherwise, in the phone's local zone.
 String clockTime(DateTime t, DateTime now) {
   final local = t.toLocal();

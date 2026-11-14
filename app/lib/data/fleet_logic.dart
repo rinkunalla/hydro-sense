@@ -27,49 +27,34 @@ class BannerInfo {
   final String text;
 }
 
-/// The summary banner that answers "is water flowing to every area?" first.
-BannerInfo bannerFor(List<DeviceView> views) {
-  if (views.isEmpty) {
-    return const BannerInfo(StatusKind.waiting, 'No devices yet.');
+/// The home banner appears only for a live problem (docs/UI_UX_SPEC.md 4.1):
+/// it names the worst one, how long ago it started, and "+k more". Null when
+/// nothing is wrong.
+BannerInfo? problemBanner(List<DeviceView> views, DateTime now) {
+  final problems = sortForHome(views).where((v) => v.isProblem).toList();
+  if (problems.isEmpty) return null;
+  final worst = problems.first;
+  final since = worst.since;
+  final ago = since == null ? null : agoText(now.difference(since));
+  final head = worst.status == StatusKind.noFlow
+      ? 'No water on ${worst.nickname}'
+      : 'Low water flow on ${worst.nickname}';
+  final tail = ago == null
+      ? ''
+      : worst.status == StatusKind.noFlow
+      ? ' · It stopped $ago ago'
+      : ' · It started $ago ago';
+  final more = problems.length > 1 ? ' · +${problems.length - 1} more' : '';
+  return BannerInfo(worst.status, '$head$tail$more');
+}
+
+/// "6 minutes", "1 minute", "2 hours" for the banner sentence.
+String agoText(Duration d) {
+  if (d.inMinutes < 1) return 'less than a minute';
+  if (d.inMinutes < 60) {
+    return d.inMinutes == 1 ? '1 minute' : '${d.inMinutes} minutes';
   }
-  final sorted = sortForHome(views);
-  final problems = sorted.where((v) => v.isProblem).toList();
-  if (problems.isNotEmpty) {
-    final worst = problems.first;
-    final word = StatusStyle.of(worst.status).word;
-    final n = problems.length;
-    final text = n == 1
-        ? '1 area needs attention: ${worst.nickname} ($word)'
-        : '$n areas need attention, including ${worst.nickname} ($word)';
-    return BannerInfo(worst.status, text);
-  }
-  final reporting = views.where((v) => v.status != StatusKind.offline).toList();
-  if (reporting.isEmpty) {
-    return const BannerInfo(
-      StatusKind.offline,
-      'No device is reporting right now.',
-    );
-  }
-  final normal = views.where((v) => v.status == StatusKind.normal).length;
-  final offline = views.length - reporting.length;
-  if (offline > 0) {
-    return BannerInfo(
-      StatusKind.offline,
-      '$offline ${offline == 1 ? 'area is' : 'areas are'} offline. $normal with normal flow.',
-    );
-  }
-  if (normal == views.length) {
-    return BannerInfo(
-      StatusKind.normal,
-      views.length == 1
-          ? 'The area has normal flow.'
-          : 'All ${views.length} areas have normal flow.',
-    );
-  }
-  return const BannerInfo(
-    StatusKind.waiting,
-    'Waiting for the first readings.',
-  );
+  return d.inHours == 1 ? '1 hour' : '${d.inHours} hours';
 }
 
 /// Polite screen-reader announcements for cards that newly entered No Flow.

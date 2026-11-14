@@ -13,7 +13,9 @@ DeviceView view(
   bool batteryFault = false,
   bool lowVoltageSleep = false,
   DateTime? statusChangedAt,
+  DateTime? abnormalSince,
   double? lat = 16.04,
+  bool registered = true,
 }) => DeviceView(
   Device(
     id: id,
@@ -23,11 +25,15 @@ DeviceView view(
     lat: lat,
     lng: lat == null ? null : 120.33,
     statusChangedAt: statusChangedAt,
+    abnormalSince: abnormalSince,
   ),
   Health(
     id: id,
     online: online,
-    lastSeen: lastSeen ?? testNow.subtract(const Duration(seconds: 12)),
+    lastSeen: registered
+        ? (lastSeen ?? testNow.subtract(const Duration(seconds: 12)))
+        : null,
+    registeredAt: registered ? testNow.subtract(const Duration(days: 3)) : null,
     batteryPercent: battery,
     batteryFault: batteryFault,
     lowVoltageSleep: lowVoltageSleep,

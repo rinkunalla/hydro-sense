@@ -70,8 +70,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       for (final v in located) LatLng(v.device.lat!, v.device.lng!),
     ];
 
+    // Restyled only; stage 5a rebuilds the Map tab (D26).
     return Scaffold(
-      appBar: AppBar(title: const Text('Map')),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('Map'),
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+      ),
       body: Column(
         children: [
           if (_tileError)

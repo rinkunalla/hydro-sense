@@ -49,6 +49,7 @@ class Fake implements Providers {
     send: async (to: string, subject: string, text: string) =>
       void this.mail.push({ to, subject, text }),
   };
+  push = { send: async (fids: string[]) => ({ sent: fids.length, stale: [] as string[] }) };
   otp = {
     send: async (to: string, message: string, code: string) => {
       if (this.otpFail) throw new Error("Semaphore OTP HTTP 500");

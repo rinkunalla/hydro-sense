@@ -103,3 +103,39 @@ describe("email", () => {
     expect(r.text.startsWith("Reminder:")).toBe(true);
   });
 });
+
+describe("push (docs/UI_UX_SPEC.md section 7)", () => {
+  it("uses the spec titles, the Still: prefix and the payload shape", async () => {
+    const { buildPush } = await import("../src/lib/messages");
+    const base = {
+      deviceId: "D1",
+      nickname: "Garden",
+      reminder: false,
+      batteryPercent: 14,
+      batteryEmpty: false,
+      sinceMs: 0,
+    };
+    expect(buildPush([{ ...base, type: "flow_none" }])).toEqual({
+      title: "No water at Garden",
+      body: "Please check the pipe, valve or pump.",
+      data: { deviceId: "D1" },
+    });
+    expect(buildPush([{ ...base, type: "battery_low", reminder: true }]).title).toBe(
+      "Still: Garden battery is low (14%)",
+    );
+    expect(buildPush([{ ...base, type: "offline", batteryEmpty: true }]).title).toBe(
+      "Garden is offline: battery empty",
+    );
+    const five = ["A", "B", "C", "D", "E"].map((n, i) => ({
+      ...base,
+      deviceId: n,
+      nickname: n,
+      type: i ? ("flow_low" as const) : ("flow_none" as const),
+    }));
+    expect(buildPush(five)).toEqual({
+      title: "5 areas need attention",
+      body: "A (no flow), B (low flow), C (low flow), +2 more.",
+      data: { kind: "batch" },
+    });
+  });
+});

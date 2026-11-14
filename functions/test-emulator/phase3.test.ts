@@ -58,6 +58,13 @@ class Fake implements Providers {
     },
   };
   otp = { send: async (_n: string, _m: string, code: string) => code };
+  pushSent: { fids: string[]; title: string; body: string; data: Record<string, string> }[] = [];
+  push = {
+    send: async (fids: string[], title: string, body: string, data: Record<string, string>) => {
+      this.pushSent.push({ fids, title, body, data });
+      return { sent: fids.length, stale: [] as string[] };
+    },
+  };
 }
 
 let fake: Fake;
@@ -88,7 +95,7 @@ async function seedUser(
       phone: o.phone ?? PHONE,
       email: o.email ?? EMAIL,
       status: o.status ?? "active",
-      alertPrefs: { push: true, sms: true, email: false },
+      alertPrefs: { push: true, sms: true, email: true },
       deviceCount: 0,
     });
 }
@@ -137,6 +144,7 @@ const setFlow = (id: string, flowStatus: string, abnormalSinceMs: number | null)
     });
 
 const allSms = () => fake.smsSent.map((s) => s.msg);
+const allMail = () => fake.emailSent.map((m) => m.text);
 
 beforeEach(async () => {
   await fetch(`http://${FIRESTORE}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, {
@@ -187,7 +195,7 @@ describe("alerts", () => {
     expect(allSms()[1]).toContain("Reminder: still no water at Garden Line");
   });
 
-  it("does not set the lock when both channels fail; SMS failure does not block email", async () => {
+  it("does not set the lock when every tried channel fails; Low Flow never goes by SMS", async () => {
     await seedUser();
     await seedDevice("D1", { flowStatus: "Low Flow", abnormalSinceMs: T0 - 2 * MIN });
     fake.smsFail = true;
@@ -197,7 +205,8 @@ describe("alerts", () => {
 
     fake.emailFail = false;
     const r = await runAlertPass(T0 + MIN);
-    expect(r.users.u1).toMatchObject({ sms: "failed", email: "sent" });
+    expect(r.users.u1).toMatchObject({ push: "none", sms: "none", email: "sent" });
+    expect(fake.smsSent).toHaveLength(0);
     expect(fake.emailSent).toHaveLength(1);
     expect((await db.collection(C.alertState).doc("D1__flow").get()).get("active")).toBe(true);
   });
@@ -211,14 +220,14 @@ describe("alerts", () => {
     await runAlertPass(T0 + 8 * MIN);
     await setFlow("D1", "Low Flow", T0 + 8.5 * MIN); // flap inside 10 min
     await runAlertPass(T0 + 10 * MIN);
-    expect(allSms()).toHaveLength(1);
+    expect(allMail()).toHaveLength(1);
 
     await setFlow("D1", "Normal Flow", null);
     await runAlertPass(T0 + 11 * MIN);
     await runAlertPass(T0 + 22 * MIN); // 11 min of Normal: re-armed
     await setFlow("D1", "Low Flow", T0 + 23 * MIN);
     await runAlertPass(T0 + 25 * MIN);
-    expect(allSms()).toHaveLength(2);
+    expect(allMail()).toHaveLength(2);
   });
 
   it("escalates Low -> No once; No -> Low sends nothing", async () => {
@@ -235,8 +244,12 @@ describe("alerts", () => {
     await runAlertPass(T0 + 2 * MIN);
     await setFlow("D1", "No Flow", T0 - 2 * MIN);
     await runAlertPass(T0 + 3 * MIN);
+    // Low flow by email only; the one escalation to No Flow also by SMS (D27).
+    expect(fake.emailSent.map((m) => m.subject)).toEqual([
+      "Hydro Sense alert: Garden Line - Low flow",
+      "Hydro Sense alert: Garden Line - No flow",
+    ]);
     expect(allSms()).toEqual([
-      "Hydro Sense: Garden Line has low water flow. Please check the pipe or valve.",
       "Hydro Sense: No water is flowing at Garden Line. Please check the pipe, valve or pump.",
     ]);
   });
@@ -254,10 +267,10 @@ describe("alerts", () => {
     expect(r.sent).toHaveLength(3);
     expect(fake.smsSent).toHaveLength(1);
     expect(fake.emailSent).toHaveLength(1);
-    // Three 24-character names fit exactly (158 chars); "+k more" is unit-tested.
+    // "+k more" is unit-tested.
     expect(allSms()[0]!.length).toBeLessThanOrEqual(160);
     expect(allSms()[0]).toMatch(
-      /^Hydro Sense: 3 areas need attention: D1 x+ \(no flow\), D2 .+, D3 .+\. Open the app\.$/,
+      /^Hydro Sense: No water at 3 areas: D1 x+, D2 .+, D3 .+\. Open the app\.$/,
     );
     expect(fake.emailSent[0]!.subject).toBe("Hydro Sense alert: 3 areas need attention");
   });
@@ -289,11 +302,12 @@ describe("alerts", () => {
     expect(fake.smsSent).toHaveLength(0);
 
     await runAlertPass(T0 + 10 * MIN);
-    expect(fake.smsSent).toHaveLength(0);
+    expect(fake.emailSent).toHaveLength(0);
     await runAlertPass(T0 + 11 * MIN);
-    expect(allSms()).toEqual([
-      "Hydro Sense: Garden Line is offline. Please check its power and Wi-Fi.",
+    expect(fake.emailSent.map((m) => m.subject)).toEqual([
+      "Hydro Sense alert: Garden Line - Offline",
     ]);
+    expect(fake.smsSent).toHaveLength(0);
   });
 
   it("uses the battery-empty wording for a device in low-voltage sleep", async () => {
@@ -305,9 +319,7 @@ describe("alerts", () => {
       lowVoltageSleep: true,
     });
     await runAlertPass(T0);
-    expect(allSms()[0]).toBe(
-      "Hydro Sense: Garden Line is offline because its battery is empty. Please check its solar panel.",
-    );
+    expect(allMail()[0]).toContain("Garden Line is offline because its battery is empty.");
   });
 
   it("re-arms low battery only above 30 %", async () => {
@@ -319,14 +331,14 @@ describe("alerts", () => {
     await runAlertPass(T0 + 20 * MIN);
     await bat.update({ batteryPercent: 18 });
     await runAlertPass(T0 + 21 * MIN);
-    expect(allSms()).toHaveLength(1);
+    expect(allMail()).toHaveLength(1);
 
     await bat.update({ batteryPercent: 35 });
     await runAlertPass(T0 + 22 * MIN);
     await runAlertPass(T0 + 33 * MIN);
     await bat.update({ batteryPercent: 15 });
     await runAlertPass(T0 + 34 * MIN);
-    expect(allSms()).toHaveLength(2);
+    expect(allMail()).toHaveLength(2);
   });
 
   it("sends each alert once when two passes overlap (send lease)", async () => {
@@ -410,6 +422,113 @@ describe("calibration", () => {
     expect(d).toMatchObject({ lowFlowCutoff: 1.5, normalFlowCutoff: 5 }); // 0.15 x 10, 0.5 x 10
     expect(d.calibratedAt).toBeInstanceOf(Timestamp);
     expect((await db.collection(C.errorLogs).get()).size).toBe(0);
+  });
+});
+
+describe("alert channels (D27)", () => {
+  const prefs = (p: { push: boolean; sms: boolean; email: boolean }) =>
+    db.collection(C.users).doc("u1").update({ alertPrefs: p });
+  const token = (fid: string) =>
+    db.collection(C.users).doc("u1").collection(C.pushTokens).doc(fid).set({ platform: "android" });
+
+  it("push carries every type with only deviceId or kind in its data", async () => {
+    await seedUser();
+    await token("fid-1");
+    await seedDevice("D1", {
+      nickname: "Garden Line",
+      flowStatus: "Low Flow",
+      abnormalSinceMs: T0 - 2 * MIN,
+    });
+    const r = await runAlertPass(T0);
+    expect(r.users.u1).toMatchObject({ push: "sent", sms: "none", email: "sent" });
+    expect(fake.pushSent).toEqual([
+      {
+        fids: ["fid-1"],
+        title: "Low water flow at Garden Line",
+        body: "Please check the pipe or valve.",
+        data: { deviceId: "D1" },
+      },
+    ]);
+  });
+
+  it("a mixed batch: push and email list all, the SMS only the No Flow devices", async () => {
+    await seedUser();
+    await token("fid-1");
+    await seedDevice("D1", {
+      nickname: "Garden",
+      flowStatus: "No Flow",
+      abnormalSinceMs: T0 - 2 * MIN,
+    });
+    await seedDevice("D2", {
+      nickname: "Kitchen",
+      flowStatus: "Low Flow",
+      abnormalSinceMs: T0 - 2 * MIN,
+    });
+    await seedDevice("D3", { nickname: "Orchard", batteryPercent: 10 });
+    await runAlertPass(T0);
+    expect(allSms()).toEqual([
+      "Hydro Sense: No water is flowing at Garden. Please check the pipe, valve or pump.",
+    ]);
+    expect(fake.pushSent[0]).toMatchObject({
+      title: "3 areas need attention",
+      body: "Garden (no flow), Kitchen (low flow), Orchard (low battery).",
+      data: { kind: "batch" },
+    });
+    expect(fake.emailSent[0]!.subject).toBe("Hydro Sense alert: 3 areas need attention");
+  });
+
+  it("a switched-off channel sends nothing and counts nothing", async () => {
+    await seedUser();
+    await token("fid-1");
+    await prefs({ push: false, sms: true, email: false });
+    await seedDevice("D1", { flowStatus: "No Flow", abnormalSinceMs: T0 - 2 * MIN });
+    const r = await runAlertPass(T0);
+    expect(r.users.u1).toMatchObject({ push: "off", sms: "sent", email: "off" });
+    expect(fake.pushSent).toHaveLength(0);
+    const day = (
+      await db
+        .collection(C.alertDaily)
+        .doc(`${manilaDateKey(T0)}__u1`)
+        .get()
+    ).data()!;
+    expect(day).toEqual({ smsCount: 1 });
+  });
+
+  it("all channels off: nothing is sent, and the lock is still set", async () => {
+    await seedUser();
+    await prefs({ push: false, sms: false, email: false });
+    await seedDevice("D1", { flowStatus: "No Flow", abnormalSinceMs: T0 - 2 * MIN });
+    const r = await runAlertPass(T0);
+    expect(r.users.u1).toMatchObject({ push: "off", sms: "off", email: "off" });
+    expect(fake.smsSent.length + fake.emailSent.length + fake.pushSent.length).toBe(0);
+    expect((await db.collection(C.alertState).doc("D1__flow").get()).get("active")).toBe(true);
+  });
+
+  it("deletes installation IDs that FCM reports as gone", async () => {
+    await seedUser();
+    await token("fid-old");
+    await token("fid-new");
+    fake.push.send = async (fids, title, body, data) => {
+      fake.pushSent.push({ fids, title, body, data });
+      return { sent: 1, stale: ["fid-old"] };
+    };
+    await seedDevice("D1", { flowStatus: "No Flow", abnormalSinceMs: T0 - 2 * MIN });
+    await runAlertPass(T0);
+    const left = await db.collection(C.users).doc("u1").collection(C.pushTokens).get();
+    expect(left.docs.map((d) => d.id)).toEqual(["fid-new"]);
+  });
+
+  it("push has its own daily cap of 10, then one digest", async () => {
+    await seedUser();
+    await token("fid-1");
+    await db
+      .collection(C.alertDaily)
+      .doc(`${manilaDateKey(T0)}__u1`)
+      .set({ pushCount: 10 });
+    await seedDevice("D1", { flowStatus: "No Flow", abnormalSinceMs: T0 - 2 * MIN });
+    const r = await runAlertPass(T0);
+    expect(r.users.u1!.push).toBe("digest");
+    expect(fake.pushSent[0]).toMatchObject({ title: "More alerts today", data: { kind: "batch" } });
   });
 });
 
@@ -920,7 +1039,8 @@ describe("v1 -> v2 migration", () => {
       .doc("D1")
       .update({ online: true, lastSeen: ts(T0) });
     const r = await runAlertPass(T0);
-    expect(r.users.c1).toMatchObject({ sms: "sent", email: "sent" });
+    // The migrated account gets the defaults (D27): email starts off.
+    expect(r.users.c1).toMatchObject({ sms: "sent", email: "off" });
   });
 });
 

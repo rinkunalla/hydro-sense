@@ -45,7 +45,7 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         builder: (_, s) =>
-            LoginScreen(refused: s.uri.queryParameters['refused']),
+            LoginScreen(refused: s.uri.queryParameters['refused'], admin: true),
       ),
       GoRoute(path: '/reset', builder: (_, _) => const ResetPasswordScreen()),
       GoRoute(

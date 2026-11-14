@@ -16,3 +16,12 @@ double contrastRatio(Color a, Color b) {
   final lo = math.min(la, lb);
   return (hi + 0.05) / (lo + 0.05);
 }
+
+/// White at [whiteAlpha] composited over an opaque [below]: what the eye sees
+/// through glass (docs/UI_UX_SPEC.md section 2 measures at 22 % and 85 %).
+Color whiteOver(double whiteAlpha, Color below) => Color.from(
+  alpha: 1,
+  red: whiteAlpha + (1 - whiteAlpha) * below.r,
+  green: whiteAlpha + (1 - whiteAlpha) * below.g,
+  blue: whiteAlpha + (1 - whiteAlpha) * below.b,
+);

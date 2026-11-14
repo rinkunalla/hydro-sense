@@ -14,6 +14,7 @@ class Device {
     this.normalFlowCutoff = 2.0,
     this.calibratedAt,
     this.statusChangedAt,
+    this.abnormalSince,
   });
 
   final String id;
@@ -27,6 +28,9 @@ class Device {
   final double normalFlowCutoff;
   final DateTime? calibratedAt;
   final DateTime? statusChangedAt;
+
+  /// Start of the current Low/No Flow stretch (kept across Low <-> No, D34).
+  final DateTime? abnormalSince;
 }
 
 /// `device_health/{id}`.
@@ -42,6 +46,7 @@ class Health {
     this.lowVoltageSleep = false,
     this.rssi,
     this.firmware,
+    this.registeredAt,
   });
 
   final String id;
@@ -54,6 +59,11 @@ class Health {
   final bool lowVoltageSleep;
   final int? rssi;
   final String? firmware;
+
+  /// Null until the device first registers (D41: assigned before delivery).
+  final DateTime? registeredAt;
+
+  bool get registered => registeredAt != null || lastSeen != null;
 }
 
 /// One device as the client sees it: `devices` and `device_health` joined by ID.
@@ -69,7 +79,8 @@ class DeviceView {
   /// Offline replaces the stale flow status (D9); the phone clock never decides it.
   StatusKind get status {
     final h = health;
-    if (h != null && !h.online && h.lastSeen != null) return StatusKind.offline;
+    if (h == null || !h.registered) return StatusKind.notSetUp;
+    if (!h.online && h.lastSeen != null) return StatusKind.offline;
     switch (device.flowStatus) {
       case 'Normal Flow':
         return StatusKind.normal;
@@ -94,7 +105,30 @@ class DeviceView {
   }
 
   bool get hasLocation => device.lat != null && device.lng != null;
+
+  /// When the current problem started (D34): abnormalSince for Low/No Flow,
+  /// the last upload for Offline, otherwise null.
+  DateTime? get since => switch (status) {
+    StatusKind.noFlow || StatusKind.lowFlow => device.abnormalSince,
+    StatusKind.offline => health?.lastSeen,
+    _ => null,
+  };
+
+  /// The Live cue (D35). Display only: Offline itself is decided by the server.
+  Freshness freshnessAt(DateTime now) {
+    final h = health;
+    if (h == null || !h.registered) return Freshness.none;
+    if (!h.online) return Freshness.offline;
+    final seen = h.lastSeen;
+    if (seen == null) return Freshness.none;
+    // A negative age (server clock ahead of the phone) counts as live.
+    return now.difference(seen).inSeconds <= AppConfig.liveLateAfterS
+        ? Freshness.live
+        : Freshness.late;
+  }
 }
+
+enum Freshness { live, late, offline, none }
 
 class StatusChange {
   const StatusChange(this.at, this.flowStatus);
@@ -103,12 +137,51 @@ class StatusChange {
   final String flowStatus;
 }
 
+class AlertPrefs {
+  const AlertPrefs({this.push = true, this.sms = true, this.email = false});
+
+  final bool push;
+  final bool sms;
+  final bool email;
+
+  AlertPrefs copyWith({bool? push, bool? sms, bool? email}) => AlertPrefs(
+    push: push ?? this.push,
+    sms: sms ?? this.sms,
+    email: email ?? this.email,
+  );
+
+  Map<String, bool> toMap() => {'push': push, 'sms': sms, 'email': email};
+}
+
 class UserProfile {
-  const UserProfile({this.email, this.phone, this.displayName});
+  const UserProfile({
+    this.email,
+    this.phone,
+    this.displayName,
+    this.deviceCount = 0,
+    this.alertPrefs = const AlertPrefs(),
+    this.deletionRequested = false,
+  });
 
   final String? email;
   final String? phone;
   final String? displayName;
+  final int deviceCount;
+  final AlertPrefs alertPrefs;
+  final bool deletionRequested;
+
+  /// "Juan" from "Juan Dela Cruz", for "Welcome back, {first name}".
+  String get firstName =>
+      (displayName ?? '').trim().split(RegExp(r'\s+')).first;
+}
+
+/// One flow_logs row on the 24 h chart.
+class FlowPoint {
+  const FlowPoint(this.at, this.flowStatus, this.flowRate);
+
+  final DateTime at;
+  final String flowStatus;
+  final double flowRate;
 }
 
 /// The client's fleet, with whether it came from the offline cache.

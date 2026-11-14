@@ -1,73 +1,465 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../core/config.dart';
 import '../../core/errors.dart';
+import '../../core/glass.dart';
 import '../../core/theme.dart';
+import '../../core/time_format.dart';
+import '../../data/account_repository.dart';
+import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../auth/password_rules.dart';
 
-/// Email, phone (read only), Change password, Sign out. No delete-account.
-class AccountScreen extends ConsumerWidget {
+/// Account (docs/UI_UX_SPEC.md 4.6, D27, D31, D42).
+class AccountScreen extends ConsumerStatefulWidget {
   const AccountScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(profileProvider).valueOrNull;
-    final user = ref.watch(userProvider).valueOrNull;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Account')),
-      body: ListView(
-        padding: const EdgeInsets.all(AppSpace.l),
-        children: [
-          Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.email_outlined),
-                  title: const Text('Email'),
-                  subtitle: Text(profile?.email ?? user?.email ?? '-'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.phone_outlined),
-                  title: const Text('Phone'),
-                  subtitle: Text(_displayPhone(profile?.phone)),
-                ),
-              ],
-            ),
+  ConsumerState<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends ConsumerState<AccountScreen> {
+  AlertPrefs? _pending; // optimistic switches while a save runs
+
+  @override
+  void initState() {
+    super.initState();
+    // A verify-before-update link opened since the last visit: copy the new email.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final authEmail = ref.read(userProvider).valueOrNull?.email;
+      final saved = ref.read(profileProvider).valueOrNull?.email;
+      if (authEmail != null && saved != null && authEmail != saved) {
+        try {
+          await ref.read(accountRepositoryProvider).syncMyEmail();
+        } catch (_) {}
+      }
+    });
+  }
+
+  Future<void> _setPrefs(AlertPrefs next) async {
+    final uid = ref.read(uidProvider);
+    if (uid == null) return;
+    setState(() => _pending = next);
+    try {
+      await ref.read(repositoryProvider).setAlertPrefs(uid, next);
+    } catch (_) {
+      if (mounted) showToast(context, Messages.saveFailed);
+    } finally {
+      if (mounted) setState(() => _pending = null);
+    }
+  }
+
+  Future<void> _requestDeletion() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Request account deletion?'),
+        content: const Text(
+          'Ask your installer to delete your account? Your devices and history will be removed after that. You can keep using the app until then.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancel'),
           ),
-          const SizedBox(height: AppSpace.l),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.lock_outline),
-            label: const Text('Change password'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-            ),
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => const ChangePasswordDialog(),
-            ),
-          ),
-          const SizedBox(height: AppSpace.m),
-          FilledButton.icon(
-            icon: const Icon(Icons.logout),
-            label: const Text('Sign out'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-            ),
-            onPressed: () => signOut(ref),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Send request'),
           ),
         ],
       ),
     );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(accountRepositoryProvider).requestAccountDeletion();
+      if (mounted) {
+        showToast(context, 'Request sent. Your installer will contact you.');
+      }
+    } catch (e) {
+      if (mounted) showToast(context, callableMessage(e));
+    }
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = ref.watch(profileProvider).valueOrNull;
+    final prefs = _pending ?? p?.alertPrefs ?? const AlertPrefs();
+    final solid = ref.watch(solidGlassProvider);
+    final name = p?.displayName ?? '';
+    final initials = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0].toUpperCase())
+        .join();
+
+    Widget row(String label, String value, VoidCallback onChange) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpace.xs),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: AppText.note),
+                Text(value, style: AppText.strong),
+              ],
+            ),
+          ),
+          SecondaryButton(label: 'Change', onPressed: onChange),
+        ],
+      ),
+    );
+
+    Widget toggle(
+      String title,
+      String note,
+      bool value,
+      ValueChanged<bool> on,
+    ) => MergeSemantics(
+      child: SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text(title, style: AppText.strong),
+        subtitle: Text(note, style: AppText.note),
+        value: value,
+        activeThumbColor: Colors.white,
+        activeTrackColor: AppColors.deepCyan,
+        onChanged: _pending == null || toggleIsDisplay(title) ? on : null,
+      ),
+    );
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.l,
+            AppSpace.xl,
+            AppSpace.l,
+            AppSpace.xxl * 3,
+          ),
+          children: [
+            Semantics(
+              header: true,
+              child: Text('Account', style: AppText.title(26)),
+            ),
+            const SizedBox(height: AppSpace.l),
+            GlassPanel(
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: AppColors.tint,
+                    child: Text(
+                      initials.isEmpty ? '?' : initials,
+                      style: AppText.title(
+                        20,
+                      ).copyWith(color: AppColors.deepCyan),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpace.m),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name, style: AppText.title(20)),
+                        Text(
+                          '${p?.deviceCount ?? 0} ${p?.deviceCount == 1 ? 'device' : 'devices'}',
+                          style: AppText.note,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpace.m),
+            GlassPanel(
+              child: Column(
+                children: [
+                  row('Name', name, () => _dialog(_NameDialog(current: name))),
+                  row(
+                    'Mobile number',
+                    displayPhone(p?.phone),
+                    () => context.go('/account/phone'),
+                  ),
+                  row(
+                    'Email',
+                    p?.email ?? '-',
+                    () => _dialog(const _EmailDialog()),
+                  ),
+                  row(
+                    'Password',
+                    '••••••••',
+                    () => _dialog(const ChangePasswordDialog()),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpace.l),
+            const SectionLabel('Alerts'),
+            GlassPanel(
+              child: Column(
+                children: [
+                  toggle(
+                    'Phone notification',
+                    'Every alert, right away',
+                    prefs.push,
+                    (v) => _setPrefs(prefs.copyWith(push: v)),
+                  ),
+                  toggle(
+                    'SMS',
+                    'When water stops',
+                    prefs.sms,
+                    (v) => _setPrefs(prefs.copyWith(sms: v)),
+                  ),
+                  toggle(
+                    'Email',
+                    'Every alert',
+                    prefs.email,
+                    (v) => _setPrefs(prefs.copyWith(email: v)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpace.l),
+            const SectionLabel('Display'),
+            GlassPanel(
+              child: toggle(
+                'Solid glass',
+                'Easier to read: no see-through panels',
+                solid,
+                (v) => ref.read(solidGlassProvider.notifier).set(v),
+              ),
+            ),
+            const SizedBox(height: AppSpace.xl),
+            SecondaryButton(
+              label: 'Sign out',
+              icon: Icons.logout_rounded,
+              destructive: true,
+              onPressed: () => signOut(ref),
+            ),
+            const SizedBox(height: AppSpace.s),
+            Center(
+              child: p?.deletionRequested == true
+                  ? Text(
+                      'Deletion requested. Your installer will contact you.',
+                      style: AppText.note,
+                    )
+                  : TextButton(
+                      onPressed: _requestDeletion,
+                      child: const Text('Request account deletion'),
+                    ),
+            ),
+            Center(
+              child: Text(
+                'Hydro Sense ${AppConfig.appVersion}',
+                style: AppText.note,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The display switch is local and never waits for a save.
+  bool toggleIsDisplay(String title) => title == 'Solid glass';
+
+  void _dialog(Widget d) =>
+      showDialog<void>(context: context, builder: (_) => d);
 }
 
-/// "639171234567" -> "0917 123 4567".
-String _displayPhone(String? p) {
-  if (p == null || p.length != 12 || !p.startsWith('63')) return p ?? '-';
-  final local = '0${p.substring(2)}';
-  return '${local.substring(0, 4)} ${local.substring(4, 7)} ${local.substring(7)}';
+/// Shared error line for the account dialogs.
+Widget _errorLine(String? error) => error == null
+    ? const SizedBox.shrink()
+    : Padding(
+        padding: const EdgeInsets.only(top: AppSpace.m),
+        child: Text(
+          error,
+          style: AppText.body.copyWith(
+            color: AppColors.errorText,
+            fontSize: 14,
+          ),
+        ),
+      );
+
+String accountError(Object e) {
+  final code = callableDetails(e).code;
+  if (code == 'PHONE_IN_USE') return Messages.phoneInUse;
+  if (code == 'NAME_INVALID') return "Enter your name (at most 60 characters).";
+  final auth = authMessage(e);
+  if (auth == Messages.wrongCredentials) return Messages.wrongPassword;
+  return auth == Messages.generic ? callableMessage(e) : auth;
+}
+
+class _NameDialog extends ConsumerStatefulWidget {
+  const _NameDialog({required this.current});
+
+  final String current;
+
+  @override
+  ConsumerState<_NameDialog> createState() => _NameDialogState();
+}
+
+class _NameDialogState extends ConsumerState<_NameDialog> {
+  late final _c = TextEditingController(text: widget.current);
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_c.text.trim().isEmpty) {
+      setState(() => _error = Messages.nameEmpty);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref.read(accountRepositoryProvider).updateMyName(_c.text.trim());
+      if (mounted) {
+        Navigator.pop(context);
+        showToast(context, 'Name saved');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = accountError(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Change name'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: _c,
+          autofocus: true,
+          enabled: !_busy,
+          maxLength: 60,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onSubmitted: (_) => _save(),
+        ),
+        _errorLine(_error),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: _busy ? null : () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(onPressed: _busy ? null : _save, child: const Text('Save')),
+    ],
+  );
+}
+
+class _EmailDialog extends ConsumerStatefulWidget {
+  const _EmailDialog();
+
+  @override
+  ConsumerState<_EmailDialog> createState() => _EmailDialogState();
+}
+
+class _EmailDialogState extends ConsumerState<_EmailDialog> {
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _busy = false;
+  String? _error;
+  String? _sentTo;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final email = _email.text.trim().toLowerCase();
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      setState(() => _error = 'Enter a valid email address.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(accountRepositoryProvider)
+          .changeEmail(_password.text, email);
+      if (mounted) setState(() => _sentTo = email);
+    } catch (e) {
+      if (mounted) setState(() => _error = accountError(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_sentTo != null) {
+      return AlertDialog(
+        title: const Text('Check your inbox'),
+        content: Text(
+          'We sent a link to $_sentTo. Your email changes after you open it.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      );
+    }
+    return AlertDialog(
+      title: const Text('Change email'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _email,
+              autofocus: true,
+              enabled: !_busy,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'New email'),
+            ),
+            const SizedBox(height: AppSpace.m),
+            TextField(
+              controller: _password,
+              enabled: !_busy,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Current password'),
+              onSubmitted: (_) => _send(),
+            ),
+            _errorLine(_error),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : _send,
+          child: const Text('Send verification link'),
+        ),
+      ],
+    );
+  }
 }
 
 class ChangePasswordDialog extends ConsumerStatefulWidget {
@@ -103,74 +495,60 @@ class _ChangePasswordState extends ConsumerState<ChangePasswordDialog> {
       _error = null;
     });
     try {
-      final user = ref.read(authProvider).currentUser!;
-      await user.reauthenticateWithCredential(
-        EmailAuthProvider.credential(
-          email: user.email!,
-          password: _current.text,
-        ),
-      );
-      await user.updatePassword(_a.text);
+      await ref
+          .read(accountRepositoryProvider)
+          .changePassword(_current.text, _a.text);
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(
+        showToast(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Password changed.')));
+          'Password changed. You were signed out on your other phones.',
+        );
       }
     } catch (e) {
-      if (mounted) setState(() => _error = authMessage(e));
+      if (mounted) setState(() => _error = accountError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Change password'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _current,
-              obscureText: true,
-              enabled: !_busy,
-              decoration: const InputDecoration(labelText: 'Current password'),
-            ),
-            const SizedBox(height: AppSpace.m),
-            TextField(
-              controller: _a,
-              obscureText: true,
-              enabled: !_busy,
-              decoration: const InputDecoration(labelText: 'New password'),
-            ),
-            const SizedBox(height: AppSpace.m),
-            TextField(
-              controller: _b,
-              obscureText: true,
-              enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'Repeat new password',
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: AppSpace.m),
-              Text(_error!, style: const TextStyle(color: Color(0xFF8A2A20))),
-            ],
-          ],
-        ),
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Change password'),
+    content: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _current,
+            obscureText: true,
+            enabled: !_busy,
+            decoration: const InputDecoration(labelText: 'Current password'),
+          ),
+          const SizedBox(height: AppSpace.m),
+          TextField(
+            controller: _a,
+            obscureText: true,
+            enabled: !_busy,
+            decoration: const InputDecoration(labelText: 'New password'),
+          ),
+          const SizedBox(height: AppSpace.m),
+          TextField(
+            controller: _b,
+            obscureText: true,
+            enabled: !_busy,
+            decoration: const InputDecoration(labelText: 'Type it again'),
+          ),
+          _errorLine(_error),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: _busy ? null : () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _busy ? null : _save,
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
+    ),
+    actions: [
+      TextButton(
+        onPressed: _busy ? null : () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(onPressed: _busy ? null : _save, child: const Text('Save')),
+    ],
+  );
 }

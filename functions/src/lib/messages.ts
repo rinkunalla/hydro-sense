@@ -73,19 +73,75 @@ export function byDevice(items: readonly AlertItem[]): AlertItem[] {
   );
 }
 
-/** One SMS for everything due in a pass; never longer than SMS_MAX_CHARS. */
+/**
+ * One SMS for everything due in a pass; never longer than SMS_MAX_CHARS. Alert SMS
+ * carry only No Flow (D27), so a batch reads "No water at {n} areas: ..." (UI spec 7).
+ */
 export function buildSms(items: readonly AlertItem[]): string {
   const list = byDevice(items);
   if (list.length === 1) return singleSms(list[0]!);
-  const head = `Hydro Sense: ${list.length} areas need attention: `;
+  const noFlowOnly = list.every((i) => i.type === "flow_none");
+  const head = noFlowOnly
+    ? `Hydro Sense: No water at ${list.length} areas: `
+    : `Hydro Sense: ${list.length} areas need attention: `;
+  const name = (i: AlertItem) => (noFlowOnly ? i.nickname : `${i.nickname} (${ISSUE[i.type]})`);
   for (let k = list.length; k >= 1; k--) {
-    const shown = list.slice(0, k).map((i) => `${i.nickname} (${ISSUE[i.type]})`).join(", ");
+    const shown = list.slice(0, k).map(name).join(", ");
     const more = k < list.length ? `, +${list.length - k} more` : "";
     const text = `${head}${shown}${more}. Open the app.`;
     if (text.length <= SMS_MAX_CHARS) return text;
   }
   return `Hydro Sense: ${list.length} areas need attention. Open the app.`;
 }
+
+export interface PushMessage {
+  title: string;
+  body: string;
+  /** Only what the app needs to open the right screen (D37, section 7 rule 14). */
+  data: { deviceId: string } | { kind: "batch" };
+}
+
+function singlePush(i: AlertItem): Omit<PushMessage, "data"> {
+  const n = i.nickname;
+  const still = i.reminder ? "Still: " : "";
+  switch (i.type) {
+    case "flow_none":
+      return { title: `${still}No water at ${n}`, body: "Please check the pipe, valve or pump." };
+    case "flow_low":
+      return { title: `${still}Low water flow at ${n}`, body: "Please check the pipe or valve." };
+    case "battery_low":
+      return { title: `${still}${n} battery is low (${pct(i)})`, body: "Please check its solar panel." };
+    case "offline":
+      return i.batteryEmpty
+        ? { title: `${still}${n} is offline: battery empty`, body: "Please check its solar panel." }
+        : { title: `${still}${n} is offline`, body: "Please check its power and Wi-Fi." };
+  }
+}
+
+/** Push names at most this many devices, then "+k more". */
+const PUSH_NAMES_MAX = 3;
+
+/** One push for everything due in a pass (docs/UI_UX_SPEC.md section 7). */
+export function buildPush(items: readonly AlertItem[]): PushMessage {
+  const list = byDevice(items);
+  if (list.length === 1) return { ...singlePush(list[0]!), data: { deviceId: list[0]!.deviceId } };
+  const shown = list
+    .slice(0, PUSH_NAMES_MAX)
+    .map((i) => `${i.nickname} (${ISSUE[i.type]})`)
+    .join(", ");
+  const more = list.length > PUSH_NAMES_MAX ? `, +${list.length - PUSH_NAMES_MAX} more` : "";
+  return {
+    title: `${list.length} areas need attention`,
+    body: `${shown}${more}.`,
+    data: { kind: "batch" },
+  };
+}
+
+export const DIGEST_PUSH: PushMessage = {
+  title: "More alerts today",
+  body: "Open the app for live status.",
+  data: { kind: "batch" },
+};
 
 export const DIGEST_SMS = "Hydro Sense: More alerts today. Open the app for live status.";
 

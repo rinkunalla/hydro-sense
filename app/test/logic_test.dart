@@ -3,6 +3,8 @@ import 'package:hydro_sense/core/theme.dart';
 import 'package:hydro_sense/core/time_format.dart';
 import 'package:hydro_sense/data/fleet_logic.dart';
 import 'package:hydro_sense/data/models.dart';
+import 'package:hydro_sense/data/push.dart';
+import 'package:hydro_sense/features/auth/code_entry.dart';
 import 'package:hydro_sense/features/auth/password_rules.dart';
 import 'package:hydro_sense/features/client/device_detail_screen.dart';
 import 'package:hydro_sense/router.dart';
@@ -37,36 +39,113 @@ void main() {
       // Registered but never reported (lastSeen null) is waiting, not offline.
       final fresh = DeviceView(
         const Device(id: 'x', nickname: 'X'),
-        const Health(id: 'x'),
+        Health(id: 'x', registeredAt: testNow),
       );
       expect(fresh.status, StatusKind.waiting);
     });
 
-    test('banner wording', () {
-      expect(
-        bannerFor([view('1'), view('2'), view('3')]).text,
-        'All 3 areas have normal flow.',
-      );
-      expect(
-        bannerFor([
-          view('1'),
-          view('2', nickname: 'Garden Line', flowStatus: 'No Flow'),
-        ]).text,
-        '1 area needs attention: Garden Line (No flow)',
-      );
-      final two = bannerFor([
+    test(
+      'a device assigned before it ever registered is Not set up yet (D41)',
+      () {
+        expect(view('1', registered: false).status, StatusKind.notSetUp);
+        expect(
+          const DeviceView(Device(id: 'x', nickname: 'X'), null).status,
+          StatusKind.notSetUp,
+        );
+        expect(
+          view('1', registered: false).freshnessAt(testNow),
+          Freshness.none,
+        );
+      },
+    );
+
+    test('the banner shows only a live problem, worst first (4.1)', () {
+      expect(problemBanner([view('1'), view('2')], testNow), isNull);
+      final one = problemBanner([
+        view('1'),
+        view(
+          '2',
+          nickname: 'Garden Line',
+          flowStatus: 'No Flow',
+          abnormalSince: testNow.subtract(const Duration(minutes: 6)),
+        ),
+      ], testNow)!;
+      expect(one.text, 'No water on Garden Line · It stopped 6 minutes ago');
+      expect(one.kind, StatusKind.noFlow);
+      final three = problemBanner([
         view('1', nickname: 'Kitchen', flowStatus: 'Low Flow'),
         view('2', nickname: 'Garden Line', flowStatus: 'No Flow'),
-      ]);
+        view('3', nickname: 'Orchard', flowStatus: 'Low Flow'),
+      ], testNow)!;
+      expect(three.text, 'No water on Garden Line · +2 more');
       expect(
-        two.text,
-        '2 areas need attention, including Garden Line (No flow)',
+        problemBanner([
+          view(
+            '1',
+            nickname: 'Kitchen',
+            flowStatus: 'Low Flow',
+            abnormalSince: testNow.subtract(const Duration(hours: 1)),
+          ),
+        ], testNow)!.text,
+        'Low water flow on Kitchen · It started 1 hour ago',
       );
-      expect(two.kind, StatusKind.noFlow);
+    });
+
+    test(
+      'since line: abnormalSince for problems, lastSeen when Offline (D34)',
+      () {
+        final start = testNow.subtract(const Duration(minutes: 42));
+        expect(
+          view('1', flowStatus: 'No Flow', abnormalSince: start).since,
+          start,
+        );
+        final seen = testNow.subtract(const Duration(hours: 1));
+        expect(view('1', online: false, lastSeen: seen).since, seen);
+        expect(
+          view('1', abnormalSince: start).since,
+          isNull,
+        ); // Normal: no line
+      },
+    );
+
+    test('Live within 90 s, then Late, Offline only from the server (D35)', () {
+      DeviceView at(int s) =>
+          view('1', lastSeen: testNow.subtract(Duration(seconds: s)));
+      expect(at(90).freshnessAt(testNow), Freshness.live);
+      expect(at(91).freshnessAt(testNow), Freshness.late);
       expect(
-        bannerFor([view('1', online: false), view('2', online: false)]).text,
-        'No device is reporting right now.',
+        at(-30).freshnessAt(testNow),
+        Freshness.live,
+      ); // server clock ahead
+      expect(view('1', online: false).freshnessAt(testNow), Freshness.offline);
+    });
+
+    test('a tapped push opens Details or Devices (D37)', () {
+      expect(
+        routeForPush({'deviceId': 'A1B2C3D4E5F6'}),
+        '/devices/A1B2C3D4E5F6',
       );
+      expect(routeForPush({'kind': 'batch'}), '/devices');
+      expect(routeForPush({'deviceId': '../account'}), '/devices');
+    });
+
+    test('code wording and timers (5.2)', () {
+      expect(mmss(272), '4:32');
+      expect(mmss(-3), '0:00');
+      expect(
+        codeErrorText('RESET_CODE_INVALID', 3),
+        'That code is not right. 3 tries left.',
+      );
+      expect(
+        codeErrorText('RESET_CODE_INVALID', 1),
+        'That code is not right. 1 try left.',
+      );
+      expect(
+        codeErrorText('RESET_LOCKED', null),
+        'Too many wrong codes. Send a new one.',
+      );
+      expect(maskedPhone('639171234567'), '0917 ••• 4567');
+      expect(displayPhone('639171234567'), '0917 123 4567');
     });
 
     test('announces only cards that newly entered No Flow', () {
@@ -161,12 +240,6 @@ void main() {
         "Passwords don't match.",
       );
       expect(validateNewPassword('longenough', 'longenough'), isNull);
-    });
-
-    test('signal words from RSSI', () {
-      expect(signalOf(-55).word, 'Strong');
-      expect(signalOf(-75).bars, 2);
-      expect(signalOf(-90).word, 'Weak');
     });
   });
 }

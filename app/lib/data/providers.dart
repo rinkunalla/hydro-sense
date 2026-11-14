@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models.dart';
+import 'push.dart';
 import 'repository.dart';
 
 final authProvider = Provider<FirebaseAuth>((ref) => FirebaseAuth.instance);
@@ -16,6 +17,11 @@ final explicitSignOutProvider = StateProvider<bool>((ref) => false);
 
 Future<void> signOut(WidgetRef ref) async {
   ref.read(explicitSignOutProvider.notifier).state = true;
+  // A user's phone stops getting alerts first: the rules allow this only while signed in.
+  final uid = ref.read(authProvider).currentUser?.uid;
+  if (uid != null && ref.read(roleProvider).valueOrNull == 'user') {
+    await ref.read(pushServiceProvider).stop(uid);
+  }
   await ref.read(authProvider).signOut();
 }
 
@@ -26,6 +32,12 @@ final repositoryProvider = Provider<ClientRepository>(
 /// The signed-in user (null when signed out).
 final userProvider = StreamProvider<User?>(
   (ref) => ref.watch(authProvider).idTokenChanges(),
+);
+
+/// The signed-in user's uid (null when signed out). Screens use this, not
+/// FirebaseAuth directly, so widget tests can stand in for a user.
+final uidProvider = Provider<String?>(
+  (ref) => ref.watch(userProvider).valueOrNull?.uid,
 );
 
 /// The `role` custom claim of the signed-in user.

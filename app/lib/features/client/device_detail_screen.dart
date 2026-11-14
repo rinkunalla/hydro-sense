@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/config.dart';
 import '../../core/errors.dart';
+import '../../core/glass.dart';
 import '../../core/theme.dart';
 import '../../core/time_format.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import 'flow_chart.dart';
 import 'widgets.dart';
 
 /// Trims and checks a new nickname (1 to 24 characters). Null when valid.
@@ -19,14 +22,19 @@ String? validateNickname(String raw) {
   return null;
 }
 
-/// Signal strength word and bars (1-4) from RSSI.
-({int bars, String word}) signalOf(int rssi) {
-  if (rssi >= -60) return (bars: 4, word: 'Strong');
-  if (rssi >= -70) return (bars: 3, word: 'Good');
-  if (rssi >= -80) return (bars: 2, word: 'Fair');
-  return (bars: 1, word: 'Weak');
-}
+/// The 24 h chart rows, read once per device per session (CLAUDE.md section 8).
+final flowHistoryProvider = FutureProvider.family<List<FlowPoint>, String>(
+  (ref, id) => ref
+      .watch(repositoryProvider)
+      .flowHistory(
+        id,
+        DateTime.now().subtract(
+          const Duration(hours: AppConfig.flowChartHours),
+        ),
+      ),
+);
 
+/// Device details (docs/UI_UX_SPEC.md 4.2).
 class DeviceDetailScreen extends ConsumerStatefulWidget {
   const DeviceDetailScreen({super.key, required this.deviceId});
 
@@ -39,6 +47,8 @@ class DeviceDetailScreen extends ConsumerStatefulWidget {
 class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
   bool _leaving = false;
 
+  void _back() => context.canPop() ? context.pop() : context.go('/devices');
+
   @override
   Widget build(BuildContext context) {
     final fleet = ref.watch(fleetProvider).valueOrNull;
@@ -48,106 +58,172 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
       if (v.id == widget.deviceId) view = v;
     }
 
+    // Unassigned or removed while open: go back and say so (4.1).
     if (fleet != null && view == null) {
       if (!_leaving) {
         _leaving = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text(Messages.deviceRemoved)));
-          Navigator.of(context).maybePop();
+          showToast(context, Messages.deviceGone);
+          _back();
         });
       }
-      return const Scaffold(body: SizedBox.shrink());
+      return const Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SizedBox.shrink(),
+      );
     }
     if (view == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Padding(
+          padding: EdgeInsets.all(AppSpace.l),
+          child: SkeletonCard(height: 240),
+        ),
+      );
     }
 
     final v = view;
     final h = v.health;
-    final muted = Theme.of(
-      context,
-    ).textTheme.bodySmall?.copyWith(color: AppColors.textMuted);
     final offline = v.status == StatusKind.offline;
     final rate = v.device.flowRate;
+    final history = ref.watch(flowHistoryProvider(v.id));
 
     return Scaffold(
-      appBar: AppBar(title: Text(v.nickname, overflow: TextOverflow.ellipsis)),
-      body: ListView(
-        padding: const EdgeInsets.all(AppSpace.l),
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: StatusChip(v.status, large: true),
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.l,
+            AppSpace.s,
+            AppSpace.l,
+            AppSpace.xxl * 3,
           ),
-          const SizedBox(height: AppSpace.m),
-          Text.rich(
-            TextSpan(
+          children: [
+            Row(
               children: [
-                TextSpan(
-                  text: offline || rate == null ? '-' : rate.toStringAsFixed(1),
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    color: offline ? AppColors.textMuted : AppColors.text,
-                  ),
+                IconButton(
+                  tooltip: 'Back',
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  color: AppColors.ink,
+                  onPressed: _back,
                 ),
-                const TextSpan(text: ' L/min'),
+                Expanded(child: _Nickname(view: v)),
               ],
             ),
-          ),
-          if (h?.lastSeen != null)
-            Text(
-              offline
-                  ? 'Last seen ${clockTime(h!.lastSeen!, now)}'
-                  : 'Updated ${relativeAge(h!.lastSeen!, now)}',
-              style: muted,
+            const SizedBox(height: AppSpace.s),
+            Wrap(
+              spacing: AppSpace.m,
+              runSpacing: AppSpace.s,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                StatusChip(v.status, large: true),
+                if (v.since != null) SinceLine(view: v, now: now),
+              ],
             ),
-          const SizedBox(height: AppSpace.l),
-          _NameCard(view: v),
-          const SizedBox(height: AppSpace.m),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.tune),
-              title: Text(
-                'Low flow below ${v.device.normalFlowCutoff.toStringAsFixed(1)} L/min, '
-                'no flow below ${v.device.lowFlowCutoff.toStringAsFixed(1)} L/min',
-              ),
-              subtitle: Text(
-                // Cutoffs reach the device only through its next upload (CLAUDE.md section 3).
-                v.device.calibratedAt != null
-                    ? 'Calibrated ${clockTime(v.device.calibratedAt!, now)}. '
-                          "Applied on the device's next update."
-                    : 'Using starter limits',
+            const SizedBox(height: AppSpace.s),
+            Wrap(
+              spacing: AppSpace.m,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                LiveCue(view: v, now: now),
+                if (h?.lastSeen != null)
+                  Text(
+                    offline
+                        ? 'Last seen ${clockTime(h!.lastSeen!, now)}'
+                        : 'Updated ${relativeAge(h!.lastSeen!, now)}',
+                    style: AppText.note,
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpace.l),
+            GlassPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Semantics(
+                    label: offline || rate == null
+                        ? 'No current flow reading'
+                        : '${rate.toStringAsFixed(1)} litres per minute',
+                    excludeSemantics: true,
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: offline || rate == null
+                                ? '–'
+                                : rate.toStringAsFixed(1),
+                            style: AppText.reading(52).copyWith(
+                              color: offline ? AppColors.steel : AppColors.ink,
+                            ),
+                          ),
+                          TextSpan(text: ' L/min', style: AppText.strong),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpace.s),
+                  PipeView(kind: v.status),
+                ],
               ),
             ),
-          ),
-          const SizedBox(height: AppSpace.m),
-          _HardwareCard(view: v),
-          const SizedBox(height: AppSpace.m),
-          _RecentChanges(deviceId: v.id, now: now),
-        ],
+            if (h != null && (h.batteryPercent != null || h.batteryFault)) ...[
+              const SizedBox(height: AppSpace.m),
+              GlassPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SectionLabel('Battery'),
+                    BatteryGauge(v, showTrend: true),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: AppSpace.m),
+            GlassPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SectionLabel('Flow, last 24 hours'),
+                  history.when(
+                    loading: () => const SizedBox(
+                      height: 160,
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                    error: (_, _) =>
+                        Text(Messages.generic, style: AppText.note),
+                    data: (points) => FlowChart(
+                      points: points,
+                      now: now,
+                      lowBelow: v.device.normalFlowCutoff,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _NameCard extends ConsumerStatefulWidget {
-  const _NameCard({required this.view});
+/// Nickname with an edit pencil; inline field, 1 to 24 characters, trimmed.
+class _Nickname extends ConsumerStatefulWidget {
+  const _Nickname({required this.view});
 
   final DeviceView view;
 
   @override
-  ConsumerState<_NameCard> createState() => _NameCardState();
+  ConsumerState<_Nickname> createState() => _NicknameState();
 }
 
-class _NameCardState extends ConsumerState<_NameCard> {
+class _NicknameState extends ConsumerState<_Nickname> {
+  final _c = TextEditingController();
   bool _editing = false;
   bool _saving = false;
   String? _error;
-  late final TextEditingController _c = TextEditingController(
-    text: widget.view.nickname,
-  );
 
   @override
   void dispose() {
@@ -167,7 +243,10 @@ class _NameCardState extends ConsumerState<_NameCard> {
     });
     try {
       await ref.read(repositoryProvider).rename(widget.view.id, _c.text.trim());
-      if (mounted) setState(() => _editing = false);
+      if (mounted) {
+        setState(() => _editing = false);
+        showToast(context, 'Name saved');
+      }
     } catch (_) {
       if (mounted) setState(() => _error = Messages.renameFailed);
     } finally {
@@ -178,173 +257,55 @@ class _NameCardState extends ConsumerState<_NameCard> {
   @override
   Widget build(BuildContext context) {
     if (!_editing) {
-      return Card(
-        child: ListTile(
-          leading: const Icon(Icons.label_outline),
-          title: const Text('Name'),
-          subtitle: Text(widget.view.nickname),
-          trailing: IconButton(
+      return Row(
+        children: [
+          Flexible(
+            child: Semantics(
+              header: true,
+              child: Text(
+                widget.view.nickname,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.title(24),
+              ),
+            ),
+          ),
+          IconButton(
             tooltip: 'Rename',
-            icon: const Icon(Icons.edit),
+            icon: const Icon(Icons.edit_rounded, color: AppColors.deepCyan),
             onPressed: () => setState(() {
               _c.text = widget.view.nickname;
+              _error = null;
               _editing = true;
             }),
           ),
-        ),
+        ],
       );
     }
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpace.l),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: _c,
-              autofocus: true,
-              enabled: !_saving,
-              maxLength: AppConfig.nicknameMax,
-              decoration: InputDecoration(labelText: 'Name', errorText: _error),
-              onSubmitted: (_) => _save(),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: _saving
-                      ? null
-                      : () => setState(() => _editing = false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: const Text('Save'),
-                ),
-              ],
-            ),
-          ],
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _c,
+            autofocus: true,
+            enabled: !_saving,
+            maxLength: AppConfig.nicknameMax,
+            decoration: InputDecoration(labelText: 'Name', errorText: _error),
+            onSubmitted: (_) => _save(),
+          ),
         ),
-      ),
-    );
-  }
-}
-
-class _HardwareCard extends StatelessWidget {
-  const _HardwareCard({required this.view});
-
-  final DeviceView view;
-
-  @override
-  Widget build(BuildContext context) {
-    final h = view.health;
-    final pct = h?.batteryPercent;
-    final rssi = h?.rssi;
-    final signal = rssi == null ? null : signalOf(rssi);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpace.l),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(child: BatteryLine(view)),
-                if (h?.chargingStatus != null && !(h?.batteryFault ?? false))
-                  Text(h!.chargingStatus!),
-              ],
-            ),
-            if (pct != null && !(h?.batteryFault ?? false)) ...[
-              const SizedBox(height: AppSpace.s),
-              Semantics(
-                label: 'Battery $pct percent',
-                child: LinearProgressIndicator(
-                  value: pct / 100,
-                  minHeight: 8,
-                  color: view.lowBattery
-                      ? StatusStyle.of(StatusKind.lowBattery).strong
-                      : AppColors.primary,
-                  backgroundColor: AppColors.surfaceAlt,
-                ),
-              ),
-            ],
-            if (signal != null) ...[
-              const SizedBox(height: AppSpace.m),
-              Semantics(
-                label: 'Signal ${signal.word.toLowerCase()}',
-                child: Row(
-                  children: [
-                    for (var i = 1; i <= 4; i++)
-                      Container(
-                        width: 6,
-                        height: 6.0 + i * 4,
-                        margin: const EdgeInsets.only(right: 3),
-                        color: i <= signal.bars
-                            ? AppColors.primary
-                            : AppColors.outline,
-                      ),
-                    const SizedBox(width: AppSpace.s),
-                    ExcludeSemantics(child: Text('Signal: ${signal.word}')),
-                  ],
-                ),
-              ),
-            ],
-            if (h?.firmware != null) ...[
-              const SizedBox(height: AppSpace.m),
-              Text(
-                'Firmware ${h!.firmware}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-          ],
+        IconButton(
+          tooltip: 'Save name',
+          icon: const Icon(Icons.check_rounded, color: AppColors.deepCyan),
+          onPressed: _saving ? null : _save,
         ),
-      ),
-    );
-  }
-}
-
-class _RecentChanges extends ConsumerWidget {
-  const _RecentChanges({required this.deviceId, required this.now});
-
-  final String deviceId;
-  final DateTime now;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final changes =
-        ref.watch(statusChangesProvider(deviceId)).valueOrNull ?? const [];
-    StatusKind kindOf(String s) => switch (s) {
-      'Normal Flow' => StatusKind.normal,
-      'Low Flow' => StatusKind.lowFlow,
-      'No Flow' => StatusKind.noFlow,
-      _ => StatusKind.waiting,
-    };
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpace.l),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Recent status changes',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: AppSpace.s),
-            if (changes.isEmpty) const Text('No changes in the last 7 days.'),
-            for (final c in changes)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpace.xs),
-                child: Row(
-                  children: [
-                    StatusChip(kindOf(c.flowStatus)),
-                    const SizedBox(width: AppSpace.m),
-                    Text(clockTime(c.at, now)),
-                  ],
-                ),
-              ),
-          ],
+        IconButton(
+          tooltip: 'Cancel',
+          icon: const Icon(Icons.close_rounded, color: AppColors.steel),
+          onPressed: _saving ? null : () => setState(() => _editing = false),
         ),
-      ),
+      ],
     );
   }
 }

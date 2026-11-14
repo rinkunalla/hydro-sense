@@ -1,3 +1,4 @@
+import { getMessaging } from "firebase-admin/messaging";
 import { defineSecret } from "firebase-functions/params";
 import { createTransport, type Transporter } from "nodemailer";
 import {
@@ -33,10 +34,28 @@ export interface OtpSender {
   send(number: string, message: string, code: string): Promise<string>;
 }
 
+export interface PushResult {
+  /** Installations that received it. */
+  sent: number;
+  /** Installation IDs FCM reports as gone (app removed or reinstalled): delete them. */
+  stale: string[];
+}
+
+export interface PushSender {
+  /** Sends one notification to several app installations (FIDs). Throws only if the call fails. */
+  send(
+    fids: string[],
+    title: string,
+    body: string,
+    data: Record<string, string>,
+  ): Promise<PushResult>;
+}
+
 export interface Providers {
   sms: SmsSender;
   email: EmailSender;
   otp: OtpSender;
+  push: PushSender;
 }
 
 class SemaphoreSms implements SmsSender {
@@ -76,6 +95,29 @@ class SemaphoreOtp implements OtpSender {
   }
 }
 
+/** Codes meaning the installation will never receive again (Admin SDK messaging errors). */
+const STALE_PUSH = ["installation-id-not-registered", "registration-token-not-registered"];
+
+/** FCM HTTP v1 through the Admin SDK; FIDs, not the deprecated registration tokens. */
+class FcmPush implements PushSender {
+  async send(fids: string[], title: string, body: string, data: Record<string, string>) {
+    const res = await getMessaging().sendEachForMulticast({
+      fids,
+      notification: { title, body },
+      data,
+      android: { priority: "high" },
+    });
+    const stale = res.responses.flatMap((r, i) =>
+      !r.success && STALE_PUSH.some((c) => r.error?.code?.endsWith(c)) ? [fids[i]!] : [],
+    );
+    if (res.successCount === 0 && stale.length < fids.length) {
+      const code = res.responses.find((r) => !r.success)?.error?.code ?? "unknown";
+      throw new Error(`FCM failed: ${code}`);
+    }
+    return { sent: res.successCount, stale };
+  }
+}
+
 class GmailEmail implements EmailSender {
   private transporter: Transporter | null = null;
 
@@ -110,6 +152,12 @@ class DryRun implements Providers {
       console.log(JSON.stringify({ severity: "INFO", event: "email_dry_run", subject }));
     },
   };
+  push: PushSender = {
+    send: async (fids, title) => {
+      console.log(JSON.stringify({ severity: "INFO", event: "push_dry_run", to: fids.length, title }));
+      return { sent: fids.length, stale: [] };
+    },
+  };
   // Emulator only: the code is logged so a developer can finish the flow locally.
   otp: OtpSender = {
     send: async (_n, _m, code) => {
@@ -132,6 +180,11 @@ export function providers(): Providers {
   if (process.env.FUNCTIONS_EMULATOR === "true" && process.env.HYDROSENSE_REAL_PROVIDERS !== "1") {
     return new DryRun();
   }
-  real ??= { sms: new SemaphoreSms(), email: new GmailEmail(), otp: new SemaphoreOtp() };
+  real ??= {
+    sms: new SemaphoreSms(),
+    email: new GmailEmail(),
+    otp: new SemaphoreOtp(),
+    push: new FcmPush(),
+  };
   return real;
 }

@@ -13,11 +13,26 @@ abstract class ClientRepository {
   Stream<UserProfile?> profile(String uid);
   Stream<List<StatusChange>> statusChanges(String deviceId);
 
+  /// flow_logs since [since], oldest first (the 24 h chart).
+  Future<List<FlowPoint>> flowHistory(String deviceId, DateTime since);
+
+  /// The three alert switches on the user's own doc (D27).
+  Future<void> setAlertPrefs(String uid, AlertPrefs prefs);
+
   Future<void> rename(String deviceId, String nickname);
 }
 
 DateTime? _time(Object? v) => v is Timestamp ? v.toDate() : null;
 double? _num(Object? v) => v is num ? v.toDouble() : null;
+
+AlertPrefs _prefs(Object? v) {
+  final m = v is Map ? v : const {};
+  return AlertPrefs(
+    push: m['push'] != false,
+    sms: m['sms'] != false,
+    email: m['email'] == true,
+  );
+}
 
 class FirestoreClientRepository implements ClientRepository {
   FirestoreClientRepository(this._db);
@@ -40,6 +55,7 @@ class FirestoreClientRepository implements ClientRepository {
       normalFlowCutoff: _num(m['normalFlowCutoff']) ?? 2.0,
       calibratedAt: _time(m['calibratedAt']),
       statusChangedAt: _time(m['statusChangedAt']),
+      abnormalSince: _time(m['abnormalSince']),
     );
   }
 
@@ -56,6 +72,7 @@ class FirestoreClientRepository implements ClientRepository {
       lowVoltageSleep: m['lowVoltageSleep'] == true,
       rssi: (m['rssi'] as num?)?.toInt(),
       firmware: m['firmware'] as String?,
+      registeredAt: _time(m['registeredAt']),
     );
   }
 
@@ -118,6 +135,9 @@ class FirestoreClientRepository implements ClientRepository {
           email: m['email'] as String?,
           phone: m['phone'] as String?,
           displayName: m['name'] as String?,
+          deviceCount: (m['deviceCount'] as num?)?.toInt() ?? 0,
+          alertPrefs: _prefs(m['alertPrefs']),
+          deletionRequested: m['deletionRequestedAt'] != null,
         );
       });
 
@@ -142,4 +162,27 @@ class FirestoreClientRepository implements ClientRepository {
   @override
   Future<void> rename(String deviceId, String nickname) =>
       _db.doc('devices/$deviceId').update({'nickname': nickname});
+
+  @override
+  Future<List<FlowPoint>> flowHistory(String deviceId, DateTime since) async {
+    final s = await _db
+        .collection('devices/$deviceId/flow_logs')
+        .where('ts', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
+        .orderBy('ts')
+        .limit(AppConfig.flowLogChartLimit)
+        .get();
+    return [
+      for (final d in s.docs)
+        if (_time(d.data()['ts']) != null)
+          FlowPoint(
+            _time(d.data()['ts'])!,
+            d.data()['flowStatus'] as String? ?? '',
+            _num(d.data()['flowRate']) ?? 0,
+          ),
+    ];
+  }
+
+  @override
+  Future<void> setAlertPrefs(String uid, AlertPrefs prefs) =>
+      _db.doc('users/$uid').update({'alertPrefs': prefs.toMap()});
 }
