@@ -45,9 +45,16 @@ final uidProvider = Provider<String?>(
 final roleProvider = FutureProvider<String?>((ref) async {
   final user = ref.watch(userProvider).valueOrNull;
   if (user == null) return null;
-  final token = await user.getIdTokenResult();
-  return token.claims?['role'] as String?;
+  final saved = (await user.getIdTokenResult()).claims?['role'] as String?;
+  if (!needsFreshRole(saved)) return saved;
+  // A token saved before a role change (v1 "client" -> "user") is still valid
+  // for up to an hour; ask Firebase for a fresh one before refusing anyone.
+  final fresh = await user.getIdTokenResult(true);
+  return fresh.claims?['role'] as String?;
 });
+
+/// Only the roles this app knows are trusted from a saved token.
+bool needsFreshRole(String? role) => role != 'user' && role != 'admin';
 
 final profileProvider = StreamProvider<UserProfile?>((ref) {
   final user = ref.watch(userProvider).valueOrNull;

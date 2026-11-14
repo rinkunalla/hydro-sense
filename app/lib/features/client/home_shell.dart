@@ -35,6 +35,7 @@ class HomeShell extends StatelessWidget {
             radius: AppSpace.pill,
             padding: const EdgeInsets.all(6),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 for (final (i, t) in _tabs.indexed)
                   Expanded(
@@ -83,7 +84,10 @@ class _Tab extends StatelessWidget {
         duration: reduceMotion(context)
             ? Duration.zero
             : const Duration(milliseconds: 200),
+        // A bottom bar gets loose constraints up to the full screen height, so
+        // every piece must size to its content (the bar once filled the screen).
         constraints: const BoxConstraints(minHeight: 52),
+        padding: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppSpace.pill),
           gradient: selected
@@ -91,6 +95,7 @@ class _Tab extends StatelessWidget {
               : null,
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(

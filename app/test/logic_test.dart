@@ -3,6 +3,7 @@ import 'package:hydro_sense/core/theme.dart';
 import 'package:hydro_sense/core/time_format.dart';
 import 'package:hydro_sense/data/fleet_logic.dart';
 import 'package:hydro_sense/data/models.dart';
+import 'package:hydro_sense/data/providers.dart';
 import 'package:hydro_sense/data/push.dart';
 import 'package:hydro_sense/features/auth/code_entry.dart';
 import 'package:hydro_sense/features/auth/password_rules.dart';
@@ -118,6 +119,13 @@ void main() {
         Freshness.live,
       ); // server clock ahead
       expect(view('1', online: false).freshnessAt(testNow), Freshness.offline);
+    });
+
+    test('a saved token with an unknown or old role is refreshed first', () {
+      expect(needsFreshRole('user'), isFalse);
+      expect(needsFreshRole('admin'), isFalse);
+      expect(needsFreshRole('client'), isTrue); // v1 role, before the migration
+      expect(needsFreshRole(null), isTrue);
     });
 
     test('a tapped push opens Details, the Map, or Devices (D37)', () {

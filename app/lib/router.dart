@@ -76,7 +76,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         builder: (_, s) =>
-            LoginScreen(refused: s.uri.queryParameters['refused']),
+            // Keyed by the reason, so a refusal on this same page still shows.
+            LoginScreen(
+              key: ValueKey(s.uri.queryParameters['refused']),
+              refused: s.uri.queryParameters['refused'],
+            ),
       ),
       GoRoute(path: '/reset', builder: (_, _) => const SmsResetScreen()),
       GoRoute(

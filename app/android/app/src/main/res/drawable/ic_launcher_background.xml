@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App icon tile: the primary button gradient (D39). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="315"
+        android:startColor="@color/hydro_icon_start"
+        android:endColor="@color/hydro_icon_end"
+        android:type="linear" />
+</shape>
