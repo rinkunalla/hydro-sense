@@ -40,6 +40,14 @@ abstract class AccountRepository {
   Future<void> changePassword(String currentPassword, String newPassword);
 
   Future<void> requestAccountDeletion();
+
+  /// Firebase's reset link by email, the other way to set a password (D22).
+  /// Never reveals whether the address has an account.
+  Future<void> sendResetEmail(String email);
+
+  /// After a password sign-in: marks the profile "Password set" (an email-link
+  /// reset happens outside the app, so the server only learns of it here).
+  Future<void> syncPasswordSet();
 }
 
 class FirebaseAccountRepository implements AccountRepository {
@@ -121,6 +129,13 @@ class FirebaseAccountRepository implements AccountRepository {
     await reauthenticate(currentPassword);
     await _auth.currentUser!.verifyBeforeUpdateEmail(newEmail);
   }
+
+  @override
+  Future<void> sendResetEmail(String email) =>
+      _auth.sendPasswordResetEmail(email: email);
+
+  @override
+  Future<void> syncPasswordSet() => _call('syncPasswordSet', {});
 
   @override
   Future<void> syncMyEmail() async {

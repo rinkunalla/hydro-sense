@@ -10,6 +10,7 @@ import '../../core/time_format.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
 import 'flow_chart.dart';
+import 'flow_limits.dart';
 import 'widgets.dart';
 
 /// Trims and checks a new nickname (1 to 24 characters). Null when valid.
@@ -196,12 +197,14 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
                     data: (points) => FlowChart(
                       points: points,
                       now: now,
-                      lowBelow: v.device.normalFlowCutoff,
+                      lowBelow: v.device.limits.normal,
                     ),
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: AppSpace.m),
+            FlowLimitsCard(device: v.device, now: now),
           ],
         ),
       ),

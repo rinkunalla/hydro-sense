@@ -57,7 +57,7 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
       builder: (c) => AlertDialog(
         title: const Text('Request account deletion?'),
         content: const Text(
-          'Ask your installer to delete your account? Your devices and history will be removed after that. You can keep using the app until then.',
+          'Ask your Hydro Sense provider to delete your account? Your devices and history will be removed after that. You can keep using the app until then.',
         ),
         actions: [
           TextButton(
@@ -76,7 +76,10 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
     try {
       await ref.read(accountRepositoryProvider).requestAccountDeletion();
       if (mounted) {
-        showToast(context, 'Request sent. Your installer will contact you.');
+        showToast(
+          context,
+          'Request sent. Your Hydro Sense provider will contact you.',
+        );
       }
     } catch (e) {
       if (mounted) showToast(context, callableMessage(e));
@@ -248,7 +251,7 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
             Center(
               child: p?.deletionRequested == true
                   ? Text(
-                      'Deletion requested. Your installer will contact you.',
+                      'Deletion requested. Your Hydro Sense provider will contact you.',
                       style: AppText.note,
                     )
                   : TextButton(

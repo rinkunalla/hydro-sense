@@ -1,11 +1,6 @@
 import { onRequest } from "firebase-functions/https";
-import {
-  DEVICE_ID_PATTERN,
-  FLOW_LOG_SAMPLE_S,
-  FLOW_LOG_TTL_DAYS,
-  STARTER_LOW_FLOW_CUTOFF,
-  STARTER_NORMAL_FLOW_CUTOFF,
-} from "../config";
+import { DEVICE_ID_PATTERN, FLOW_LOG_SAMPLE_S, FLOW_LOG_TTL_DAYS } from "../config";
+import { effectiveCutoffs } from "../lib/cutoffs";
 import { appendVoltage, batteryPercent, chargingTrend } from "../lib/battery";
 import { C, db, ms, ts } from "../lib/db";
 import { nextAbnormalSince, sampleDue, shouldWriteDevices } from "../lib/decisions";
@@ -105,8 +100,7 @@ export async function ingest(deviceId: string, p: IngestPayload, nowMs: number) 
     return {
       kind: "ok",
       wrote,
-      lowFlowCutoff: (device.get("lowFlowCutoff") as number) ?? STARTER_LOW_FLOW_CUTOFF,
-      normalFlowCutoff: (device.get("normalFlowCutoff") as number) ?? STARTER_NORMAL_FLOW_CUTOFF,
+      ...effectiveCutoffs((f) => device.get(f)),
     };
   });
 }

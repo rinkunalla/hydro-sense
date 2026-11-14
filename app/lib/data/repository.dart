@@ -25,6 +25,10 @@ abstract class ClientRepository {
   /// Sets or (with nulls) clears the manual pin, which overrides GPS (D25).
   Future<void> setManualPin(String deviceId, double? lat, double? lng);
 
+  /// Sets the owner's own Low flow limit, or (null) goes back to automatic
+  /// (D43). The device gets it in its next upload's reply, within about 60 s.
+  Future<void> setFlowLimit(String deviceId, double? normalCutoff);
+
   /// The user's own pipeline, or null before the first save (D26).
   Stream<Pipeline?> pipeline(String uid);
 
@@ -65,6 +69,7 @@ class FirestoreClientRepository implements ClientRepository {
       manualPin: _num(m['manualLat']) != null && _num(m['manualLng']) != null,
       lowFlowCutoff: _num(m['lowFlowCutoff']) ?? 0.2,
       normalFlowCutoff: _num(m['normalFlowCutoff']) ?? 2.0,
+      userNormalCutoff: _num(m['userNormalCutoff']),
       calibratedAt: _time(m['calibratedAt']),
       statusChangedAt: _time(m['statusChangedAt']),
       abnormalSince: _time(m['abnormalSince']),
@@ -201,6 +206,10 @@ class FirestoreClientRepository implements ClientRepository {
   @override
   Future<void> setManualPin(String deviceId, double? lat, double? lng) =>
       _db.doc('devices/$deviceId').update({'manualLat': lat, 'manualLng': lng});
+
+  @override
+  Future<void> setFlowLimit(String deviceId, double? normalCutoff) =>
+      _db.doc('devices/$deviceId').update({'userNormalCutoff': normalCutoff});
 
   @override
   Stream<Pipeline?> pipeline(String uid) => _db

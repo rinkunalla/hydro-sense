@@ -25,6 +25,7 @@ import {
   requestAccountDeletion,
   requestPhoneChangeCode,
   syncMyEmail,
+  syncPasswordSet,
   updateMyName,
 } from "../src/auth/self";
 import { C, db, ts } from "../src/lib/db";
@@ -315,6 +316,24 @@ describe("user self-service (D31, D42)", () => {
       name: "Juan D.",
       email: "new@example.com",
     });
+  });
+
+  it("a password sign-in marks the profile Password set; other sessions don't", async () => {
+    const uid = await newUser();
+    const asSession = (provider: string) =>
+      call({}, { uid, token: { role: "user", firebase: { sign_in_provider: provider } } });
+    expect(await syncPasswordSet.run(asSession("custom"))).toEqual({
+      passwordSet: false,
+      changed: false,
+    });
+    expect((await db.collection(C.users).doc(uid).get()).get("passwordSet")).toBe(false);
+    expect(await syncPasswordSet.run(asSession("password"))).toEqual({
+      passwordSet: true,
+      changed: true,
+    });
+    expect(await syncPasswordSet.run(asSession("password"))).toMatchObject({ changed: false });
+    expect((await db.collection(C.users).doc(uid).get()).get("passwordSet")).toBe(true);
+    expect(await codeOf(syncPasswordSet.run(asAdmin({})))).not.toBe("ok");
   });
 
   it("asking for deletion logs it and emails the admins, once", async () => {

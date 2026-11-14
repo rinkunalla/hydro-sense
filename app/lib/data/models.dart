@@ -15,6 +15,7 @@ class Device {
     this.manualPin = false,
     this.lowFlowCutoff = 0.2,
     this.normalFlowCutoff = 2.0,
+    this.userNormalCutoff,
     this.calibratedAt,
     this.statusChangedAt,
     this.abnormalSince,
@@ -38,7 +39,33 @@ class Device {
   final bool manualPin;
   final double lowFlowCutoff;
   final double normalFlowCutoff;
+
+  /// The owner's own "Low flow below X L/min" (D43); null = automatic.
+  final double? userNormalCutoff;
   final DateTime? calibratedAt;
+
+  /// The owner set the limit (a value the server would accept).
+  bool get ownLimit {
+    final u = userNormalCutoff;
+    return u != null &&
+        u >= AppConfig.userCutoffMin &&
+        u <= AppConfig.userCutoffMax;
+  }
+
+  /// The limits the device classifies with; mirrors the server's
+  /// effectiveCutoffs (functions/src/lib/cutoffs.ts).
+  ({double low, double normal}) get limits {
+    if (ownLimit) {
+      return (low: AppConfig.starterLowCutoff, normal: userNormalCutoff!);
+    }
+    return lowFlowCutoff < normalFlowCutoff
+        ? (low: lowFlowCutoff, normal: normalFlowCutoff)
+        : (
+            low: AppConfig.starterLowCutoff,
+            normal: AppConfig.starterNormalCutoff,
+          );
+  }
+
   final DateTime? statusChangedAt;
 
   /// Start of the current Low/No Flow stretch (kept across Low <-> No, D34).

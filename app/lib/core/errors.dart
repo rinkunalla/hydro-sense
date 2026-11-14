@@ -5,7 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 abstract final class Messages {
   static const wrongCredentials =
       'That email or password is not right. Try again.';
-  static const suspended = 'This account is suspended. Contact your installer.';
+  static const suspended =
+      'This account is suspended. Contact your Hydro Sense provider.';
   static const wrongPassword = 'That password is not right.';
   static const tooManyAttempts =
       'Too many tries. Wait a few minutes or reset your password.';

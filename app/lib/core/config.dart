@@ -28,6 +28,11 @@ abstract final class AppConfig {
   // Data rules mirrored from the backend
   static const int nicknameMax = 24;
   static const int lowBatteryPercent = 20;
+  static const double starterLowCutoff = 0.2; // STARTER_LOW_FLOW_CUTOFF
+  static const double starterNormalCutoff = 2.0; // STARTER_NORMAL_FLOW_CUTOFF
+  static const double userCutoffMin = 1.0; // USER_NORMAL_CUTOFF_MIN (D43)
+  static const double userCutoffMax = 30; // USER_NORMAL_CUTOFF_MAX
+  static const double userCutoffStep = 0.5;
   static const int minPasswordLength = 8;
   static final RegExp deviceIdPattern = RegExp(r'^[0-9A-F]{12}$');
   static final RegExp phMobilePattern = RegExp(
@@ -71,6 +76,10 @@ abstract final class AppConfig {
   // Map
   static const double mapFitPadding = 56;
   static const double mapDefaultZoom = 15;
+  static const double placeZoom = 16;
+  static const int myLocationTimeoutS = 15;
+  static const int placeQueryMin = 2; // GEOCODE_QUERY_MIN
+  static const int placeQueryMax = 100; // GEOCODE_QUERY_MAX
   static const int pipelineMaxDevicesPerBranch =
       50; // PIPELINE_MAX_DEVICES_PER_BRANCH
 }

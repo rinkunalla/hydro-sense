@@ -16,6 +16,7 @@ export function newDeviceDoc(deviceId: string, ownerUid: string | null, now: Tim
     manualLng: null,
     lowFlowCutoff: STARTER_LOW_FLOW_CUTOFF,
     normalFlowCutoff: STARTER_NORMAL_FLOW_CUTOFF,
+    userNormalCutoff: null,
     calibratedAt: null,
     abnormalSince: null,
     statusChangedAt: null,
@@ -55,6 +56,7 @@ export function ownerResetFields(deviceId: string) {
     manualLng: null,
     lowFlowCutoff: STARTER_LOW_FLOW_CUTOFF,
     normalFlowCutoff: STARTER_NORMAL_FLOW_CUTOFF,
+    userNormalCutoff: null,
     calibratedAt: null,
   };
 }

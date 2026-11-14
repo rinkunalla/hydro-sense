@@ -13,6 +13,7 @@ import '../../data/pipeline.dart';
 import '../../data/pipeline_logic.dart';
 import '../../data/providers.dart';
 import 'map_tiles.dart';
+import 'place_search.dart';
 
 /// Edit pipeline (docs/UI_UX_SPEC.md 4.5, D25, D26). Everything is a local draft
 /// until Save; leaving with changes asks first. Stage 5a edits one branch.
@@ -549,6 +550,22 @@ class _PinPickerState extends ConsumerState<PinPicker> {
                     color: AppColors.danger,
                   ),
                 ),
+              ),
+            ),
+            // Search or My location gets close; the crosshair does the last metres.
+            Positioned(
+              left: AppSpace.l,
+              right: AppSpace.l,
+              top: AppSpace.s,
+              child: PlaceSearchBar(
+                onPick: (p) => _map.move(p.at, AppConfig.placeZoom + 1),
+              ),
+            ),
+            Positioned(
+              right: AppSpace.l,
+              bottom: 104,
+              child: MyLocationButton(
+                onFound: (at) => _map.move(at, AppConfig.placeZoom + 2),
               ),
             ),
             Positioned(

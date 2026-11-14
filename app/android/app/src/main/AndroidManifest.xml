@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Android 13+: alerts are notifications (D27). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- My location on the map; asked only when the button is first tapped. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
         android:label="Hydro Sense"
         android:name="${applicationName}"

@@ -22,6 +22,10 @@ export const CHARGING_FULL_PER_CELL_V = 4.15;
 // Flow classification (starter cutoffs, L/min) and payload clamps
 export const STARTER_LOW_FLOW_CUTOFF = 0.2;
 export const STARTER_NORMAL_FLOW_CUTOFF = 2.0;
+// Owner's own "Low flow below X L/min" (D43). The YF-S201 reads about 1 to 30
+// L/min reliably (D7), so X stays inside that range. Mirrored in firestore.rules.
+export const USER_NORMAL_CUTOFF_MIN = 1.0;
+export const USER_NORMAL_CUTOFF_MAX = 30;
 export const FLOW_RATE_MAX = 40;
 
 // Alerts
@@ -92,3 +96,19 @@ export const ADMIN_SETUP_MAX_PER_HOUR = 10;
 export const ADMIN_SETUP_TOKEN_TTL_S = 3600;
 export const ADMIN_RECOMMENDED_MIN = 2;
 export const ADMIN_SITE_URL = "https://hydro-sense-dc836.web.app";
+
+// Place search on the map (Nominatim usage policy: at most 1 request per second
+// for the whole app, own User-Agent, cached results, no search-as-you-type).
+export const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
+export const GEOCODE_USER_AGENT = "HydroSense/1.0 (+https://hydro-sense-dc836.web.app)";
+export const GEOCODE_COUNTRY = "ph";
+export const GEOCODE_MAX_RESULTS = 5;
+export const GEOCODE_MIN_GAP_MS = 1100;
+// A search books its send time; at most this far ahead (about 4 queued) ...
+export const GEOCODE_MAX_QUEUE_MS = 4500;
+// ... and books again if a slow commit made it later than this, so sends
+// stay at least GEOCODE_MIN_GAP_MS - GEOCODE_SLOT_LATE_MS (1 s) apart.
+export const GEOCODE_SLOT_LATE_MS = 100;
+export const GEOCODE_CACHE_TTL_DAYS = 30;
+export const GEOCODE_QUERY_MIN = 2;
+export const GEOCODE_QUERY_MAX = 100;

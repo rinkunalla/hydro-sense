@@ -24,6 +24,8 @@ export const C = {
   alertDaily: "alert_daily",
   errorLogs: "error_logs",
   rateLimits: "rate_limits",
+  geocodeCache: "geocode_cache",
+  settings: "settings",
 } as const;
 
 export const ms = (t: unknown): number | null => (t instanceof Timestamp ? t.toMillis() : null);

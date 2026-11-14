@@ -24,6 +24,7 @@ import { runAlertPass } from "../src/alerts/alertPass";
 import { calibrateDevice } from "../src/calibration/calibrate";
 import { C, db, ts } from "../src/lib/db";
 import { migrateV2 } from "../src/migration/v2";
+import { searchPlaces, setGeocodeFetch } from "../src/maps/searchPlace";
 import { setProviders, type Providers } from "../src/lib/providers";
 import { manilaDateKey } from "../src/lib/time";
 import { runMonitorPass } from "../src/monitor/monitorDevices";
@@ -766,6 +767,7 @@ describe("device admin (D20, D24, D32, D41, D42)", () => {
       manualLat: 16.1,
       manualLng: 120.4,
       lowFlowCutoff: 1.5,
+      userNormalCutoff: 6,
       calibratedAt: ts(T0),
     });
     await d1.collection(C.flowLogs).add({ ts: ts(T0), flowStatus: "Normal Flow" });
@@ -788,6 +790,7 @@ describe("device admin (D20, D24, D32, D41, D42)", () => {
       manualLng: null,
       lowFlowCutoff: 0.2,
       normalFlowCutoff: 2.0,
+      userNormalCutoff: null,
       calibratedAt: null,
     });
     expect((await db.collection(C.deviceHealth).doc("D1").get()).get("ownerUid")).toBe("u2");
@@ -1069,5 +1072,61 @@ describe("deviceCount (TODO(human) in admin/ownership.ts)", () => {
     await setOwner("A1B2C3D4E5F2", "u1");
     await deleteDeviceData("A1B2C3D4E5F1");
     expect(await count("u1")).toBe(1);
+  });
+});
+
+describe("place search (Nominatim policy)", () => {
+  const calls: { url: string; ua: string; at: number }[] = [];
+  beforeEach(() => {
+    calls.length = 0;
+    setGeocodeFetch(async (url, headers) => {
+      calls.push({ url, ua: headers["User-Agent"]!, at: Date.now() });
+      return [{ display_name: "San Fabian, Pangasinan, Philippines", lat: "16.12", lon: "120.40" }];
+    });
+  });
+  afterAll(() => setGeocodeFetch(null));
+
+  it("asks once per query, in the Philippines, with the app's own User-Agent", async () => {
+    const first = await searchPlaces("  San Fabian ");
+    const again = await searchPlaces("san fabian");
+    expect(first).toEqual([
+      { name: "San Fabian, Pangasinan, Philippines", lat: 16.12, lng: 120.4 },
+    ]);
+    expect(again).toEqual(first);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain("countrycodes=ph");
+    expect(calls[0]!.url).toContain("q=san%20fabian");
+    expect(calls[0]!.ua).toMatch(/^HydroSense\//);
+    // The cache keeps only a hash of the query, never the text.
+    const cached = await db.collection(C.geocodeCache).get();
+    expect(JSON.stringify(cached.docs.map((d) => [d.id, d.data()]))).not.toContain("san fabian");
+  });
+
+  it("keeps parallel searches at least 1.1 s apart for the whole app", async () => {
+    await Promise.all(["alaminos", "lingayen", "bolinao"].map((q) => searchPlaces(q)));
+    const times = calls.map((c) => c.at).sort((a, b) => a - b);
+    expect(times).toHaveLength(3);
+    expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(1000);
+    expect(times[2]! - times[1]!).toBeGreaterThanOrEqual(1000);
+  });
+
+  it("can be switched off without an app update, and checks the query", async () => {
+    await db.collection(C.settings).doc("geocoding").set({ enabled: false });
+    await expect(searchPlaces("dagupan")).rejects.toMatchObject({
+      details: { code: "SEARCH_OFF" },
+    });
+    await db.collection(C.settings).doc("geocoding").set({ enabled: true });
+    await expect(searchPlaces("x")).rejects.toMatchObject({ details: { code: "QUERY_INVALID" } });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("reports a failed search without caching it", async () => {
+    setGeocodeFetch(async () => {
+      throw new Error("Nominatim HTTP 503");
+    });
+    await expect(searchPlaces("urdaneta")).rejects.toMatchObject({
+      details: { code: "SEARCH_FAILED" },
+    });
+    expect((await db.collection(C.geocodeCache).get()).size).toBe(0);
   });
 });

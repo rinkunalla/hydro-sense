@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 // Reset by SMS (5.2) and Account (4.6) with fake repositories.
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -36,6 +37,14 @@ class FakeAccount implements AccountRepository {
     String resetToken,
     String newPassword,
   ) async => calls.add('set $resetToken');
+
+  Object? emailError;
+
+  @override
+  Future<void> sendResetEmail(String email) async {
+    calls.add('email $email');
+    if (emailError != null) throw emailError!;
+  }
 
   @override
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
@@ -133,6 +142,50 @@ void main() {
     await t.tap(find.text('Save password'));
     await t.pump();
     expect(account.calls.last, 'set uid.token');
+  });
+
+  testWidgets('reset by email: same reply for any address; mobile again', (
+    t,
+  ) async {
+    await phone(t);
+    final account = FakeAccount()
+      ..emailError = FirebaseAuthException(code: 'user-not-found');
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [accountRepositoryProvider.overrideWithValue(account)],
+        child: MaterialApp(
+          theme: buildLightTheme(),
+          home: SmsResetScreen(now: () => testNow),
+        ),
+      ),
+    );
+    await t.tap(find.text('Use my email instead'));
+    await t.pump();
+    expect(find.text('Set your password by email'), findsOneWidget);
+    await t.enterText(find.byType(TextField), 'nobody');
+    await t.tap(find.text('Send the link'));
+    await t.pump();
+    expect(find.text('Enter the email on your account.'), findsOneWidget);
+    await t.enterText(find.byType(TextField), 'ana@example.com');
+    await t.tap(find.text('Send the link'));
+    await t.pump();
+    // An unknown address gets the same confirmation (no account enumeration).
+    expect(account.calls, ['email ana@example.com']);
+    expect(
+      find.textContaining('If ana@example.com has an account'),
+      findsOneWidget,
+    );
+    await t.tap(find.text('Use my mobile number instead'));
+    await t.pump();
+    expect(find.text('Send the code'), findsOneWidget);
+
+    account.emailError = FirebaseAuthException(code: 'too-many-requests');
+    await t.tap(find.text('Use my email instead'));
+    await t.pump();
+    await t.enterText(find.byType(TextField), 'ana@example.com');
+    await t.tap(find.text('Send the link'));
+    await t.pump();
+    expect(find.textContaining('Too many tries'), findsOneWidget);
   });
 
   Widget accountHarness(FakeClient client) => ProviderScope(

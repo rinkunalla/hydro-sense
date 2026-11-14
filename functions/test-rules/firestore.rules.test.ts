@@ -125,6 +125,8 @@ beforeEach(async () => {
       "alert_daily/2026-11-14__userA",
       "rate_limits/register__1",
       "error_logs/e1",
+      "geocode_cache/abc",
+      "settings/geocoding",
       "config/system",
       "unlisted/x",
     ]) {
@@ -197,6 +199,18 @@ describe("user writes", () => {
     await assertFails(updateDoc(pin, { manualLat: 91, manualLng: 120 }));
     await assertFails(updateDoc(pin, { manualLat: 16, manualLng: 181 }));
     await assertFails(updateDoc(pin, { manualLat: "16", manualLng: "120" }));
+  });
+
+  it("sets its own Low flow limit (1 to 30 L/min) or goes back to automatic (D43)", async () => {
+    const d = doc(userA, "devices/DEVA");
+    await assertSucceeds(updateDoc(d, { userNormalCutoff: 5 }));
+    await assertSucceeds(updateDoc(d, { userNormalCutoff: 1.0 }));
+    await assertSucceeds(updateDoc(d, { userNormalCutoff: 30 }));
+    await assertSucceeds(updateDoc(d, { userNormalCutoff: null }));
+    for (const bad of [0.5, 30.5, -1, "5"]) {
+      await assertFails(updateDoc(d, { userNormalCutoff: bad }));
+    }
+    await assertFails(updateDoc(doc(userB, "devices/DEVA"), { userNormalCutoff: 5 }));
   });
 
   it("changes no other device field, even alongside an allowed one", async () => {
@@ -339,6 +353,8 @@ describe("nobody", () => {
         "alert_daily/2026-11-14__userA",
         "rate_limits/register__1",
         "error_logs/e1",
+        "geocode_cache/abc",
+        "settings/geocoding",
       ]) {
         await assertFails(getDoc(doc(s, p)));
       }

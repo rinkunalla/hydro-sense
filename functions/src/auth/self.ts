@@ -97,7 +97,7 @@ export const confirmPhoneChange = onCall({ secrets: MAIL_SECRETS }, async (reque
           `Your mobile number was changed to one ending in ${pending.slice(-4)} on ${formatManila(Date.now())}.`,
           "Alerts and sign-in codes now go to the new number.",
           "",
-          "If this wasn't you, contact your installer.",
+          "If this wasn't you, contact your Hydro Sense provider.",
         ].join("\n"),
       );
     } catch (e) {
@@ -105,6 +105,23 @@ export const confirmPhoneChange = onCall({ secrets: MAIL_SECRETS }, async (reque
     }
   }
   return { phone: maskPhone(pending) };
+});
+
+/**
+ * After a password sign-in in the app. A user can set a password with
+ * Firebase's emailed reset link (D22), which the server never sees, so the
+ * profile learns "Password set" here. Only a session that was opened with a
+ * password counts, so a custom-token session from the SMS flow proves nothing.
+ */
+export const syncPasswordSet = onCall(async (request) => {
+  const uid = await requireUser(request);
+  const provider = (request.auth?.token.firebase as { sign_in_provider?: string } | undefined)
+    ?.sign_in_provider;
+  if (provider !== "password") return { passwordSet: false, changed: false };
+  const ref = db.collection(C.users).doc(uid);
+  if ((await ref.get()).get("passwordSet") === true) return { passwordSet: true, changed: false };
+  await ref.update({ passwordSet: true });
+  return { passwordSet: true, changed: true };
 });
 
 /** After the user opens Firebase's verify-before-update link (D31). */

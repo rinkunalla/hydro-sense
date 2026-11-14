@@ -157,6 +157,16 @@ describe("registerDevice", () => {
 });
 
 describe("deviceIngest", () => {
+  it("returns the owner's own Low flow limit while it is set (D43)", async () => {
+    const token = await registered();
+    await dev().update({ normalFlowCutoff: 4, lowFlowCutoff: 1.2 });
+    expect((await ingest(token)).body).toMatchObject({ lowFlowCutoff: 1.2, normalFlowCutoff: 4 });
+    await dev().update({ userNormalCutoff: 6.5 });
+    expect((await ingest(token)).body).toMatchObject({ lowFlowCutoff: 0.2, normalFlowCutoff: 6.5 });
+    await dev().update({ userNormalCutoff: null });
+    expect((await ingest(token)).body).toMatchObject({ lowFlowCutoff: 1.2, normalFlowCutoff: 4 });
+  });
+
   it("rejects a bad token (401) and a bad payload (400)", async () => {
     const token = await registered();
     const auth = await ingest("not-the-token");

@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,6 +25,9 @@ class SmsResetScreen extends ConsumerStatefulWidget {
 
 class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
   final _mobile = TextEditingController();
+  final _email = TextEditingController();
+  bool _byEmail = false;
+  String? _emailSentTo;
   final _a = TextEditingController();
   final _b = TextEditingController();
   int _step = 1;
@@ -39,6 +43,7 @@ class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
   @override
   void dispose() {
     _mobile.dispose();
+    _email.dispose();
     _a.dispose();
     _b.dispose();
     super.dispose();
@@ -97,6 +102,103 @@ class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
     });
   }
 
+  /// Email link instead of an SMS code. Same reply whether or not the address
+  /// has an account; only "no internet" and "too many tries" are told apart.
+  Future<void> _sendEmail() async {
+    final email = _email.text.trim();
+    if (!email.contains('@') || email.length < 5) {
+      setState(() => _error = 'Enter the email on your account.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(accountRepositoryProvider).sendResetEmail(email);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'network-request-failed' || e.code == 'too-many-requests') {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _error = authMessage(e);
+          });
+        }
+        return;
+      }
+    } catch (_) {
+      // Every other outcome gets the same confirmation (no account enumeration).
+    }
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        _emailSentTo = email;
+      });
+    }
+  }
+
+  void _switchMode() => setState(() {
+    _byEmail = !_byEmail;
+    _error = null;
+    _emailSentTo = null;
+  });
+
+  Widget _emailStep() {
+    final sentTo = _emailSentTo;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          header: true,
+          child: Text('Set your password by email', style: AppText.title(24)),
+        ),
+        const SizedBox(height: AppSpace.xs),
+        Text(
+          "We'll email you a link. Open it to choose a password.",
+          style: AppText.note,
+        ),
+        const SizedBox(height: AppSpace.l),
+        if (sentTo == null) ...[
+          TextField(
+            controller: _email,
+            enabled: !_busy,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            decoration: const InputDecoration(labelText: 'Email'),
+            onSubmitted: (_) => _sendEmail(),
+          ),
+          _errorText(),
+          const SizedBox(height: AppSpace.l),
+          PrimaryButton(
+            label: 'Send the link',
+            busy: _busy,
+            onPressed: _sendEmail,
+          ),
+        ] else ...[
+          Text(
+            'If $sentTo has an account, we sent a link to it. Open the link, '
+            'choose a password, then come back and sign in.',
+            style: AppText.body,
+          ),
+          const SizedBox(height: AppSpace.s),
+          Text(
+            "Not there after a few minutes? Check your spam folder.",
+            style: AppText.note,
+          ),
+          const SizedBox(height: AppSpace.l),
+          PrimaryButton(
+            label: 'Back to sign in',
+            onPressed: () => context.go('/login'),
+          ),
+        ],
+        TextButton(
+          onPressed: _busy ? null : _switchMode,
+          child: const Text('Use my mobile number instead'),
+        ),
+      ],
+    );
+  }
+
   Future<void> _verify() => _run(() async {
     _token = await ref
         .read(accountRepositoryProvider)
@@ -148,6 +250,7 @@ class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
   @override
   Widget build(BuildContext context) {
     final step = switch (_step) {
+      1 when _byEmail => _emailStep(),
       1 => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -167,6 +270,10 @@ class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
           _errorText(),
           const SizedBox(height: AppSpace.l),
           PrimaryButton(label: 'Send the code', busy: _busy, onPressed: _send),
+          TextButton(
+            onPressed: _busy ? null : _switchMode,
+            child: const Text('Use my email instead'),
+          ),
         ],
       ),
       2 => Column(

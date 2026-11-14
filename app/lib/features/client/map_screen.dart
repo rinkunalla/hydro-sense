@@ -9,9 +9,11 @@ import '../../core/errors.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
+import '../../data/places.dart';
 import '../../data/pipeline_logic.dart';
 import '../../data/providers.dart';
 import 'map_tiles.dart';
+import 'place_search.dart';
 import 'widgets.dart';
 
 /// Map (docs/UI_UX_SPEC.md 4.4, D26, D33, D37): the pipeline as a pipe line from
@@ -33,6 +35,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool _ready = false;
   bool _fitted = false;
   String? _googleCopyright;
+
+  /// The place picked from a search and the phone's own position, if asked for.
+  Place? _picked;
+  LatLng? _me;
 
   void _onError() {
     if (!_tileError && mounted) setState(() => _tileError = true);
@@ -194,6 +200,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _fit(placed, problem));
 
     final markers = <Marker>[
+      if (_picked != null)
+        Marker(
+          point: _picked!.at,
+          width: 40,
+          height: 40,
+          alignment: Alignment.topCenter,
+          child: Semantics(
+            container: true,
+            label: 'Search result: ${_picked!.name}',
+            child: const Icon(
+              Icons.location_on_rounded,
+              size: 40,
+              color: AppColors.indigo,
+            ),
+          ),
+        ),
+      if (_me != null)
+        Marker(point: _me!, width: 28, height: 28, child: const YouAreHere()),
       if (p != null)
         Marker(
           point: LatLng(p.source.lat, p.source.lng),
@@ -306,13 +330,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ),
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Edit pipeline',
-                    icon: const Icon(
-                      Icons.edit_rounded,
-                      color: AppColors.deepCyan,
+                  const SizedBox(width: AppSpace.s),
+                  // Labelled, not a bare pencil: owners didn't read the icon.
+                  // Shrinks instead of overflowing with large text sizes.
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 170),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: SecondaryButton(
+                        label: 'Edit pipeline',
+                        icon: Icons.edit_rounded,
+                        onPressed: () => context.go('/map/edit'),
+                      ),
                     ),
-                    onPressed: () => context.go('/map/edit'),
                   ),
                 ],
               ),
@@ -402,11 +432,32 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ),
                         ],
                       ),
+                      Positioned(
+                        left: AppSpace.m,
+                        right: AppSpace.m,
+                        top: AppSpace.m,
+                        child: PlaceSearchBar(
+                          onPick: (place) {
+                            setState(() => _picked = place);
+                            _map.move(place.at, AppConfig.placeZoom);
+                          },
+                        ),
+                      ),
+                      Positioned(
+                        right: AppSpace.m,
+                        bottom: 40,
+                        child: MyLocationButton(
+                          onFound: (at) {
+                            setState(() => _me = at);
+                            _map.move(at, AppConfig.placeZoom + 1);
+                          },
+                        ),
+                      ),
                       if (pipeline.hasValue && p == null)
                         Positioned(
                           left: AppSpace.m,
-                          right: AppSpace.m,
-                          top: AppSpace.m,
+                          right: 76,
+                          bottom: 40,
                           child: GlassPanel(
                             child: Row(
                               children: [

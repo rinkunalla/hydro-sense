@@ -32,5 +32,7 @@ export {
   requestPhoneChangeCode,
   confirmPhoneChange,
   syncMyEmail,
+  syncPasswordSet,
   requestAccountDeletion,
 } from "./auth/self";
+export { searchPlace } from "./maps/searchPlace";

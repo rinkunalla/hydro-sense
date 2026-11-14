@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/errors.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
+import '../../data/account_repository.dart';
 import '../../data/providers.dart';
 
 /// Sign in with email + password; no sign-up (docs/UI_UX_SPEC.md 5.1 and 5.3).
@@ -59,6 +60,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             email: _email.text.trim(),
             password: _password.text,
           );
+      if (!widget.admin) {
+        // Best effort: a missed sync is retried at the next sign-in.
+        ref
+            .read(accountRepositoryProvider)
+            .syncPasswordSet()
+            .catchError((Object _) {});
+      }
     } catch (e) {
       if (mounted) setState(() => _error = authMessage(e));
     } finally {
@@ -167,7 +175,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         if (!widget.admin)
                           Text(
-                            'No account yet? Ask your installer to create one.',
+                            'No account yet? Ask your Hydro Sense provider to create one.',
                             textAlign: TextAlign.center,
                             style: AppText.note,
                           ),

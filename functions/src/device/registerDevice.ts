@@ -5,6 +5,7 @@ import {
   STARTER_LOW_FLOW_CUTOFF,
   STARTER_NORMAL_FLOW_CUTOFF,
 } from "../config";
+import { effectiveCutoffs } from "../lib/cutoffs";
 import { C, db, ts } from "../lib/db";
 import { newDeviceDoc, newHealthDoc } from "../lib/deviceDocs";
 import { header, sendError, sendOk } from "../lib/http";
@@ -61,8 +62,7 @@ async function register(deviceId: string, firmware: string | null, nowMs: number
         kind: "ok",
         token,
         created: false,
-        lowFlowCutoff: (device.get("lowFlowCutoff") as number) ?? STARTER_LOW_FLOW_CUTOFF,
-        normalFlowCutoff: (device.get("normalFlowCutoff") as number) ?? STARTER_NORMAL_FLOW_CUTOFF,
+        ...effectiveCutoffs((f) => device.get(f)),
       };
     }
 
