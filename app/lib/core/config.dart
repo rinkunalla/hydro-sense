@@ -59,4 +59,18 @@ abstract final class AppConfig {
   static const String osmTileUrl =
       'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   static const String osmUserAgentPackage = 'com.hydrosense.hydro_sense';
+  static const String tileUserAgent =
+      'HydroSense/$appVersion (com.hydrosense.hydro_sense)';
+
+  // Satellite (Google Map Tiles API): a public key passed at build time, never
+  // committed. Empty = Satellite toggle hidden (CLAUDE.md section 9).
+  static const String googleMapTilesKey = String.fromEnvironment(
+    'GOOGLE_MAP_TILES_KEY',
+  );
+
+  // Map
+  static const double mapFitPadding = 56;
+  static const double mapDefaultZoom = 15;
+  static const int pipelineMaxDevicesPerBranch =
+      50; // PIPELINE_MAX_DEVICES_PER_BRANCH
 }

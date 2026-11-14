@@ -1,11 +1,12 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' hide Pipeline;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models.dart';
+import 'pipeline.dart';
 import 'push.dart';
 import 'repository.dart';
 
@@ -58,6 +59,12 @@ final fleetProvider = StreamProvider<Fleet>((ref) {
   final user = ref.watch(userProvider).valueOrNull;
   if (user == null) return const Stream.empty();
   return ref.watch(repositoryProvider).fleet(user.uid);
+});
+
+final pipelineProvider = StreamProvider<Pipeline?>((ref) {
+  final uid = ref.watch(uidProvider);
+  if (uid == null) return Stream.value(null);
+  return ref.watch(repositoryProvider).pipeline(uid);
 });
 
 final statusChangesProvider = StreamProvider.family<List<StatusChange>, String>(

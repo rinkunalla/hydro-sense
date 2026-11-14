@@ -120,13 +120,20 @@ void main() {
       expect(view('1', online: false).freshnessAt(testNow), Freshness.offline);
     });
 
-    test('a tapped push opens Details or Devices (D37)', () {
+    test('a tapped push opens Details, the Map, or Devices (D37)', () {
       expect(
-        routeForPush({'deviceId': 'A1B2C3D4E5F6'}),
+        routeForPush({'deviceId': 'A1B2C3D4E5F6'}, hasPipeline: true),
         '/devices/A1B2C3D4E5F6',
       );
-      expect(routeForPush({'kind': 'batch'}), '/devices');
-      expect(routeForPush({'deviceId': '../account'}), '/devices');
+      expect(
+        routeForPush({'kind': 'batch'}, hasPipeline: true),
+        '/map?focus=problem',
+      );
+      expect(routeForPush({'kind': 'batch'}, hasPipeline: false), '/devices');
+      expect(
+        routeForPush({'deviceId': '../account'}, hasPipeline: false),
+        '/devices',
+      );
     });
 
     test('code wording and timers (5.2)', () {

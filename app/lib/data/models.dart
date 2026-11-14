@@ -10,6 +10,9 @@ class Device {
     this.flowRate,
     this.lat,
     this.lng,
+    this.gpsLat,
+    this.gpsLng,
+    this.manualPin = false,
     this.lowFlowCutoff = 0.2,
     this.normalFlowCutoff = 2.0,
     this.calibratedAt,
@@ -22,8 +25,17 @@ class Device {
   final String?
   flowStatus; // "Normal Flow" | "Low Flow" | "No Flow" | null (no reading yet)
   final double? flowRate;
+
+  /// Effective location (D25): the manual pin, else the GPS fix, else null.
   final double? lat;
   final double? lng;
+
+  /// The device's own GPS fix, kept so the user can go back to it.
+  final double? gpsLat;
+  final double? gpsLng;
+
+  /// The effective location is a pin the user placed.
+  final bool manualPin;
   final double lowFlowCutoff;
   final double normalFlowCutoff;
   final DateTime? calibratedAt;
@@ -105,6 +117,8 @@ class DeviceView {
   }
 
   bool get hasLocation => device.lat != null && device.lng != null;
+
+  bool get hasGps => device.gpsLat != null && device.gpsLng != null;
 
   /// When the current problem started (D34): abnormalSince for Low/No Flow,
   /// the last upload for Offline, otherwise null.

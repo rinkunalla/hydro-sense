@@ -40,7 +40,7 @@ void watchSession(WidgetRef ref) {
 
 /// Phone app only: registers for push once a user is signed in (D27), and opens
 /// the screen a tapped notification points to (D37).
-final pushTapsProvider = StreamProvider<String>(
+final pushTapsProvider = StreamProvider<Map<String, dynamic>>(
   (ref) => ref.watch(pushServiceProvider).taps(),
 );
 
@@ -53,9 +53,11 @@ void watchPush(WidgetRef ref) {
       ref.read(pushServiceProvider).start(uid);
     }
   });
-  ref.listen<AsyncValue<String>>(pushTapsProvider, (_, next) {
-    final route = next.valueOrNull;
-    if (route != null) ref.read(routerProvider).go(route);
+  ref.listen<AsyncValue<Map<String, dynamic>>>(pushTapsProvider, (_, next) {
+    final data = next.valueOrNull;
+    if (data == null) return;
+    final hasPipeline = ref.read(pipelineProvider).valueOrNull != null;
+    ref.read(routerProvider).go(routeForPush(data, hasPipeline: hasPipeline));
   });
 }
 

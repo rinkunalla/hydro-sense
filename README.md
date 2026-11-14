@@ -128,6 +128,11 @@ admin is invited and a one-time setup link is printed, valid once for 1 hour) or
 Seed two admins so you can't be locked out. v1 data moves to v2 with `npm run migrate:v2` (dry run;
 add `-- --apply` only after checking the list).
 
+Satellite map (optional): copy `app/dart_defines.example.json` to `app/dart_defines.local.json` (git-ignored),
+put the Google Map Tiles API key in it (key limited to the Map Tiles API, daily quota capped), then
+`cd app && flutter build apk --release --dart-define-from-file=dart_defines.local.json`. Without a key the
+Satellite toggle is hidden and the map view still works.
+
 ## Admin website (Flutter web)
 
 * Dev against the emulators: `npm run emulators`, `npm run seed:emulator`, then

@@ -12,6 +12,7 @@ import 'features/client/account_screen.dart';
 import 'features/client/device_detail_screen.dart';
 import 'features/client/devices_screen.dart';
 import 'features/client/home_shell.dart';
+import 'features/client/edit_pipeline_screen.dart';
 import 'features/client/map_screen.dart';
 
 /// Where the person should be, given auth state (pure, unit-tested).
@@ -107,7 +108,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(path: '/map', builder: (_, _) => const MapScreen()),
+              GoRoute(
+                path: '/map',
+                builder: (_, s) => MapScreen(
+                  focusProblem: s.uri.queryParameters['focus'] == 'problem',
+                ),
+                routes: [
+                  GoRoute(
+                    path: 'edit',
+                    builder: (_, _) => const EditPipelineScreen(),
+                  ),
+                ],
+              ),
             ],
           ),
           StatefulShellBranch(

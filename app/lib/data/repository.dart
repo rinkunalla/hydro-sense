@@ -1,9 +1,10 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' hide Pipeline;
 
 import '../core/config.dart';
 import 'models.dart';
+import 'pipeline.dart';
 
 /// Everything the client app reads and writes. Widget tests use a fake.
 abstract class ClientRepository {
@@ -20,6 +21,14 @@ abstract class ClientRepository {
   Future<void> setAlertPrefs(String uid, AlertPrefs prefs);
 
   Future<void> rename(String deviceId, String nickname);
+
+  /// Sets or (with nulls) clears the manual pin, which overrides GPS (D25).
+  Future<void> setManualPin(String deviceId, double? lat, double? lng);
+
+  /// The user's own pipeline, or null before the first save (D26).
+  Stream<Pipeline?> pipeline(String uid);
+
+  Future<void> savePipeline(String uid, Pipeline pipeline);
 }
 
 DateTime? _time(Object? v) => v is Timestamp ? v.toDate() : null;
@@ -51,6 +60,9 @@ class FirestoreClientRepository implements ClientRepository {
       lng: _num(m['manualLat']) == null
           ? _num(m['gpsLng'])
           : _num(m['manualLng']),
+      gpsLat: _num(m['gpsLat']),
+      gpsLng: _num(m['gpsLng']),
+      manualPin: _num(m['manualLat']) != null && _num(m['manualLng']) != null,
       lowFlowCutoff: _num(m['lowFlowCutoff']) ?? 0.2,
       normalFlowCutoff: _num(m['normalFlowCutoff']) ?? 2.0,
       calibratedAt: _time(m['calibratedAt']),
@@ -185,4 +197,19 @@ class FirestoreClientRepository implements ClientRepository {
   @override
   Future<void> setAlertPrefs(String uid, AlertPrefs prefs) =>
       _db.doc('users/$uid').update({'alertPrefs': prefs.toMap()});
+
+  @override
+  Future<void> setManualPin(String deviceId, double? lat, double? lng) =>
+      _db.doc('devices/$deviceId').update({'manualLat': lat, 'manualLng': lng});
+
+  @override
+  Stream<Pipeline?> pipeline(String uid) => _db
+      .doc('pipelines/$uid')
+      .snapshots()
+      .map((s) => Pipeline.fromMap(s.data()));
+
+  @override
+  Future<void> savePipeline(String uid, Pipeline pipeline) => _db
+      .doc('pipelines/$uid')
+      .set({...pipeline.toMap(), 'updatedAt': FieldValue.serverTimestamp()});
 }
