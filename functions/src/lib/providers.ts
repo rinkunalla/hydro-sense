@@ -1,24 +1,13 @@
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
-import { defineSecret, defineString } from "firebase-functions/params";
+import { defineSecret } from "firebase-functions/params";
 import { createTransport, type Transporter } from "nodemailer";
-import {
-  AI_MAX_OUTPUT_TOKENS,
-  AI_THINKING_LEVEL,
-  AI_TIMEOUT_MS,
-  ALERT_EMAIL_FROM_NAME,
-  GEMINI_MODEL_DEFAULT,
-  PROVIDER_TIMEOUT_MS,
-  SEMAPHORE_URL,
-} from "../config";
+import { ALERT_EMAIL_FROM_NAME, PROVIDER_TIMEOUT_MS, SEMAPHORE_URL } from "../config";
 
-export const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 export const SEMAPHORE_API_KEY = defineSecret("SEMAPHORE_API_KEY");
 export const GMAIL_USER = defineSecret("GMAIL_USER");
 export const GMAIL_APP_PASSWORD = defineSecret("GMAIL_APP_PASSWORD");
-export const GEMINI_MODEL = defineString("GEMINI_MODEL", { default: GEMINI_MODEL_DEFAULT });
 
 export const ALERT_SECRETS = [SEMAPHORE_API_KEY, GMAIL_USER, GMAIL_APP_PASSWORD];
-export const MODEL_SECRETS = [GEMINI_API_KEY];
+export const MAIL_SECRETS = [GMAIL_USER, GMAIL_APP_PASSWORD];
 
 export interface SmsSender {
   /** Throws on any failure. */
@@ -30,22 +19,9 @@ export interface EmailSender {
   send(to: string, subject: string, text: string): Promise<void>;
 }
 
-export interface ModelRequest {
-  system: string;
-  prompt: string;
-  /** When set, the model must answer with JSON matching this schema. */
-  jsonSchema?: Record<string, unknown>;
-}
-
-export interface TextModel {
-  /** Returns the model text; throws on failure, timeout or empty output. */
-  generate(req: ModelRequest): Promise<string>;
-}
-
 export interface Providers {
   sms: SmsSender;
   email: EmailSender;
-  model: TextModel;
 }
 
 class SemaphoreSms implements SmsSender {
@@ -83,31 +59,8 @@ class GmailEmail implements EmailSender {
   }
 }
 
-class GeminiModel implements TextModel {
-  async generate(req: ModelRequest) {
-    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY.value() });
-    // D1: no temperature/top_p/top_k and no prefilled model turns.
-    const res = await ai.models.generateContent({
-      model: GEMINI_MODEL.value(),
-      contents: req.prompt,
-      config: {
-        systemInstruction: req.system,
-        maxOutputTokens: AI_MAX_OUTPUT_TOKENS,
-        httpOptions: { timeout: AI_TIMEOUT_MS },
-        thinkingConfig: { thinkingLevel: ThinkingLevel[AI_THINKING_LEVEL] },
-        ...(req.jsonSchema
-          ? { responseMimeType: "application/json", responseJsonSchema: req.jsonSchema }
-          : {}),
-      },
-    });
-    const text = res.text?.trim();
-    if (!text) throw new Error(`Empty model output (${res.candidates?.[0]?.finishReason ?? "?"})`);
-    return text;
-  }
-}
-
 /**
- * In the emulator, messages and model calls are logged instead of sent unless
+ * In the emulator, messages are logged instead of sent unless
  * HYDROSENSE_REAL_PROVIDERS=1, so simulator runs never spend SMS credits.
  */
 class DryRun implements Providers {
@@ -119,12 +72,6 @@ class DryRun implements Providers {
   email: EmailSender = {
     send: async (_to, subject) => {
       console.log(JSON.stringify({ severity: "INFO", event: "email_dry_run", subject }));
-    },
-  };
-  model: TextModel = {
-    generate: async (req) => {
-      if (req.jsonSchema) throw new Error("Dry run: no model output");
-      return "Dry run: AI-written text appears here when real providers are enabled.";
     },
   };
 }
@@ -142,6 +89,6 @@ export function providers(): Providers {
   if (process.env.FUNCTIONS_EMULATOR === "true" && process.env.HYDROSENSE_REAL_PROVIDERS !== "1") {
     return new DryRun();
   }
-  real ??= { sms: new SemaphoreSms(), email: new GmailEmail(), model: new GeminiModel() };
+  real ??= { sms: new SemaphoreSms(), email: new GmailEmail() };
   return real;
 }

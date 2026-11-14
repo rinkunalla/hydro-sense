@@ -11,18 +11,10 @@ abstract class ClientRepository {
   /// The client's devices joined with their health (both filtered by ownerUid,
   /// as the rules require).
   Stream<Fleet> fleet(String uid);
-  Stream<Summary?> summary();
   Stream<UserProfile?> profile(String uid);
   Stream<List<StatusChange>> statusChanges(String deviceId);
 
   Future<void> rename(String deviceId, String nickname);
-  Future<void> setPause(String deviceId, DateTime? until);
-
-  /// Throws FirebaseFunctionsException (COOLDOWN with retryAfterSeconds, AI_FAILED).
-  Future<void> refreshSummary();
-
-  /// Throws FirebaseFunctionsException (COOLDOWN with retryAfterSeconds).
-  Future<List<CalibrationResult>> calibrate();
 
   Future<void> confirmPasswordChanged();
 }
@@ -43,13 +35,15 @@ class FirestoreClientRepository implements ClientRepository {
       nickname: (m['nickname'] as String?) ?? d.id,
       flowStatus: m['flowStatus'] as String?,
       flowRate: _num(m['flowRate']),
-      lat: _num(m['lat']),
-      lng: _num(m['lng']),
+      // Effective location (D25): the user's manual pin, else the GPS fix.
+      lat: _num(m['manualLat']) ?? _num(m['gpsLat']),
+      lng: _num(m['manualLat']) == null
+          ? _num(m['gpsLng'])
+          : _num(m['manualLng']),
       lowFlowCutoff: _num(m['lowFlowCutoff']) ?? 0.2,
       normalFlowCutoff: _num(m['normalFlowCutoff']) ?? 2.0,
       calibratedAt: _time(m['calibratedAt']),
       statusChangedAt: _time(m['statusChangedAt']),
-      pausedUntil: _time(m['pausedUntil']),
     );
   }
 
@@ -120,17 +114,6 @@ class FirestoreClientRepository implements ClientRepository {
   }
 
   @override
-  Stream<Summary?> summary() =>
-      _db.doc('ai_insights/client_summary').snapshots().map((s) {
-        final m = s.data();
-        if (m == null) return null;
-        return Summary(
-          text: m['text'] as String?,
-          lastUpdated: _time(m['lastUpdated']),
-        );
-      });
-
-  @override
   Stream<UserProfile?> profile(String uid) =>
       _db.doc('users/$uid').snapshots().map((s) {
         final m = s.data();
@@ -138,7 +121,7 @@ class FirestoreClientRepository implements ClientRepository {
         return UserProfile(
           email: m['email'] as String?,
           phone: m['phone'] as String?,
-          displayName: m['displayName'] as String?,
+          displayName: m['name'] as String?,
           mustChangePassword: m['mustChangePassword'] == true,
         );
       });
@@ -164,31 +147,6 @@ class FirestoreClientRepository implements ClientRepository {
   @override
   Future<void> rename(String deviceId, String nickname) =>
       _db.doc('devices/$deviceId').update({'nickname': nickname});
-
-  @override
-  Future<void> setPause(String deviceId, DateTime? until) =>
-      _db.doc('devices/$deviceId').update({
-        'pausedUntil': until == null ? null : Timestamp.fromDate(until),
-      });
-
-  @override
-  Future<void> refreshSummary() async {
-    await _functions.httpsCallable('generateClientFlowSummary').call<Object?>();
-  }
-
-  @override
-  Future<List<CalibrationResult>> calibrate() async {
-    final r = await _functions
-        .httpsCallable('calibrateFlowThresholds')
-        .call<Object?>();
-    final data = r.data;
-    final results = data is Map ? data['results'] : null;
-    if (results is! List) return const [];
-    return [
-      for (final e in results)
-        if (e is Map) CalibrationResult('${e['nickname']}', '${e['result']}'),
-    ];
-  }
 
   @override
   Future<void> confirmPasswordChanged() async {

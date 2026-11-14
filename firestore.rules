@@ -2,6 +2,8 @@ rules_version = '2';
 
 // Access model: CLAUDE.md section 4. Cloud Functions use the Admin SDK and
 // bypass these rules; every write below is the only write a person may make.
+// Firestore rules cannot hide fields (D5), so admins and users read separate
+// collections; admins get device status only through adminListDevices (D24).
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -13,43 +15,108 @@ service cloud.firestore {
       return signedIn() && request.auth.token.role == 'admin';
     }
 
-    function isClient() {
-      return signedIn() && request.auth.token.role == 'client';
+    function isUser() {
+      return signedIn() && request.auth.token.role == 'user';
     }
 
-    // ownerUid is null until createClientAccount adopts the device (D10),
-    // so this is false for unadopted devices.
+    function isSelf(uid) {
+      return isUser() && request.auth.uid == uid;
+    }
+
+    // ownerUid is null for an unassigned device, so this is false for it.
     function ownsDoc(data) {
-      return isClient() && data.ownerUid == request.auth.uid;
+      return isUser() && data.ownerUid == request.auth.uid;
     }
 
     function ownsDevice(deviceId) {
       return ownsDoc(get(/databases/$(database)/documents/devices/$(deviceId)).data);
     }
 
-    function validNickname(n) {
-      return n is string && n.size() >= 1 && n.size() <= 24 && n.matches('.*\\S.*');
+    function textOf(s, max) {
+      return s is string && s.size() >= 1 && s.size() <= max && s.matches('.*\\S.*');
     }
 
-    // PAUSE_MAX_DAYS = 7
-    function validPausedUntil(p) {
-      return p == null
-        || (p is timestamp && p > request.time && p <= request.time + duration.value(7, 'd'));
+    function validLat(v) {
+      return v is number && v >= -90 && v <= 90;
+    }
+
+    function validLng(v) {
+      return v is number && v >= -180 && v <= 180;
+    }
+
+    // Manual pin (D25): both null, or both valid numbers.
+    function validManualPin(d) {
+      return (d.get('manualLat', null) == null && d.get('manualLng', null) == null)
+        || (validLat(d.get('manualLat', null)) && validLng(d.get('manualLng', null)));
     }
 
     function validDeviceUpdate() {
-      let changed = request.resource.data.diff(resource.data).affectedKeys();
-      return changed.hasOnly(['nickname', 'pausedUntil'])
-        && (!changed.hasAny(['nickname']) || validNickname(request.resource.data.nickname))
-        && (!changed.hasAny(['pausedUntil']) || validPausedUntil(request.resource.data.pausedUntil));
+      let d = request.resource.data;
+      let changed = d.diff(resource.data).affectedKeys();
+      return changed.hasOnly(['nickname', 'manualLat', 'manualLng'])
+        && (!changed.hasAny(['nickname']) || textOf(d.nickname, 24))
+        && validManualPin(d);
     }
 
-    match /config/system {
-      allow read: if isAdmin();
+    function validAlertPrefs(p) {
+      return p is map && p.keys().hasOnly(['push', 'sms', 'email'])
+        && p.keys().hasAll(['push', 'sms', 'email'])
+        && p.push is bool && p.sms is bool && p.email is bool;
+    }
+
+    // Pipeline (D26): rules have no loops, so the 10 branches are checked one by one.
+    // A request may evaluate at most 1,000 expressions, so each branch check is kept
+    // small: allowed keys, types and sizes (abuse limits). Every key is read, and
+    // reading a missing key denies the write, so no hasAll() is needed. Coordinate ranges and the
+    // entries of deviceIds only affect the user's own map, which reads them defensively.
+    function validBranch(b) {
+      return b.keys().hasOnly(['id', 'endName', 'endLat', 'endLng', 'deviceIds'])
+        && b.id is string && b.id.size() <= 40
+        && b.endName is string && b.endName.size() >= 1 && b.endName.size() <= 40
+        && b.endLat is number && b.endLng is number
+        && b.deviceIds is list && b.deviceIds.size() <= 50;
+    }
+
+    function branchOk(list, i) {
+      return list.size() <= i || validBranch(list[i]);
+    }
+
+    function validPipeline(d) {
+      return d.keys().hasOnly(['name', 'source', 'branches', 'updatedAt'])
+        && textOf(d.name, 40)
+        && d.source is map && d.source.keys().hasOnly(['name', 'lat', 'lng'])
+        && textOf(d.source.name, 40) && validLat(d.source.lat) && validLng(d.source.lng)
+        && d.branches is list && d.branches.size() <= 10
+        && branchOk(d.branches, 0) && branchOk(d.branches, 1) && branchOk(d.branches, 2)
+        && branchOk(d.branches, 3) && branchOk(d.branches, 4) && branchOk(d.branches, 5)
+        && branchOk(d.branches, 6) && branchOk(d.branches, 7) && branchOk(d.branches, 8)
+        && branchOk(d.branches, 9)
+        && d.updatedAt == request.time;
     }
 
     match /users/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if isSelf(uid) || isAdmin();
+      allow update: if isSelf(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['alertPrefs'])
+        && validAlertPrefs(request.resource.data.alertPrefs);
+
+      match /push_tokens/{token} {
+        allow read, delete: if isSelf(uid);
+        allow create, update: if isSelf(uid)
+          && token.size() <= 4096
+          && request.resource.data.keys().hasOnly(['platform', 'updatedAt'])
+          && request.resource.data.platform in ['android', 'web']
+          && request.resource.data.updatedAt == request.time;
+      }
+    }
+
+    match /admins/{uid} {
+      allow read: if isAdmin();
+    }
+
+    // Immutable audit log (D42): no person may create, change or delete an entry.
+    match /admin_audit/{id} {
+      allow read: if isAdmin();
     }
 
     match /devices/{deviceId} {
@@ -62,34 +129,20 @@ service cloud.firestore {
     }
 
     match /device_health/{deviceId} {
-      allow read: if isAdmin() || ownsDoc(resource.data);
+      allow read: if ownsDoc(resource.data);
+    }
 
-      match /battery_logs/{logId} {
-        allow read: if isAdmin();
-      }
+    match /pipelines/{uid} {
+      allow read, delete: if isSelf(uid);
+      allow create, update: if isSelf(uid) && validPipeline(request.resource.data);
     }
 
     match /allowed_devices/{deviceId} {
       allow read: if isAdmin();
     }
 
-    match /removed_devices/{deviceId} {
-      allow read: if isAdmin();
-    }
-
-    match /ai_insights/client_summary {
-      allow read: if isClient();
-    }
-
-    match /ai_insights/admin_diagnostics {
-      allow read: if isAdmin();
-    }
-
-    match /error_logs/{logId} {
-      allow read: if isAdmin();
-    }
-
-    // device_secrets, alert_state, alert_daily and every unlisted path: no
-    // client access (no matching allow rule means deny).
+    // device_secrets, phone_index, password_resets, alert_state, alert_daily,
+    // rate_limits, error_logs (Firebase console only) and every unlisted path:
+    // no person may read or write them (no matching allow rule means deny).
   }
 }

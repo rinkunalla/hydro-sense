@@ -4,7 +4,6 @@ import 'package:hydro_sense/core/time_format.dart';
 import 'package:hydro_sense/data/fleet_logic.dart';
 import 'package:hydro_sense/data/models.dart';
 import 'package:hydro_sense/features/auth/set_password_screen.dart';
-import 'package:hydro_sense/features/client/calibrate.dart';
 import 'package:hydro_sense/features/client/device_detail_screen.dart';
 import 'package:hydro_sense/router.dart';
 
@@ -70,26 +69,6 @@ void main() {
       );
     });
 
-    test('summary is stale when a status changed after it was written', () {
-      final s = Summary(text: 'x', lastUpdated: testNow);
-      expect(
-        summaryIsStale(s, [
-          view(
-            '1',
-            statusChangedAt: testNow.subtract(const Duration(minutes: 1)),
-          ),
-        ]),
-        isFalse,
-      );
-      expect(
-        summaryIsStale(s, [
-          view('1', statusChangedAt: testNow.add(const Duration(minutes: 1))),
-        ]),
-        isTrue,
-      );
-      expect(summaryIsStale(null, [view('1')]), isFalse);
-    });
-
     test('announces only cards that newly entered No Flow', () {
       final before = [
         view('1', nickname: 'A'),
@@ -138,7 +117,7 @@ void main() {
       String loc, {
       bool signedIn = true,
       bool roleLoaded = true,
-      String? role = 'client',
+      String? role = 'user',
       bool profileLoaded = true,
       bool must = false,
     }) => redirectFor(
@@ -191,34 +170,6 @@ void main() {
         "Passwords don't match.",
       );
       expect(validateNewPassword('longenough', 'longenough'), isNull);
-    });
-
-    test('pause "until I resume" stays inside the 7-day rule', () {
-      final until = pauseUntil(null, testNow);
-      expect(until.isBefore(testNow.add(const Duration(days: 7))), isTrue);
-      expect(
-        pauseUntil(const Duration(hours: 1), testNow),
-        testNow.add(const Duration(hours: 1)),
-      );
-    });
-
-    test('calibration result wording', () {
-      expect(
-        calibrationLine(const CalibrationResult('Garden Line', 'updated')),
-        'Garden Line: updated',
-      );
-      expect(
-        calibrationLine(
-          const CalibrationResult('Kitchen', 'kept_insufficient'),
-        ),
-        'Kitchen: kept current limits (not enough steady flow data in the last 24 h)',
-      );
-      expect(
-        calibrationLine(
-          const CalibrationResult('Orchard', 'kept_recent_alert'),
-        ),
-        'Orchard: kept current limits (this line had a problem in the last 24 h)',
-      );
     });
 
     test('signal words from RSSI', () {

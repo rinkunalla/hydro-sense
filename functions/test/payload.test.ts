@@ -4,7 +4,7 @@ import { normalizeDeviceId, parseIngestPayload, parseRegisterBody } from "../src
 const valid = {
   flowStatus: "Normal Flow",
   flowRate: 4.2,
-  pulseHz: 31.5,
+  pulseHz: 31.5, // firmware 0.2.0 still sends it; the server ignores it (D29)
   batteryVoltage: 7.92,
   batteryFault: false,
   lat: 16.04,
@@ -38,11 +38,18 @@ describe("parseIngestPayload", () => {
     expect(parseIngestPayload([1]).ok).toBe(false);
   });
 
-  it("clamps flow rate, pulse rate and rssi", () => {
-    const r = parse({ flowRate: 500, pulseHz: 10_000, rssi: 20 });
+  it("clamps flow rate and rssi", () => {
+    const r = parse({ flowRate: 500, rssi: 20 });
     expect(r.ok && r.value.flowRate).toBe(40);
-    expect(r.ok && r.value.pulseHz).toBe(300);
     expect(r.ok && r.value.rssi).toBe(0);
+  });
+
+  it("accepts any pulseHz from old firmware, even invalid, and does not keep it (D29)", () => {
+    for (const pulseHz of [75, -3, "fast", null, 1e9]) {
+      const r = parse({ pulseHz });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value).not.toHaveProperty("pulseHz");
+    }
   });
 
   it("ignores voltage when batteryFault is true", () => {

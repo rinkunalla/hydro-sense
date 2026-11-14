@@ -17,7 +17,6 @@ abstract final class Messages {
   static const generic = 'Something went wrong. Please try again.';
   static const permissionDenied = "You don't have permission to do that.";
   static const passwordsDontMatch = "Passwords don't match.";
-  static const summaryFailed = "Couldn't update the summary. Try again later.";
   static const renameFailed = "Couldn't save the name. Check your connection.";
   static const nameEmpty = "Name can't be empty.";
   static const saveFailed = "Couldn't save. Check your connection.";

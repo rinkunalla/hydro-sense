@@ -72,7 +72,7 @@ export function validCutoffs(c: Cutoffs, mean: number): boolean {
   );
 }
 
-/** Always valid when mean >= CALIBRATE_MIN_MEAN. */
+/** The weekly cutoffs (D28): a fixed formula, always valid when mean >= CALIBRATE_MIN_MEAN. */
 export function fallbackCutoffs(mean: number): Cutoffs {
   return {
     lowFlowCutoff: round2(Math.max(CALIBRATE_LOW_MIN, CALIBRATE_FALLBACK_LOW_OF_MEAN * mean)),
@@ -83,24 +83,3 @@ export function fallbackCutoffs(mean: number): Cutoffs {
 }
 
 const round2 = (x: number) => Math.round(x * 100) / 100;
-
-export function parseModelCutoffs(text: string): Cutoffs | null {
-  try {
-    const v = JSON.parse(text) as Record<string, unknown>;
-    const low = v.lowFlowCutoff;
-    const normal = v.normalFlowCutoff;
-    if (typeof low !== "number" || typeof normal !== "number") return null;
-    return { lowFlowCutoff: round2(low), normalFlowCutoff: round2(normal) };
-  } catch {
-    return null;
-  }
-}
-
-export const CUTOFF_SCHEMA = {
-  type: "object",
-  properties: {
-    lowFlowCutoff: { type: "number" },
-    normalFlowCutoff: { type: "number" },
-  },
-  required: ["lowFlowCutoff", "normalFlowCutoff"],
-};

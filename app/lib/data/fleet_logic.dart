@@ -72,16 +72,6 @@ BannerInfo bannerFor(List<DeviceView> views) {
   );
 }
 
-/// The AI summary is stale when any device changed status after it was written.
-bool summaryIsStale(Summary? s, List<DeviceView> views) {
-  final updated = s?.lastUpdated;
-  if (updated == null) return false;
-  return views.any((v) {
-    final changed = v.device.statusChangedAt;
-    return changed != null && changed.isAfter(updated);
-  });
-}
-
 /// Polite screen-reader announcements for cards that newly entered No Flow.
 List<String> newlyNoFlow(List<DeviceView> before, List<DeviceView> after) {
   final was = {for (final v in before) v.id: v.status};

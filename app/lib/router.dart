@@ -14,7 +14,7 @@ import 'features/client/home_shell.dart';
 import 'features/client/map_screen.dart';
 
 /// Where the person should be, given auth state (pure, unit-tested).
-/// Android is client-only and the web build admin-only (CLAUDE.md section 9):
+/// Android is user-only and the web build admin-only (CLAUDE.md D21):
 /// any other role goes back to Login with `refused` set.
 String? redirectFor({
   required String location,
@@ -23,7 +23,7 @@ String? redirectFor({
   required String? role,
   required bool profileLoaded,
   required bool mustChangePassword,
-  String requiredRole = 'client',
+  String requiredRole = 'user',
   String home = '/devices',
 }) {
   final onAuthPage = location == '/login' || location == '/reset';
@@ -35,7 +35,7 @@ String? redirectFor({
         : (role == 'admin' ? 'admin' : 'other');
     return location.startsWith('/login') ? null : '/login?refused=$reason';
   }
-  if (requiredRole == 'client') {
+  if (requiredRole == 'user') {
     if (!profileLoaded) return location == '/loading' ? null : '/loading';
     if (mustChangePassword) {
       return location == '/set-password' ? null : '/set-password';

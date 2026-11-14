@@ -13,10 +13,7 @@ class _Dest {
 }
 
 const _destinations = [
-  _Dest('/overview', 'Overview', Icons.dashboard_outlined),
   _Dest('/devices', 'Devices', Icons.memory),
-  _Dest('/errors', 'Errors', Icons.report_gmailerrorred),
-  _Dest('/report', 'Hardware report', Icons.health_and_safety_outlined),
   _Dest('/account', 'Account', Icons.person_outline),
 ];
 

@@ -10,10 +10,9 @@ import '../../core/time_format.dart';
 import '../../data/fleet_logic.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
-import 'calibrate.dart';
 import 'widgets.dart';
 
-/// Home: summary banner, AI insight card, device cards (docs/UI_UX_SPEC.md section 4.2).
+/// Home: status banner and device cards (docs/UI_UX_SPEC.md section 4.2).
 class DevicesScreen extends ConsumerWidget {
   const DevicesScreen({super.key});
 
@@ -38,24 +37,7 @@ class DevicesScreen extends ConsumerWidget {
     });
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Hydro Sense'),
-        actions: [
-          PopupMenuButton<String>(
-            tooltip: 'More',
-            onSelected: (v) {
-              if (v == 'calibrate') runCalibration(context, ref);
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'calibrate',
-                enabled: !phoneOffline,
-                child: const Text('Calibrate flow'),
-              ),
-            ],
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Hydro Sense')),
       body: SafeArea(
         child: fleet.when(
           loading: () => const _Skeletons(),
@@ -89,8 +71,6 @@ class _FleetBody extends ConsumerWidget {
           const _FirstRun()
         else ...[
           _SummaryBanner(bannerFor(views)),
-          const SizedBox(height: AppSpace.m),
-          _InsightCard(views: views, phoneOffline: phoneOffline),
           const SizedBox(height: AppSpace.m),
           FlipColumn(
             children: [
@@ -158,139 +138,6 @@ class _SummaryBanner extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InsightCard extends ConsumerStatefulWidget {
-  const _InsightCard({required this.views, required this.phoneOffline});
-
-  final List<DeviceView> views;
-  final bool phoneOffline;
-
-  @override
-  ConsumerState<_InsightCard> createState() => _InsightCardState();
-}
-
-class _InsightCardState extends ConsumerState<_InsightCard> {
-  bool _refreshing = false;
-  DateTime? _cooldownUntil;
-
-  Future<void> _refresh() async {
-    setState(() => _refreshing = true);
-    try {
-      await ref.read(repositoryProvider).refreshSummary();
-    } catch (e) {
-      final d = callableDetails(e);
-      if (d.code == 'COOLDOWN' && d.retryAfterSeconds != null) {
-        _cooldownUntil = DateTime.now().add(
-          Duration(seconds: d.retryAfterSeconds!),
-        );
-      } else if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text(Messages.summaryFailed)));
-      }
-    } finally {
-      if (mounted) setState(() => _refreshing = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final summary = ref.watch(summaryProvider).valueOrNull;
-    final now = ref.watch(clockProvider).valueOrNull ?? DateTime.now();
-    final text = summary?.text;
-    final stale = summaryIsStale(summary, widget.views);
-    final cooling = _cooldownUntil != null && _cooldownUntil!.isAfter(now);
-    final muted = Theme.of(
-      context,
-    ).textTheme.bodySmall?.copyWith(color: AppColors.textMuted);
-
-    Widget button = IconButton(
-      tooltip: widget.phoneOffline ? 'Needs internet.' : 'Refresh summary',
-      onPressed: widget.phoneOffline || cooling || _refreshing
-          ? null
-          : _refresh,
-      icon: _refreshing
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.refresh),
-    );
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpace.l),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Water flow summary',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                button,
-              ],
-            ),
-            if (stale) ...[
-              const SizedBox(height: AppSpace.xs),
-              const _SmallChip(StatusKind.lowFlow, 'May be out of date'),
-            ],
-            const SizedBox(height: AppSpace.s),
-            Text(
-              text ??
-                  'No summary yet. One appears after the first change in flow.',
-            ),
-            if (summary?.lastUpdated != null) ...[
-              const SizedBox(height: AppSpace.s),
-              Text(
-                'Updated ${clockTime(summary!.lastUpdated!, now)}',
-                style: muted,
-              ),
-            ],
-            if (cooling) ...[
-              const SizedBox(height: AppSpace.xs),
-              Text(
-                'You can refresh again in ${waitText(_cooldownUntil!.difference(now))}.',
-                style: muted,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SmallChip extends StatelessWidget {
-  const _SmallChip(this.kind, this.text);
-
-  final StatusKind kind;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = StatusStyle.of(kind);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: s.soft,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: s.chipText,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -394,8 +241,6 @@ class DeviceCard extends StatelessWidget {
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               BatteryLine(view),
-                              if (view.pausedAt(now))
-                                const StatusChip(StatusKind.paused),
                               if (freshness != null)
                                 Text(freshness, style: muted),
                             ],

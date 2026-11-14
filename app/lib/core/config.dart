@@ -25,14 +25,6 @@ abstract final class AppConfig {
   // Data rules mirrored from the backend
   static const int nicknameMax = 24;
   static const int lowBatteryPercent = 20;
-  static const int batterySeriesCells = 2;
-  static const double lowVoltageSleepCellV =
-      3.4; // firmware LOW_VOLTAGE_SLEEP_CELL_V
-  static const int pauseMaxDays = 7;
-  static const List<Duration> pauseOptions = [
-    Duration(hours: 1),
-    Duration(hours: 24),
-  ];
   static const int minPasswordLength = 8;
   static final RegExp deviceIdPattern = RegExp(r'^[0-9A-F]{12}$');
   static final RegExp phMobilePattern = RegExp(
@@ -41,9 +33,8 @@ abstract final class AppConfig {
 
   // Lists and screens
   static const int recentStatusChanges = 10;
+  static const int adminDevicesRefreshS = 60; // ADMIN_DEVICES_REFRESH_S
   static const int skeletonCards = 3;
-  static const int errorLogsPageSize = 100;
-  static const int batteryHistoryDays = 7;
 
   // Layout and accessibility
   static const double adminMaxContentWidth = 1200;

@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../data/admin_logic.dart';
 
-/// The admin site uses only Online / Offline / Low battery styling, never the
-/// flow status colors (docs/UI_UX_SPEC.md section 3). Icon + word, never color alone.
+/// The admin site shows only connection states, never flow or battery colors
+/// (D24, docs/UI_UX_SPEC.md section 3). Icon + word, never color alone.
 class StateBadge extends StatelessWidget {
-  const StateBadge(this.state, {super.key});
+  const StateBadge(this.state, {super.key, this.detail});
 
   final AdminState state;
+
+  /// Extra words after the state, for example "since 3:42 PM".
+  final String? detail;
 
   @override
   Widget build(BuildContext context) {
@@ -23,40 +26,27 @@ class StateBadge extends StatelessWidget {
         const Color(0xFF6B7682),
         'Offline',
       ),
-      AdminState.sleeping => (
-        Icons.battery_alert,
-        const Color(0xFFA86F00),
-        'Sleeping (low battery)',
-      ),
-      AdminState.waiting => (
+      AdminState.notSetUp => (
         Icons.hourglass_empty,
         AppColors.textMuted,
-        'Waiting to register',
+        'Not set up yet',
       ),
+      AdminState.removed => (Icons.block, const Color(0xFF8A2A20), 'Removed'),
     };
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 18, color: color),
         const SizedBox(width: 6),
-        Flexible(child: Text(word, overflow: TextOverflow.ellipsis)),
+        Flexible(
+          child: Text(
+            detail == null ? word : '$word $detail',
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }
-}
-
-class LowBatteryBadge extends StatelessWidget {
-  const LowBatteryBadge({super.key});
-
-  @override
-  Widget build(BuildContext context) => const Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(Icons.battery_alert, size: 18, color: Color(0xFFA86F00)),
-      SizedBox(width: 4),
-      Text('Low battery'),
-    ],
-  );
 }
 
 class SectionCard extends StatelessWidget {

@@ -19,13 +19,6 @@ String? validateNickname(String raw) {
   return null;
 }
 
-/// "Until I resume" stays an hour inside the 7-day rule, so a phone clock that runs
-/// a little fast is not refused by the server.
-DateTime pauseUntil(Duration? choice, DateTime now) => now.add(
-  choice ??
-      const Duration(days: AppConfig.pauseMaxDays) - const Duration(hours: 1),
-);
-
 /// Signal strength word and bars (1-4) from RSSI.
 ({int bars, String word}) signalOf(int rssi) {
   if (rssi >= -60) return (bars: 4, word: 'Strong');
@@ -112,8 +105,6 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
             ),
           const SizedBox(height: AppSpace.l),
           _NameCard(view: v),
-          const SizedBox(height: AppSpace.m),
-          _PauseCard(view: v, now: now),
           const SizedBox(height: AppSpace.m),
           Card(
             child: ListTile(
@@ -233,87 +224,6 @@ class _NameCardState extends ConsumerState<_NameCard> {
               ],
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PauseCard extends ConsumerStatefulWidget {
-  const _PauseCard({required this.view, required this.now});
-
-  final DeviceView view;
-  final DateTime now;
-
-  @override
-  ConsumerState<_PauseCard> createState() => _PauseCardState();
-}
-
-class _PauseCardState extends ConsumerState<_PauseCard> {
-  bool _saving = false;
-
-  Future<void> _set(DateTime? until) async {
-    setState(() => _saving = true);
-    try {
-      await ref.read(repositoryProvider).setPause(widget.view.id, until);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text(Messages.saveFailed)));
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final paused = widget.view.pausedAt(widget.now);
-    if (paused) {
-      return Card(
-        child: ListTile(
-          leading: const Icon(Icons.notifications_paused),
-          title: Text(
-            'Alerts paused until ${clockTime(widget.view.device.pausedUntil!, widget.now)}',
-          ),
-          trailing: TextButton(
-            onPressed: _saving ? null : () => _set(null),
-            child: const Text('Resume'),
-          ),
-        ),
-      );
-    }
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.notifications_active_outlined),
-        title: const Text('Alerts'),
-        subtitle: const Text('Pause during repairs or a planned shutoff'),
-        trailing: PopupMenuButton<Duration?>(
-          enabled: !_saving,
-          tooltip: 'Pause alerts',
-          onSelected: (d) => _set(pauseUntil(d, DateTime.now())),
-          itemBuilder: (_) => [
-            for (final d in AppConfig.pauseOptions)
-              PopupMenuItem(
-                value: d,
-                child: Text(d.inHours == 1 ? '1 hour' : '${d.inHours} hours'),
-              ),
-            const PopupMenuItem(
-              value: null,
-              child: Text('Until I resume (max 7 days)'),
-            ),
-          ],
-          child: const Padding(
-            padding: EdgeInsets.all(AppSpace.s),
-            child: Text(
-              'Pause alerts',
-              style: TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
         ),
       ),
     );

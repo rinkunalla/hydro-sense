@@ -48,7 +48,7 @@ Then check everything works: `npm --prefix functions test`, `npm run test:rules`
 
 Never commit `.env`, `.env.local`, `.secret.local` or `secrets.h` (all gitignored).
 
-**The emulator never sends real SMS or email and never calls Gemini.** It logs `sms_dry_run` /
+**The emulator never sends real SMS or email.** It logs `sms_dry_run` /
 `email_dry_run` instead, so simulator runs cannot spend Semaphore credits. To test real
 delivery on the emulator, set `HYDROSENSE_REAL_PROVIDERS=1` in `functions/.env.local`.
 
@@ -59,7 +59,7 @@ delivery on the emulator, set `HYDROSENSE_REAL_PROVIDERS=1` in `functions/.env.l
 | Start all emulators | `npm run emulators` (UI at http://localhost:4000) |
 | Functions tests / lint | `npm --prefix functions test`, `npm --prefix functions run lint` |
 | Firestore rules tests | `npm run test:rules` (starts the Firestore emulator, runs `functions/test-rules`) |
-| API integration tests | `npm run test:emulator`: endpoint tests with the Functions emulator (`test:endpoints`), then the in-process alert/AI/calibration/admin tests with Auth + Firestore only (`test:inprocess`, so real triggers cannot race them) |
+| API integration tests | `npm run test:emulator`: endpoint tests with the Functions emulator (`test:endpoints`), then the in-process alert/calibration/admin tests with Auth + Firestore only (`test:inprocess`, so real triggers cannot race them) |
 | Device simulator | `npm run simulate:emulator` (3 devices, 150 s), or `npm run simulate -- [options]` against already running emulators (options at the top of `tools/simulate-device.ts`) |
 | Deploy rules and indexes | `firebase deploy --only firestore` |
 | App analyze / tests | `cd app && flutter analyze && flutter test` |
@@ -79,17 +79,16 @@ does not stop spending.
 
 | Item | Per device per day | Free tier (per day unless noted) | Fits about |
 |---|---|---|---|
-| Firestore writes | about 2,100: 1,440 `device_health` (one per 60 s heartbeat), up to 288 `devices`, 288 `flow_logs`, 96 `battery_logs`; a status change costs about 3 | 20,000 | **9 devices** (the binding limit) |
+| Firestore writes | about 2,000: 1,440 `device_health` (one per 60 s heartbeat), up to 288 `devices`, 288 `flow_logs`; a status change costs about 3 | 20,000 | **10 devices** (the binding limit) |
 | Firestore reads | about 2,900 from `monitorDevices` (2 docs per device per minute, plus `alert_state` only for active faults), plus one read per open app listener per write | 50,000 | 15 devices |
 | Function invocations | about 1,440 `deviceIngest` + about 300 trigger runs that return at once | 2 million per month | about 40 devices |
-| Scheduler jobs | 3 in total (`monitorDevices` every minute, weekly calibration, daily report) | 3 per billing account | |
-| Secret Manager | 5 secrets | 6 active versions per billing account | destroy old versions after rotating |
+| Scheduler jobs | 2 (`monitorDevices` every minute, weekly calibration) | 3 per billing account | |
+| Secret Manager | 4 secrets | 6 active versions per billing account | destroy old versions after rotating |
 | SMS | at most 10 per day (daily cap), batched | Semaphore prepaid credits | 1 credit per 160-character SMS |
-| Gemini | about 100 summaries per day at most (15 min cooldown), 1 to 2 reports, weekly calibration | free tier with a key from a project without billing | |
 | Hosting, Storage | admin site only, a few MB | 10 GB storage, 360 MB/day transfer | |
 
 Notes: build images are deleted after a day (Artifact Registry cleanup policy, set on the first
-functions deploy). Past about 9 devices, Firestore writes become a few cents a month; the biggest
+functions deploy). Past about 10 devices, Firestore writes become a few cents a month; the biggest
 lever is the 60 s heartbeat (`HEARTBEAT_S`, must stay under 90 for the 3 min offline limit).
 
 ## Client app (Android)
@@ -135,10 +134,10 @@ password-setup link) or add `--emulator`.
   (`flutter run -d chrome` also works and uses the emulators in debug.)
 * Production build: `cd app && flutter build web` (release, real project), then
   `firebase deploy --only hosting:admin`. Create real admins with `npm run create-admin -- --email ...`.
-* Privacy: the admin site reads only `device_health` (and its `battery_logs`), `allowed_devices`,
-  `removed_devices`, `error_logs`, `ai_insights/admin_diagnostics` and `config/system`.
-  `app/test/admin_privacy_test.dart` fails if admin code names `devices`, `flow_logs` or
-  `client_summary`, and the Firestore rules deny those reads to admins anyway.
+* Privacy: the admin site reads only `device_health`, `allowed_devices` and `config/system`
+  (stage 2 narrows this to D24). `app/test/admin_privacy_test.dart` fails if admin code names
+  `devices` or `flow_logs`, and the Firestore rules deny those reads to admins anyway.
+* `error_logs` have no page: read them in the Firebase console (D29).
 
 ## Firmware
 

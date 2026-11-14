@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizePhMobile, temporaryPassword } from "../src/admin/clientAccount";
 import {
   bucketAverages,
   enoughData,
   fallbackCutoffs,
   flowStats,
-  parseModelCutoffs,
   validCutoffs,
 } from "../src/lib/calibrationMath";
 
@@ -42,36 +40,9 @@ describe("calibration math", () => {
     expect(validCutoffs({ lowFlowCutoff: 0.5, normalFlowCutoff: 8.1 }, 10)).toBe(false);
   });
 
-  it("fallback output always passes validation from the minimum mean upward", () => {
+  it("the weekly formula always gives 0.2 <= low < normal from the minimum mean upward", () => {
     for (let mean = 1.25; mean <= 40; mean += 0.05) {
       expect(validCutoffs(fallbackCutoffs(mean), mean)).toBe(true);
     }
-  });
-
-  it("parses model JSON and rejects anything else", () => {
-    expect(parseModelCutoffs('{"lowFlowCutoff":0.456,"normalFlowCutoff":3}')).toEqual({
-      lowFlowCutoff: 0.46,
-      normalFlowCutoff: 3,
-    });
-    expect(parseModelCutoffs("not json")).toBeNull();
-    expect(parseModelCutoffs('{"lowFlowCutoff":"1"}')).toBeNull();
-  });
-});
-
-describe("client account helpers", () => {
-  it("normalizes Philippine mobile numbers", () => {
-    expect(normalizePhMobile("09171234567")).toBe("639171234567");
-    expect(normalizePhMobile("+63 917 123 4567")).toBe("639171234567");
-    expect(normalizePhMobile("639171234567")).toBe("639171234567");
-    expect(normalizePhMobile("0917123456")).toBeNull();
-    expect(normalizePhMobile("08171234567")).toBeNull();
-    expect(normalizePhMobile(9171234567)).toBeNull();
-  });
-
-  it("generates unambiguous temporary passwords", () => {
-    const p = temporaryPassword();
-    expect(p).toHaveLength(12);
-    expect(p).not.toMatch(/[0O1lI]/);
-    expect(temporaryPassword()).not.toBe(p);
   });
 });

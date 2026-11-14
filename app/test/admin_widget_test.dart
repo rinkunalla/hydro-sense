@@ -1,109 +1,58 @@
-// Admin website screens (KICKOFF.md Phase 6) with a fake AdminRepository.
+// Admin website screens with a fake AdminRepository (stage 2 data layer).
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hydro_sense/core/theme.dart';
+import 'package:hydro_sense/data/admin_logic.dart';
 import 'package:hydro_sense/data/admin_providers.dart';
 import 'package:hydro_sense/data/admin_repository.dart';
-import 'package:hydro_sense/data/models.dart';
 import 'package:hydro_sense/data/providers.dart';
 import 'package:hydro_sense/data/repository.dart';
 import 'package:hydro_sense/features/admin/admin_shell.dart';
-import 'package:hydro_sense/features/admin/battery_chart.dart';
+import 'package:hydro_sense/features/admin/create_user_card.dart';
 import 'package:hydro_sense/features/admin/devices_admin_screen.dart';
-import 'package:hydro_sense/features/admin/errors_screen.dart';
-import 'package:hydro_sense/features/admin/hardware_report_screen.dart';
-import 'package:hydro_sense/features/admin/overview_screen.dart';
 import 'package:hydro_sense/router.dart';
 
 import 'test_data.dart';
 
 class FakeAdmin implements AdminRepository {
-  List<Health> healthList = [];
-  List<AllowedEntry> allowedList = [];
-  List<RemovedEntry> removedList = [];
-  List<ErrorEntry> errorList = [];
-  List<BatteryPoint> battery = [];
-  ClientInfo? clientInfo;
+  List<AdminDevice> list = [];
   Object? createError;
   final calls = <String>[];
 
   @override
-  Stream<List<Health>> health() => Stream.value(healthList);
+  Future<List<AdminDevice>> devices() async => list;
   @override
-  Stream<List<AllowedEntry>> allowed() => Stream.value(allowedList);
+  Future<void> addAllowedDevice(String deviceId, {String? label}) async =>
+      calls.add('add $deviceId ${label ?? ''}'.trim());
   @override
-  Stream<List<RemovedEntry>> removed() => Stream.value(removedList);
+  Future<void> removeDevice(
+    String deviceId, {
+    required String confirmLabel,
+  }) async => calls.add('remove $deviceId $confirmLabel');
   @override
-  Stream<List<ErrorEntry>> errors({
-    String? deviceId,
-    String? code,
-    int limit = 100,
-  }) => Stream.value(
-    errorList.where((e) => deviceId == null || e.deviceId == deviceId).toList(),
-  );
+  Future<void> restoreDevice(String deviceId) async =>
+      calls.add('restore $deviceId');
   @override
-  Stream<List<BatteryPoint>> batteryHistory(String deviceId, Duration window) =>
-      Stream.value(battery);
-  @override
-  Stream<Diagnostics?> diagnostics() => Stream.value(null);
-  @override
-  Stream<ClientInfo?> client() => Stream.value(clientInfo);
-
-  @override
-  Future<void> addAllowedDevice(String deviceId) async =>
-      calls.add('add $deviceId');
-  @override
-  Future<void> removeDevice(String deviceId) async =>
-      calls.add('remove $deviceId');
-  @override
-  Future<void> allowDevice(String deviceId) async =>
-      calls.add('allow $deviceId');
-  @override
-  Future<void> runHardwareReport() async => calls.add('report');
-  @override
-  Future<CreateClientResult> createClient({
+  Future<String> createUser({
     required String name,
     required String email,
-    required String phone,
-    required bool temporaryPassword,
+    required String mobile,
   }) async {
-    calls.add('create $name $email $phone temp=$temporaryPassword');
+    calls.add('create $name $email $mobile');
     if (createError != null) throw createError!;
-    return CreateClientResult(
-      temporaryPassword: temporaryPassword ? 'Abc23Def45gh' : null,
-      emailSent: true,
-      adopted: 2,
-    );
+    return 'uid1';
   }
 }
 
-/// Any use of the client data layer from an admin screen fails the test.
+/// Any use of the user data layer from an admin screen fails the test.
 class ForbiddenClientRepo implements ClientRepository {
   @override
   dynamic noSuchMethod(Invocation i) => throw StateError(
-    'Admin screen touched the client repository: ${i.memberName}',
+    'Admin screen touched the user repository: ${i.memberName}',
   );
 }
-
-Health h(
-  String id, {
-  bool online = true,
-  int? pct = 80,
-  bool sleep = false,
-  DateTime? lastSeen,
-}) => Health(
-  id: id,
-  online: online,
-  lastSeen: lastSeen ?? testNow.subtract(const Duration(minutes: 2)),
-  batteryPercent: pct,
-  batteryVoltage: pct == null ? null : 6.6 + 1.8 * pct / 100,
-  chargingStatus: 'Steady',
-  lowVoltageSleep: sleep,
-  firmware: '1.0.0',
-);
 
 Future<void> pumpAdmin(
   WidgetTester t,
@@ -127,41 +76,116 @@ Future<void> pumpAdmin(
       ),
     ),
   );
-  await t.pumpAndSettle();
+  await t.pump();
+  await t.pump();
 }
 
+const unit1 = AdminDevice(
+  id: 'A1B2C3D4E5F1',
+  label: 'Unit 1',
+  ownerUid: 'u1',
+  ownerName: 'Juan',
+  registered: true,
+  online: true,
+);
+
 void main() {
-  testWidgets('overview counts registered, online, offline and low battery', (
-    t,
-  ) async {
-    final semantics = t.ensureSemantics();
+  test('admin states come only from registration, online and removal', () {
+    expect(stateOf(unit1), AdminState.online);
+    expect(
+      stateOf(const AdminDevice(id: 'x', registered: true)),
+      AdminState.offline,
+    );
+    expect(stateOf(const AdminDevice(id: 'x')), AdminState.notSetUp);
+    expect(
+      stateOf(AdminDevice(id: 'x', registered: true, removedAt: testNow)),
+      AdminState.removed,
+    );
+  });
+
+  testWidgets('devices table: label, owner and every status', (t) async {
     final fake = FakeAdmin()
-      ..healthList = [
-        h('A1'),
-        h('A2', online: false),
-        h('A3', pct: 15),
-        h('A4', online: false, sleep: true),
-      ]
-      ..allowedList = [const AllowedEntry('B1', null)];
-    await pumpAdmin(t, fake, const OverviewScreen());
-    expect(find.bySemanticsLabel('Registered: 4'), findsOneWidget);
-    expect(find.bySemanticsLabel('Online: 2'), findsOneWidget);
-    expect(find.bySemanticsLabel('Offline: 2'), findsOneWidget);
-    expect(find.bySemanticsLabel('Low battery: 1'), findsOneWidget);
-    semantics.dispose();
+      ..list = [
+        unit1,
+        AdminDevice(
+          id: 'A1B2C3D4E5F2',
+          registered: true,
+          lastSeen: testNow.subtract(const Duration(hours: 2)),
+        ),
+        const AdminDevice(id: 'A1B2C3D4E5F3'),
+        AdminDevice(
+          id: 'A1B2C3D4E5F4',
+          registered: true,
+          removedAt: testNow,
+          purgeAfter: testNow.add(const Duration(days: 30)),
+        ),
+      ];
+    await pumpAdmin(t, fake, const DevicesAdminScreen());
+    expect(find.text('Unit 1'), findsOneWidget);
+    expect(find.text('Juan'), findsOneWidget);
+    expect(find.text('Unassigned'), findsNWidgets(3));
+    expect(find.text('Online'), findsOneWidget);
+    expect(find.textContaining('Offline since'), findsOneWidget);
+    expect(find.text('Not set up yet'), findsOneWidget);
+    expect(find.textContaining('Removed'), findsOneWidget);
+    expect(find.text('Restore'), findsOneWidget);
   });
 
-  testWidgets('overview with zero devices', (t) async {
-    await pumpAdmin(t, FakeAdmin(), const OverviewScreen());
-    expect(find.text('No devices have registered yet.'), findsOneWidget);
+  testWidgets('devices page with no devices', (t) async {
+    await pumpAdmin(t, FakeAdmin(), const DevicesAdminScreen());
+    expect(find.text('No devices added yet.'), findsOneWidget);
   });
 
-  testWidgets('create client: temporary password shown once, then Done', (
-    t,
-  ) async {
+  testWidgets('add device validates the ID and sends the label', (t) async {
     final fake = FakeAdmin();
-    await pumpAdmin(t, fake, const OverviewScreen());
-    expect(find.text('Create client account'), findsOneWidget);
+    await pumpAdmin(t, fake, const DevicesAdminScreen());
+    await t.tap(find.text('Add device'));
+    await t.pumpAndSettle();
+    await t.enterText(find.widgetWithText(TextField, 'Device ID'), '123');
+    await t.tap(find.text('Add'));
+    await t.pumpAndSettle();
+    expect(find.text(addDeviceError), findsOneWidget);
+    await t.enterText(
+      find.widgetWithText(TextField, 'Device ID'),
+      'a1:b2:c3:d4:e5:f6',
+    );
+    await t.enterText(
+      find.widgetWithText(TextField, 'Label (optional)'),
+      'Unit 9',
+    );
+    await t.tap(find.text('Add'));
+    await t.pumpAndSettle();
+    expect(fake.calls, ['add A1B2C3D4E5F6 Unit 9']);
+  });
+
+  testWidgets('remove needs the typed label (D42)', (t) async {
+    final fake = FakeAdmin()..list = [unit1];
+    await pumpAdmin(t, fake, const DevicesAdminScreen());
+    await t.tap(find.byTooltip('Remove'));
+    await t.pumpAndSettle();
+    expect(find.text('Type "Unit 1" to confirm.'), findsOneWidget);
+    final remove = find.widgetWithText(FilledButton, 'Remove');
+    expect(t.widget<FilledButton>(remove).onPressed, isNull);
+    await t.enterText(find.byType(TextField), 'unit  1 ');
+    await t.pump();
+    expect(t.widget<FilledButton>(remove).onPressed, isNotNull);
+    await t.tap(remove);
+    await t.pumpAndSettle();
+    expect(fake.calls, ['remove A1B2C3D4E5F1 Unit 1']);
+  });
+
+  testWidgets('a removed device can be restored', (t) async {
+    final fake = FakeAdmin()
+      ..list = [AdminDevice(id: 'A1B2C3D4E5F4', removedAt: testNow)];
+    await pumpAdmin(t, fake, const DevicesAdminScreen());
+    await t.tap(find.text('Restore'));
+    await t.pumpAndSettle();
+    expect(fake.calls, ['restore A1B2C3D4E5F4']);
+  });
+
+  testWidgets('create user sends name, email and mobile', (t) async {
+    final fake = FakeAdmin();
+    await pumpAdmin(t, fake, const CreateUserCard());
     await t.enterText(find.widgetWithText(TextField, 'Name'), 'Juan');
     await t.enterText(
       find.widgetWithText(TextField, 'Email'),
@@ -171,49 +195,35 @@ void main() {
       find.widgetWithText(TextField, 'Mobile number'),
       '0917 123 4567',
     );
-    await t.tap(find.text('Create a temporary password'));
-    await t.tap(find.text('Create client'));
+    await t.tap(find.widgetWithText(FilledButton, 'Create user'));
     await t.pumpAndSettle();
-    expect(
-      fake.calls.single,
-      'create Juan juan@example.com 0917 123 4567 temp=true',
-    );
-    expect(
-      find.textContaining('Copy it now. It is shown once.'),
-      findsOneWidget,
-    );
-    expect(find.text('Abc23Def45gh'), findsOneWidget);
-    expect(find.textContaining('2 already-registered devices'), findsOneWidget);
+    expect(fake.calls.single, 'create Juan juan@example.com 0917 123 4567');
+    expect(find.text('User created'), findsOneWidget);
   });
 
-  testWidgets('create client validates the phone before calling', (t) async {
+  testWidgets('create user validates the phone before calling', (t) async {
     final fake = FakeAdmin();
-    await pumpAdmin(t, fake, const OverviewScreen());
+    await pumpAdmin(t, fake, const CreateUserCard());
     await t.enterText(find.widgetWithText(TextField, 'Name'), 'Juan');
     await t.enterText(
       find.widgetWithText(TextField, 'Email'),
       'juan@example.com',
     );
     await t.enterText(find.widgetWithText(TextField, 'Mobile number'), '12345');
-    await t.tap(find.text('Create client'));
+    await t.tap(find.widgetWithText(FilledButton, 'Create user'));
     await t.pumpAndSettle();
     expect(fake.calls, isEmpty);
-    expect(
-      find.text('Enter a Philippine mobile number, for example 09171234567.'),
-      findsOneWidget,
-    );
+    expect(find.text(phoneHint), findsOneWidget);
   });
 
-  testWidgets('create client shows "A client account already exists."', (
-    t,
-  ) async {
+  testWidgets('create user shows the duplicate-mobile message', (t) async {
     final fake = FakeAdmin()
       ..createError = FirebaseFunctionsException(
         code: 'already-exists',
         message: 'x',
-        details: {'code': 'CLIENT_EXISTS'},
+        details: {'code': 'PHONE_IN_USE'},
       );
-    await pumpAdmin(t, fake, const OverviewScreen());
+    await pumpAdmin(t, fake, const CreateUserCard());
     await t.enterText(find.widgetWithText(TextField, 'Name'), 'Juan');
     await t.enterText(
       find.widgetWithText(TextField, 'Email'),
@@ -223,153 +233,17 @@ void main() {
       find.widgetWithText(TextField, 'Mobile number'),
       '09171234567',
     );
-    await t.tap(find.text('Create client'));
-    await t.pumpAndSettle();
-    expect(find.text('A client account already exists.'), findsOneWidget);
-  });
-
-  testWidgets('existing client replaces the form with name and email', (
-    t,
-  ) async {
-    final fake = FakeAdmin()
-      ..clientInfo = const ClientInfo(
-        uid: 'c1',
-        name: 'Juan',
-        email: 'juan@example.com',
-      );
-    await pumpAdmin(t, fake, const OverviewScreen());
-    expect(find.text('Create client account'), findsNothing);
-    expect(find.text('Juan'), findsOneWidget);
-    expect(find.text('juan@example.com'), findsOneWidget);
-  });
-
-  testWidgets('devices table: waiting, online, offline, sleeping rows', (
-    t,
-  ) async {
-    final fake = FakeAdmin()
-      ..healthList = [
-        h('A1B2C3D4E5F1'),
-        h('A1B2C3D4E5F2', online: false),
-        h('A1B2C3D4E5F3', online: false, sleep: true),
-      ]
-      ..allowedList = [
-        const AllowedEntry('A1B2C3D4E5F9', null),
-        const AllowedEntry('A1B2C3D4E5F1', null),
-      ];
-    await pumpAdmin(t, fake, const DevicesAdminScreen());
-    expect(find.text('A1B2C3D4E5F9'), findsOneWidget);
-    expect(find.text('Waiting to register'), findsOneWidget);
-    expect(find.text('Online'), findsOneWidget);
-    expect(find.text('Offline'), findsOneWidget);
-    expect(find.text('Sleeping (low battery)'), findsOneWidget);
-  });
-
-  testWidgets('add device validates and normalizes the ID', (t) async {
-    final fake = FakeAdmin();
-    await pumpAdmin(t, fake, const DevicesAdminScreen());
-    await t.tap(find.text('Add device'));
-    await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField), '123');
-    await t.tap(find.text('Add'));
-    await t.pumpAndSettle();
-    expect(find.text(addDeviceError), findsOneWidget);
-    await t.enterText(find.byType(TextField), 'a1:b2:c3:d4:e5:f6');
-    await t.tap(find.text('Add'));
-    await t.pumpAndSettle();
-    expect(fake.calls, ['add A1B2C3D4E5F6']);
-  });
-
-  testWidgets('remove asks for confirmation with the spec wording', (t) async {
-    final fake = FakeAdmin()..healthList = [h('A1B2C3D4E5F6')];
-    await pumpAdmin(t, fake, const DevicesAdminScreen());
-    await t.ensureVisible(find.byTooltip('Remove'));
-    await t.pumpAndSettle();
-    await t.tap(find.byTooltip('Remove'));
+    await t.tap(find.widgetWithText(FilledButton, 'Create user'));
     await t.pumpAndSettle();
     expect(
-      find.text(
-        'Remove device A1B2C3D4E5F6? Its data is deleted and it cannot register again until you choose Allow again.',
-      ),
+      find.text('Another account already uses this mobile number.'),
       findsOneWidget,
     );
-    await t.tap(find.widgetWithText(FilledButton, 'Remove'));
-    await t.pumpAndSettle();
-    expect(fake.calls, ['remove A1B2C3D4E5F6']);
-  });
-
-  testWidgets('removed devices can be allowed again', (t) async {
-    final fake = FakeAdmin()
-      ..removedList = [RemovedEntry('A1B2C3D4E5F6', testNow)];
-    await pumpAdmin(t, fake, const DevicesAdminScreen());
-    await t.tap(find.text('Allow again'));
-    await t.pumpAndSettle();
-    expect(fake.calls, ['allow A1B2C3D4E5F6']);
-    expect(find.text(allowedAgainMessage), findsOneWidget);
-  });
-
-  testWidgets('battery history chart and table', (t) async {
-    final fake = FakeAdmin()
-      ..healthList = [h('A1B2C3D4E5F6')]
-      ..battery = [
-        for (var i = 0; i < 7 * 96; i++)
-          BatteryPoint(
-            testNow.subtract(Duration(minutes: 15 * (7 * 96 - i))),
-            7.6 + 0.4 * ((i % 96) - 48).abs() / 48 - 0.3 * i / (7 * 96),
-            60,
-          ),
-      ];
-    await pumpAdmin(t, fake, const DevicesAdminScreen());
-    await t.ensureVisible(find.byTooltip('Battery history'));
-    await t.pumpAndSettle();
-    await t.tap(find.byTooltip('Battery history'));
-    await t.pumpAndSettle();
-    expect(find.byType(BatteryChart), findsOneWidget);
-    expect(t.takeException(), isNull);
-    final chart = t.getCenter(find.byType(BatteryChart));
-    final gesture = await t.createGesture(kind: PointerDeviceKind.mouse);
-    await gesture.addPointer(location: chart);
-    await t.pump();
-    expect(t.takeException(), isNull);
-    await t.tap(find.text('Show table'));
-    await t.pumpAndSettle();
-    expect(find.text('Voltage'), findsOneWidget);
-  });
-
-  testWidgets('errors screen empty state', (t) async {
-    await pumpAdmin(t, FakeAdmin(), const ErrorsScreen());
-    expect(find.text('No errors logged.'), findsOneWidget);
-  });
-
-  testWidgets('errors screen lists entries newest first', (t) async {
-    final fake = FakeAdmin()
-      ..errorList = [
-        ErrorEntry(
-          id: '1',
-          deviceId: 'A1B2C3D4E5F6',
-          source: 'alerts',
-          code: 'SMS_FAILED',
-          message: 'Semaphore HTTP 500',
-          ts: testNow,
-        ),
-      ];
-    await pumpAdmin(t, fake, const ErrorsScreen());
-    expect(find.text('SMS_FAILED'), findsOneWidget);
-    expect(find.text('Semaphore HTTP 500'), findsOneWidget);
-  });
-
-  testWidgets('hardware report with no report yet', (t) async {
-    final fake = FakeAdmin();
-    await pumpAdmin(t, fake, const HardwareReportScreen());
-    expect(find.textContaining('No report yet'), findsOneWidget);
-    await t.tap(find.text('Run report'));
-    await t.pumpAndSettle();
-    expect(fake.calls, ['report']);
   });
 
   testWidgets('rail on wide screens, drawer under 800 px', (t) async {
     final fake = FakeAdmin();
-    Widget shell() =>
-        const AdminShell(location: '/overview', child: SizedBox());
+    Widget shell() => const AdminShell(location: '/devices', child: SizedBox());
     await pumpAdmin(t, fake, shell());
     expect(find.byType(NavigationRail), findsOneWidget);
     await pumpAdmin(t, fake, shell(), size: const Size(700, 900));
@@ -379,17 +253,17 @@ void main() {
 
   test('the web build refuses non-admins', () {
     String? go(String? role) => redirectFor(
-      location: '/overview',
+      location: '/devices',
       signedIn: true,
       roleLoaded: true,
       role: role,
       profileLoaded: true,
       mustChangePassword: false,
       requiredRole: 'admin',
-      home: '/overview',
+      home: '/devices',
     );
     expect(go('admin'), isNull);
-    expect(go('client'), '/login?refused=notadmin');
+    expect(go('user'), '/login?refused=notadmin');
     expect(go(null), '/login?refused=notadmin');
   });
 }

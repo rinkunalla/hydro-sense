@@ -1,11 +1,10 @@
 import { onSchedule } from "firebase-functions/scheduler";
-import { refreshSummary } from "../ai/summary";
 import { runAlertPass, type AlertPassResult } from "../alerts/alertPass";
 import { OFFLINE_AFTER_S, TIME_ZONE } from "../config";
 import { C, db, ms, ts } from "../lib/db";
 import { isStale } from "../lib/decisions";
 import { logError } from "../lib/logError";
-import { ALERT_SECRETS, MODEL_SECRETS } from "../lib/providers";
+import { ALERT_SECRETS } from "../lib/providers";
 
 const SOURCE = "monitorDevices";
 
@@ -23,7 +22,7 @@ export async function flipOfflineIfStale(deviceId: string, nowMs: number): Promi
   });
 }
 
-/** One monitor pass: offline flips, the offline summary exception, then alerts. */
+/** One monitor pass: offline flips, then alerts. */
 export async function runMonitorPass(
   nowMs = Date.now(),
 ): Promise<{ flipped: string[]; alerts: AlertPassResult | null }> {
@@ -45,10 +44,6 @@ export async function runMonitorPass(
     console.log(
       JSON.stringify({ severity: "INFO", event: "devices_offline", count: flipped.length }),
     );
-    // The devices trigger cannot see device_health, so Offline reaches the summary here.
-    await refreshSummary(nowMs).catch((e) =>
-      logError({ source: SOURCE, code: "INTERNAL", message: `summary: ${String(e)}` }),
-    );
   }
 
   let alerts: AlertPassResult | null = null;
@@ -64,7 +59,7 @@ export const monitorDevices = onSchedule(
   {
     schedule: "every 1 minutes",
     timeZone: TIME_ZONE,
-    secrets: [...ALERT_SECRETS, ...MODEL_SECRETS],
+    secrets: ALERT_SECRETS,
   },
   async () => {
     await runMonitorPass();

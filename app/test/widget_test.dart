@@ -13,23 +13,19 @@ import 'package:hydro_sense/features/client/devices_screen.dart';
 
 import 'test_data.dart';
 
-Widget harness(
-  Stream<Fleet> fleet, {
-  bool phoneOffline = false,
-  Summary? summary,
-}) => ProviderScope(
-  overrides: [
-    fleetProvider.overrideWith((_) => fleet),
-    summaryProvider.overrideWith((_) => Stream.value(summary)),
-    phoneOfflineProvider.overrideWith((_) => Stream.value(phoneOffline)),
-    clockProvider.overrideWith((_) => Stream.value(testNow)),
-  ],
-  child: MaterialApp(
-    theme: buildLightTheme(),
-    builder: clampTextScale,
-    home: const DevicesScreen(),
-  ),
-);
+Widget harness(Stream<Fleet> fleet, {bool phoneOffline = false}) =>
+    ProviderScope(
+      overrides: [
+        fleetProvider.overrideWith((_) => fleet),
+        phoneOfflineProvider.overrideWith((_) => Stream.value(phoneOffline)),
+        clockProvider.overrideWith((_) => Stream.value(testNow)),
+      ],
+      child: MaterialApp(
+        theme: buildLightTheme(),
+        builder: clampTextScale,
+        home: const DevicesScreen(),
+      ),
+    );
 
 Future<void> phone(WidgetTester t, {double textScale = 1.0}) async {
   t.view.physicalSize = const Size(360 * 3, 780 * 3);
@@ -60,7 +56,6 @@ void main() {
       await phone(t);
       await t.pumpWidget(harness(Stream.value(Fleet(fleetOf(n)))));
       await t.pumpAndSettle();
-      expect(find.text('Water flow summary'), findsOneWidget);
       expect(find.byType(DeviceCard, skipOffstage: false), findsNWidgets(n));
       final first = t.widget<DeviceCard>(find.byType(DeviceCard).first);
       expect(first.view.status, StatusKind.noFlow);
@@ -106,7 +101,7 @@ void main() {
     expect(find.textContaining('No device is reporting'), findsOneWidget);
   });
 
-  testWidgets('low battery, battery fault and paused alerts', (t) async {
+  testWidgets('low battery and battery fault', (t) async {
     await phone(t);
     await t.pumpWidget(
       harness(
@@ -114,7 +109,6 @@ void main() {
           Fleet([
             view('1', battery: 15),
             view('2', batteryFault: true, battery: null),
-            view('3', pausedUntil: testNow.add(const Duration(hours: 1))),
           ]),
         ),
       ),
@@ -122,7 +116,6 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('15% Low battery'), findsOneWidget);
     expect(find.text('Battery reading unavailable'), findsOneWidget);
-    expect(find.text('Alerts paused'), findsOneWidget);
   });
 
   testWidgets('first run shows the three setup steps', (t) async {
@@ -167,22 +160,6 @@ void main() {
     await t.pumpAndSettle();
     expect(find.textContaining('You are offline'), findsOneWidget);
     expect(find.textContaining('(may be outdated)'), findsOneWidget);
-  });
-
-  testWidgets('stale summary shows "May be out of date"', (t) async {
-    await phone(t);
-    await t.pumpWidget(
-      harness(
-        Stream.value(Fleet([view('1', statusChangedAt: testNow)])),
-        summary: Summary(
-          text: 'All good.',
-          lastUpdated: testNow.subtract(const Duration(minutes: 5)),
-        ),
-      ),
-    );
-    await t.pumpAndSettle();
-    expect(find.text('All good.'), findsOneWidget);
-    expect(find.text('May be out of date'), findsOneWidget);
   });
 
   testWidgets('devices appear and disappear live', (t) async {

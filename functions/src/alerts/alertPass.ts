@@ -1,4 +1,4 @@
-import { ALERT_DAILY_CAP, ALERT_SEND_LEASE_S } from "../config";
+import { ALERT_DAILY_CAP, ALERT_SEND_LEASE_S, SMS_PROJECT_DAILY_CAP } from "../config";
 import {
   EMPTY_STATE,
   FAMILIES,
@@ -25,10 +25,20 @@ interface Claimed {
   item: AlertItem;
 }
 
-export interface AlertPassResult {
+type Channel = "sms" | "email";
+export type ChannelResult = "sent" | "digest" | "capped" | "failed";
+
+export interface UserAlertResult {
   sent: AlertItem[];
-  sms: "sent" | "digest" | "capped" | "failed" | "none";
-  email: "sent" | "digest" | "capped" | "failed" | "none";
+  sms: ChannelResult;
+  email: ChannelResult;
+}
+
+export interface AlertPassResult {
+  /** Every item handled in this pass, across users. */
+  sent: AlertItem[];
+  /** Only users who had something due. */
+  users: Record<string, UserAlertResult>;
 }
 
 const toState = (d: FirebaseFirestore.DocumentData | undefined): AlertState => ({
@@ -103,46 +113,72 @@ async function evaluate(
   });
 }
 
-type CapClaim = "send" | "digest" | "capped";
+type CapClaim = "send" | "digest" | "capped" | "project_capped";
 
-/** Counts one message against today's per-channel cap (CLAUDE.md section 7 rule 8). */
-async function claimCap(channel: "sms" | "email", nowMs: number): Promise<CapClaim> {
-  const ref = db.collection(C.alertDaily).doc(manilaDateKey(nowMs));
+const userDayRef = (uid: string, nowMs: number) =>
+  db.collection(C.alertDaily).doc(`${manilaDateKey(nowMs)}__${uid}`);
+const projectDayRef = (nowMs: number) => db.collection(C.alertDaily).doc(manilaDateKey(nowMs));
+
+/**
+ * Counts one message against the user's per-channel cap for today and, for SMS,
+ * the project-wide ceiling (CLAUDE.md section 7 rule 8, D30). One transaction.
+ */
+async function claimCap(channel: Channel, uid: string, nowMs: number): Promise<CapClaim> {
+  const userRef = userDayRef(uid, nowMs);
+  const projectRef = projectDayRef(nowMs);
   return db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const count = (snap.get(`${channel}Count`) as number | undefined) ?? 0;
+    const [user, project] = await Promise.all([tx.get(userRef), tx.get(projectRef)]);
+    const projectSms = (project.get("smsCount") as number | undefined) ?? 0;
+    if (channel === "sms" && projectSms >= SMS_PROJECT_DAILY_CAP) return "project_capped";
+
+    const count = (user.get(`${channel}Count`) as number | undefined) ?? 0;
+    let claim: CapClaim;
     if (count < ALERT_DAILY_CAP) {
-      tx.set(ref, { [`${channel}Count`]: count + 1 }, { merge: true });
-      return "send";
+      tx.set(userRef, { [`${channel}Count`]: count + 1 }, { merge: true });
+      claim = "send";
+    } else if (user.get(`${channel}DigestSent`) !== true) {
+      tx.set(userRef, { [`${channel}DigestSent`]: true }, { merge: true });
+      claim = "digest";
+    } else {
+      return "capped";
     }
-    if (snap.get(`${channel}DigestSent`) !== true) {
-      tx.set(ref, { [`${channel}DigestSent`]: true }, { merge: true });
-      return "digest";
-    }
-    return "capped";
+    // A digest SMS is still an SMS: it counts toward the project ceiling.
+    if (channel === "sms") tx.set(projectRef, { smsCount: projectSms + 1 }, { merge: true });
+    return claim;
   });
 }
 
-async function releaseCap(channel: "sms" | "email", nowMs: number) {
-  const ref = db.collection(C.alertDaily).doc(manilaDateKey(nowMs));
+async function releaseCap(channel: Channel, uid: string, nowMs: number) {
+  const userRef = userDayRef(uid, nowMs);
+  const projectRef = projectDayRef(nowMs);
   await db.runTransaction(async (tx) => {
-    const count = ((await tx.get(ref)).get(`${channel}Count`) as number | undefined) ?? 0;
-    if (count > 0) tx.set(ref, { [`${channel}Count`]: count - 1 }, { merge: true });
+    const [user, project] = await Promise.all([tx.get(userRef), tx.get(projectRef)]);
+    const count = (user.get(`${channel}Count`) as number | undefined) ?? 0;
+    if (count > 0) tx.set(userRef, { [`${channel}Count`]: count - 1 }, { merge: true });
+    const projectSms = (project.get("smsCount") as number | undefined) ?? 0;
+    if (channel === "sms" && projectSms > 0) {
+      tx.set(projectRef, { smsCount: projectSms - 1 }, { merge: true });
+    }
   });
 }
 
 async function deliver(
-  channel: "sms" | "email",
+  channel: Channel,
+  uid: string,
   to: string | null,
   items: AlertItem[],
   nowMs: number,
-): Promise<AlertPassResult["sms"]> {
+): Promise<ChannelResult> {
   const code = channel === "sms" ? "SMS_FAILED" : "EMAIL_FAILED";
   if (!to) {
     await logError({ source: SOURCE, code, message: "no recipient", nowMs });
     return "failed";
   }
-  const claim = await claimCap(channel, nowMs);
+  const claim = await claimCap(channel, uid, nowMs);
+  if (claim === "project_capped") {
+    await logError({ source: SOURCE, code: "SMS_PROJECT_CAP_REACHED", message: "sms", nowMs });
+    return "capped";
+  }
   if (claim === "capped") return "capped";
   const p = providers();
   try {
@@ -153,7 +189,7 @@ async function deliver(
       await p.email.send(to, mail.subject, mail.text);
     }
   } catch (e) {
-    if (claim === "send") await releaseCap(channel, nowMs);
+    if (claim === "send") await releaseCap(channel, uid, nowMs);
     // logError scrubs any address or number the provider echoes back.
     await logError({ source: SOURCE, code, message: String(e), nowMs });
     return "failed";
@@ -165,78 +201,98 @@ async function deliver(
   return "sent";
 }
 
-/** Evaluates every owned device and sends what is due as one SMS and one email. */
-export async function runAlertPass(nowMs = Date.now()): Promise<AlertPassResult> {
-  const none: AlertPassResult = { sent: [], sms: "none", email: "none" };
-  const system = await db.collection(C.config).doc("system").get();
-  const clientUid = system.get("clientUid") as string | undefined;
-  if (!clientUid) return none;
+/** Evaluates one device's three families; failures are logged per device. */
+async function evaluateDevice(
+  dev: FirebaseFirestore.QueryDocumentSnapshot,
+  h: FirebaseFirestore.DocumentData,
+  activeIds: Set<string>,
+  nowMs: number,
+): Promise<Claimed[]> {
+  const view: DeviceView = {
+    online: h.online === true,
+    lastSeenMs: ms(h.lastSeen),
+    flowStatus: (dev.get("flowStatus") as FlowStatus | null) ?? null,
+    abnormalSinceMs: ms(dev.get("abnormalSince")),
+    batteryPercent: (h.batteryPercent as number | null | undefined) ?? null,
+    batteryFault: h.batteryFault === true,
+  };
+  const out: Claimed[] = [];
+  for (const family of FAMILIES) {
+    const cond = conditionFor(family, view, nowMs);
+    if (cond.kind === "skip") continue;
+    if (cond.kind !== "fault" && !activeIds.has(`${dev.id}__${family}`)) continue;
+    try {
+      const c = await evaluate(
+        dev.id,
+        family,
+        cond,
+        view,
+        dev.get("nickname") as string,
+        h.lowVoltageSleep === true,
+        nowMs,
+      );
+      if (c) out.push(c);
+    } catch (e) {
+      await logError({
+        source: SOURCE,
+        code: "INTERNAL",
+        message: String(e),
+        deviceId: dev.id,
+        nowMs,
+      });
+    }
+  }
+  return out;
+}
 
+/**
+ * Evaluates every assigned device and sends what is due as one SMS and one email
+ * per owner. Unassigned and removed devices and suspended users send nothing.
+ */
+export async function runAlertPass(nowMs = Date.now()): Promise<AlertPassResult> {
+  const result: AlertPassResult = { sent: [], users: {} };
   const [devices, health, active] = await Promise.all([
-    db.collection(C.devices).where("ownerUid", "==", clientUid).get(),
-    db.collection(C.deviceHealth).where("ownerUid", "==", clientUid).get(),
+    db.collection(C.devices).where("ownerUid", "!=", null).get(),
+    db.collection(C.deviceHealth).where("ownerUid", "!=", null).get(),
     db.collection(C.alertState).where("active", "==", true).get(),
   ]);
   const healthById = new Map(health.docs.map((d) => [d.id, d.data()]));
   // Only active states can change without a fault, so healthy devices cost no reads.
   const activeIds = new Set(active.docs.map((d) => d.id));
 
-  const claimed: Claimed[] = [];
+  const byOwner = new Map<string, FirebaseFirestore.QueryDocumentSnapshot[]>();
   for (const dev of devices.docs) {
-    const h = healthById.get(dev.id);
-    if (!h) continue;
-    const pausedUntilMs = ms(dev.get("pausedUntil"));
-    if (pausedUntilMs !== null && pausedUntilMs > nowMs) continue;
-
-    const view: DeviceView = {
-      online: h.online === true,
-      lastSeenMs: ms(h.lastSeen),
-      flowStatus: (dev.get("flowStatus") as FlowStatus | null) ?? null,
-      abnormalSinceMs: ms(dev.get("abnormalSince")),
-      batteryPercent: (h.batteryPercent as number | null | undefined) ?? null,
-      batteryFault: h.batteryFault === true,
-    };
-    for (const family of FAMILIES) {
-      const cond = conditionFor(family, view, nowMs);
-      if (cond.kind === "skip") continue;
-      if (cond.kind !== "fault" && !activeIds.has(`${dev.id}__${family}`)) continue;
-      try {
-        const c = await evaluate(
-          dev.id,
-          family,
-          cond,
-          view,
-          dev.get("nickname") as string,
-          h.lowVoltageSleep === true,
-          nowMs,
-        );
-        if (c) claimed.push(c);
-      } catch (e) {
-        await logError({
-          source: SOURCE,
-          code: "INTERNAL",
-          message: String(e),
-          deviceId: dev.id,
-          nowMs,
-        });
-      }
-    }
+    if (dev.get("removedAt")) continue;
+    const owner = dev.get("ownerUid") as string;
+    byOwner.set(owner, [...(byOwner.get(owner) ?? []), dev]);
   }
-  if (claimed.length === 0) return none;
+  if (byOwner.size === 0) return result;
+  const owners = [...byOwner.keys()];
+  const users = await db.getAll(...owners.map((u) => db.collection(C.users).doc(u)));
 
-  const user = await db.collection(C.users).doc(clientUid).get();
-  const items = claimed.map((c) => c.item);
-  const [sms, email] = await Promise.all([
-    deliver("sms", (user.get("phone") as string | undefined) ?? null, items, nowMs),
-    deliver("email", (user.get("email") as string | undefined) ?? null, items, nowMs),
-  ]);
+  for (const user of users) {
+    if (!user.exists || user.get("status") !== "active") continue;
+    const claimed: Claimed[] = [];
+    for (const dev of byOwner.get(user.id)!) {
+      const h = healthById.get(dev.id);
+      if (h) claimed.push(...(await evaluateDevice(dev, h, activeIds, nowMs)));
+    }
+    if (claimed.length === 0) continue;
 
-  // A capped or digest channel counts as handled; only real failures on both skip the lock.
-  const handled = sms !== "failed" || email !== "failed";
-  await Promise.all(
-    claimed.map((c) =>
-      handled ? c.ref.set(fromState(c.next)) : c.ref.update({ sendingUntil: null }),
-    ),
-  );
-  return { sent: handled ? items : [], sms, email };
+    const items = claimed.map((c) => c.item);
+    const [sms, email] = await Promise.all([
+      deliver("sms", user.id, (user.get("phone") as string | undefined) ?? null, items, nowMs),
+      deliver("email", user.id, (user.get("email") as string | undefined) ?? null, items, nowMs),
+    ]);
+    // A capped or digest channel counts as handled; only real failures on both skip the lock.
+    const handled = sms !== "failed" || email !== "failed";
+    await Promise.all(
+      claimed.map((c) =>
+        handled ? c.ref.set(fromState(c.next)) : c.ref.update({ sendingUntil: null }),
+      ),
+    );
+    result.users[user.id] = { sent: handled ? items : [], sms, email };
+    if (handled) result.sent.push(...items);
+  }
+  return result;
 }

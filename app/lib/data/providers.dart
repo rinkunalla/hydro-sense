@@ -53,10 +53,6 @@ final fleetProvider = StreamProvider<Fleet>((ref) {
   return ref.watch(repositoryProvider).fleet(user.uid);
 });
 
-final summaryProvider = StreamProvider<Summary?>(
-  (ref) => ref.watch(repositoryProvider).summary(),
-);
-
 final statusChangesProvider = StreamProvider.family<List<StatusChange>, String>(
   (ref, id) => ref.watch(repositoryProvider).statusChanges(id),
 );

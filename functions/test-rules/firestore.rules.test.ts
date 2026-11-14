@@ -1,4 +1,4 @@
-// Firestore rules tests (KICKOFF.md Phase 1). Run with `npm run test:rules` from
+// Firestore rules tests (KICKOFF.md stage 2). Run with `npm run test:rules` from
 // the repo root, which starts the Firestore emulator first.
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -17,6 +17,7 @@ import {
   getDoc,
   getDocs,
   query,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where,
@@ -25,11 +26,11 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
 
 const HOUR_MS = 3600 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 
 let env: RulesTestEnvironment;
-let client: Firestore;
-let otherClient: Firestore;
+let userA: Firestore;
+let userB: Firestore;
+let oldClient: Firestore; // v1 role, must get nothing
 let admin: Firestore;
 let noRole: Firestore;
 let anon: Firestore;
@@ -44,8 +45,9 @@ beforeAll(async () => {
       rules: readFileSync(path.resolve(process.cwd(), "../firestore.rules"), "utf8"),
     },
   });
-  client = db(env.authenticatedContext("client1", { role: "client" }));
-  otherClient = db(env.authenticatedContext("client2", { role: "client" }));
+  userA = db(env.authenticatedContext("userA", { role: "user" }));
+  userB = db(env.authenticatedContext("userB", { role: "user" }));
+  oldClient = db(env.authenticatedContext("userA", { role: "client" }));
   admin = db(env.authenticatedContext("admin1", { role: "admin" }));
   noRole = db(env.authenticatedContext("someone", {}));
   anon = db(env.unauthenticatedContext());
@@ -53,6 +55,21 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await env.cleanup();
+});
+
+const prefs = { push: true, sms: true, email: false };
+const branch = (id: string, deviceIds: string[] = ["DEVA"]) => ({
+  id,
+  endName: `End ${id}`,
+  endLat: 16.05,
+  endLng: 120.34,
+  deviceIds,
+});
+const pipeline = (branches = [branch("b1")]) => ({
+  name: "Farm pipeline",
+  source: { name: "Tank", lat: 16.04, lng: 120.33 },
+  branches,
+  updatedAt: serverTimestamp(),
 });
 
 beforeEach(async () => {
@@ -64,191 +81,274 @@ beforeEach(async () => {
       nickname,
       flowStatus: "Normal Flow",
       flowRate: 4.2,
-      lat: 16.04,
-      lng: 120.33,
+      gpsLat: 16.04,
+      gpsLng: 120.33,
+      manualLat: null,
+      manualLng: null,
       lowFlowCutoff: 0.2,
       normalFlowCutoff: 2.0,
-      pausedUntil: null,
     });
-    await setDoc(doc(s, "config/system"), {
-      clientUid: "client1",
-      clientName: "C",
-      clientEmail: "c@x.ph",
+    const user = (name: string) => ({
+      role: "user",
+      name,
+      email: `${name}@x.ph`,
+      phone: "639171234567",
+      passwordSet: true,
+      deviceCount: 1,
+      alertPrefs: prefs,
+      status: "active",
     });
-    await setDoc(doc(s, "users/client1"), { role: "client", email: "c@x.ph" });
-    await setDoc(doc(s, "users/client2"), { role: "client", email: "d@x.ph" });
-    await setDoc(doc(s, "devices/DEV1"), device("client1", "Garden Line"));
-    await setDoc(doc(s, "devices/DEV2"), device("client2", "Other"));
-    await setDoc(doc(s, "devices/DEV3"), device(null, "Device 0003"));
-    await setDoc(doc(s, "devices/DEV1/flow_logs/l1"), {
-      flowStatus: "Normal Flow",
-      trigger: "heartbeat",
-    });
-    await setDoc(doc(s, "devices/DEV3/flow_logs/l1"), {
-      flowStatus: "Normal Flow",
-      trigger: "heartbeat",
-    });
-    await setDoc(doc(s, "device_health/DEV1"), { ownerUid: "client1", online: true });
-    await setDoc(doc(s, "device_health/DEV3"), { ownerUid: null, online: true });
-    await setDoc(doc(s, "device_health/DEV1/battery_logs/b1"), { batteryVoltage: 7.9 });
-    await setDoc(doc(s, "device_secrets/DEV1"), { tokenHash: "x" });
-    await setDoc(doc(s, "allowed_devices/DEV1"), { addedAt: 1 });
-    await setDoc(doc(s, "removed_devices/DEV9"), { removedAt: 1 });
-    await setDoc(doc(s, "alert_state/DEV1__flow"), { active: false });
-    await setDoc(doc(s, "alert_daily/2026-11-03"), { smsCount: 0 });
-    await setDoc(doc(s, "ai_insights/client_summary"), { text: "All good." });
-    await setDoc(doc(s, "ai_insights/admin_diagnostics"), { text: "Healthy." });
-    await setDoc(doc(s, "error_logs/e1"), { deviceId: "DEV1", code: "SMS_FAILED", ts: 1 });
-    await setDoc(doc(s, "unlisted/x"), { a: 1 });
+    await setDoc(doc(s, "users/userA"), user("a"));
+    await setDoc(doc(s, "users/userB"), user("b"));
+    await setDoc(doc(s, "users/userA/push_tokens/tokA"), { platform: "android", updatedAt: 1 });
+    await setDoc(doc(s, "admins/admin1"), { name: "Ad", email: "ad@x.ph", status: "active" });
+    await setDoc(doc(s, "admin_audit/a1"), { action: "user_deleted", targetId: "userB" });
+    await setDoc(doc(s, "devices/DEVA"), device("userA", "Garden Line"));
+    await setDoc(doc(s, "devices/DEVB"), device("userB", "Other"));
+    await setDoc(doc(s, "devices/DEVU"), device(null, "Device 0003"));
+    for (const id of ["DEVA", "DEVB", "DEVU"]) {
+      await setDoc(doc(s, `devices/${id}/flow_logs/l1`), { flowStatus: "Normal Flow" });
+    }
+    await setDoc(doc(s, "device_health/DEVA"), { ownerUid: "userA", online: true });
+    await setDoc(doc(s, "device_health/DEVB"), { ownerUid: "userB", online: true });
+    await setDoc(doc(s, "device_health/DEVU"), { ownerUid: null, online: true });
+    await setDoc(doc(s, "pipelines/userA"), { ...pipeline(), updatedAt: 1 });
+    await setDoc(doc(s, "pipelines/userB"), { ...pipeline(), updatedAt: 1 });
+    await setDoc(doc(s, "allowed_devices/DEVA"), { addedAt: 1, label: "Unit 1" });
+    for (const p of [
+      "device_secrets/DEVA",
+      "phone_index/639171234567",
+      "password_resets/userA",
+      "alert_state/DEVA__flow",
+      "alert_daily/2026-11-14",
+      "alert_daily/2026-11-14__userA",
+      "rate_limits/register__1",
+      "error_logs/e1",
+      "config/system",
+      "unlisted/x",
+    ]) {
+      await setDoc(doc(s, p), { a: 1 });
+    }
   });
 });
 
-describe("client reads", () => {
-  it("reads own device, health, flow logs and the summary", async () => {
-    await assertSucceeds(getDoc(doc(client, "devices/DEV1")));
-    await assertSucceeds(getDoc(doc(client, "device_health/DEV1")));
-    await assertSucceeds(getDoc(doc(client, "devices/DEV1/flow_logs/l1")));
-    await assertSucceeds(getDocs(collection(client, "devices/DEV1/flow_logs")));
-    await assertSucceeds(getDoc(doc(client, "ai_insights/client_summary")));
-    await assertSucceeds(getDoc(doc(client, "users/client1")));
+describe("a user reads only their own data", () => {
+  it("reads own devices, health, flow logs, pipeline, profile and push tokens", async () => {
+    await assertSucceeds(getDoc(doc(userA, "devices/DEVA")));
+    await assertSucceeds(getDoc(doc(userA, "device_health/DEVA")));
+    await assertSucceeds(getDocs(collection(userA, "devices/DEVA/flow_logs")));
+    await assertSucceeds(getDoc(doc(userA, "pipelines/userA")));
+    await assertSucceeds(getDoc(doc(userA, "users/userA")));
+    await assertSucceeds(getDoc(doc(userA, "users/userA/push_tokens/tokA")));
   });
 
-  it("lists own devices and health with an ownerUid filter only", async () => {
+  it("lists own devices and health only with an ownerUid filter", async () => {
     await assertSucceeds(
-      getDocs(query(collection(client, "devices"), where("ownerUid", "==", "client1"))),
+      getDocs(query(collection(userA, "devices"), where("ownerUid", "==", "userA"))),
     );
     await assertSucceeds(
-      getDocs(query(collection(client, "device_health"), where("ownerUid", "==", "client1"))),
+      getDocs(query(collection(userA, "device_health"), where("ownerUid", "==", "userA"))),
     );
-    await assertFails(getDocs(collection(client, "devices")));
-  });
-
-  it("cannot read devices it does not own, or unadopted devices", async () => {
-    await assertFails(getDoc(doc(client, "devices/DEV2")));
-    await assertFails(getDoc(doc(client, "devices/DEV3")));
-    await assertFails(getDoc(doc(client, "device_health/DEV3")));
-    await assertFails(getDoc(doc(client, "devices/DEV3/flow_logs/l1")));
-    await assertFails(getDoc(doc(otherClient, "devices/DEV1")));
-  });
-
-  it("cannot read admin-only or private data", async () => {
-    await assertFails(getDoc(doc(client, "config/system")));
-    await assertFails(getDoc(doc(client, "removed_devices/DEV9")));
-    await assertFails(getDoc(doc(client, "allowed_devices/DEV1")));
-    await assertFails(getDoc(doc(client, "device_health/DEV1/battery_logs/b1")));
-    await assertFails(getDoc(doc(client, "ai_insights/admin_diagnostics")));
-    await assertFails(getDoc(doc(client, "error_logs/e1")));
-    await assertFails(getDoc(doc(client, "users/client2")));
-  });
-});
-
-describe("client writes", () => {
-  const pauseIn = (ms: number) => Timestamp.fromMillis(Date.now() + ms);
-
-  it("changes nickname and pausedUntil with valid values", async () => {
-    await assertSucceeds(updateDoc(doc(client, "devices/DEV1"), { nickname: "Kitchen" }));
-    await assertSucceeds(updateDoc(doc(client, "devices/DEV1"), { nickname: "x".repeat(24) }));
-    await assertSucceeds(updateDoc(doc(client, "devices/DEV1"), { pausedUntil: pauseIn(HOUR_MS) }));
-    await assertSucceeds(
-      updateDoc(doc(client, "devices/DEV1"), { pausedUntil: pauseIn(6 * DAY_MS) }),
-    );
-    await assertSucceeds(updateDoc(doc(client, "devices/DEV1"), { pausedUntil: null }));
-    await assertSucceeds(
-      updateDoc(doc(client, "devices/DEV1"), { nickname: "Both", pausedUntil: pauseIn(HOUR_MS) }),
-    );
-  });
-
-  it("rejects invalid nicknames", async () => {
-    await assertFails(updateDoc(doc(client, "devices/DEV1"), { nickname: "" }));
-    await assertFails(updateDoc(doc(client, "devices/DEV1"), { nickname: "   " }));
-    await assertFails(updateDoc(doc(client, "devices/DEV1"), { nickname: "x".repeat(25) }));
-    await assertFails(updateDoc(doc(client, "devices/DEV1"), { nickname: 42 }));
-  });
-
-  it("rejects a pause over 7 days, in the past, or of the wrong type", async () => {
-    await assertFails(updateDoc(doc(client, "devices/DEV1"), { pausedUntil: pauseIn(8 * DAY_MS) }));
-    await assertFails(updateDoc(doc(client, "devices/DEV1"), { pausedUntil: pauseIn(-HOUR_MS) }));
-    await assertFails(updateDoc(doc(client, "devices/DEV1"), { pausedUntil: "tomorrow" }));
-  });
-
-  it("cannot change any other field, even alongside an allowed one", async () => {
-    await assertFails(updateDoc(doc(client, "devices/DEV1"), { flowStatus: "No Flow" }));
-    await assertFails(updateDoc(doc(client, "devices/DEV1"), { ownerUid: "client2" }));
-    await assertFails(updateDoc(doc(client, "devices/DEV1"), { normalFlowCutoff: 9 }));
-    await assertFails(updateDoc(doc(client, "devices/DEV1"), { nickname: "Ok", lowFlowCutoff: 0 }));
-  });
-
-  it("cannot create, delete or edit devices it does not own", async () => {
+    await assertFails(getDocs(collection(userA, "devices")));
     await assertFails(
-      setDoc(doc(client, "devices/NEW1"), { ownerUid: "client1", nickname: "New" }),
+      getDocs(query(collection(userA, "devices"), where("ownerUid", "==", "userB"))),
     );
-    await assertFails(deleteDoc(doc(client, "devices/DEV1")));
-    await assertFails(updateDoc(doc(client, "devices/DEV2"), { nickname: "Mine now" }));
-    await assertFails(updateDoc(doc(client, "devices/DEV3"), { nickname: "Mine now" }));
   });
 
-  it("cannot write anything else", async () => {
-    await assertFails(setDoc(doc(client, "users/client1"), { role: "admin" }));
-    await assertFails(updateDoc(doc(client, "device_health/DEV1"), { online: false }));
-    await assertFails(setDoc(doc(client, "devices/DEV1/flow_logs/l2"), { flowStatus: "x" }));
-    await assertFails(setDoc(doc(client, "ai_insights/client_summary"), { text: "x" }));
+  it("never reads another user's or an unassigned device", async () => {
+    for (const id of ["DEVB", "DEVU"]) {
+      await assertFails(getDoc(doc(userA, `devices/${id}`)));
+      await assertFails(getDoc(doc(userA, `device_health/${id}`)));
+      await assertFails(getDocs(collection(userA, `devices/${id}/flow_logs`)));
+    }
+    await assertFails(getDoc(doc(userA, "pipelines/userB")));
+    await assertFails(getDoc(doc(userA, "users/userB")));
+    await assertFails(getDoc(doc(userB, "users/userA/push_tokens/tokA")));
+  });
+
+  it("reads no admin data", async () => {
+    await assertFails(getDoc(doc(userA, "admins/admin1")));
+    await assertFails(getDocs(collection(userA, "admin_audit")));
+    await assertFails(getDoc(doc(userA, "allowed_devices/DEVA")));
+  });
+
+  it("the v1 'client' role gets nothing", async () => {
+    await assertFails(getDoc(doc(oldClient, "devices/DEVA")));
+    await assertFails(getDoc(doc(oldClient, "users/userA")));
   });
 });
 
-describe("admin", () => {
-  it("cannot read flow data", async () => {
-    await assertFails(getDoc(doc(admin, "devices/DEV1")));
-    await assertFails(getDocs(collection(admin, "devices")));
-    await assertFails(getDoc(doc(admin, "devices/DEV1/flow_logs/l1")));
-    await assertFails(getDoc(doc(admin, "ai_insights/client_summary")));
+describe("user writes", () => {
+  it("changes the nickname (1 to 24 characters)", async () => {
+    await assertSucceeds(updateDoc(doc(userA, "devices/DEVA"), { nickname: "Kitchen" }));
+    await assertSucceeds(updateDoc(doc(userA, "devices/DEVA"), { nickname: "x".repeat(24) }));
+    for (const bad of ["", "   ", "x".repeat(25), 42]) {
+      await assertFails(updateDoc(doc(userA, "devices/DEVA"), { nickname: bad }));
+    }
   });
 
-  it("reads health, logs, diagnostics, allow and removed lists, and config", async () => {
-    await assertSucceeds(getDoc(doc(admin, "device_health/DEV1")));
-    await assertSucceeds(getDoc(doc(admin, "device_health/DEV3")));
-    await assertSucceeds(getDocs(collection(admin, "device_health")));
-    await assertSucceeds(getDocs(collection(admin, "device_health/DEV1/battery_logs")));
-    await assertSucceeds(getDocs(collection(admin, "error_logs")));
-    await assertSucceeds(getDoc(doc(admin, "ai_insights/admin_diagnostics")));
-    await assertSucceeds(getDocs(collection(admin, "removed_devices")));
+  it("sets and clears the manual pin, both values or neither (D25)", async () => {
+    const pin = doc(userA, "devices/DEVA");
+    await assertSucceeds(updateDoc(pin, { manualLat: 16.1, manualLng: 120.4 }));
+    await assertSucceeds(updateDoc(pin, { manualLat: null, manualLng: null }));
+    await assertFails(updateDoc(pin, { manualLat: 16.1 }));
+    await assertFails(updateDoc(pin, { manualLat: 16.1, manualLng: null }));
+    await assertFails(updateDoc(pin, { manualLat: 91, manualLng: 120 }));
+    await assertFails(updateDoc(pin, { manualLat: 16, manualLng: 181 }));
+    await assertFails(updateDoc(pin, { manualLat: "16", manualLng: "120" }));
+  });
+
+  it("changes no other device field, even alongside an allowed one", async () => {
+    const d = doc(userA, "devices/DEVA");
+    await assertFails(updateDoc(d, { flowStatus: "No Flow" }));
+    await assertFails(updateDoc(d, { ownerUid: "userB" }));
+    await assertFails(updateDoc(d, { gpsLat: 1, gpsLng: 1 }));
+    await assertFails(updateDoc(d, { nickname: "Ok", lowFlowCutoff: 0 }));
+    await assertFails(updateDoc(d, { pausedUntil: Timestamp.fromMillis(Date.now() + HOUR_MS) }));
+    await assertFails(deleteDoc(d));
+    await assertFails(setDoc(doc(userA, "devices/NEW1"), { ownerUid: "userA", nickname: "N" }));
+    await assertFails(updateDoc(doc(userA, "devices/DEVB"), { nickname: "Mine" }));
+    await assertFails(updateDoc(doc(userA, "devices/DEVU"), { nickname: "Mine" }));
+  });
+
+  it("changes only alertPrefs on the own profile, as exactly three booleans", async () => {
+    const me = doc(userA, "users/userA");
+    await assertSucceeds(updateDoc(me, { alertPrefs: { push: false, sms: true, email: true } }));
+    await assertFails(updateDoc(me, { alertPrefs: { push: false, sms: true } }));
+    await assertFails(updateDoc(me, { alertPrefs: { ...prefs, extra: true } }));
+    await assertFails(updateDoc(me, { alertPrefs: { push: "yes", sms: true, email: true } }));
+    await assertFails(updateDoc(me, { name: "Renamed" }));
+    await assertFails(updateDoc(me, { phone: "639170000000" }));
+    await assertFails(updateDoc(me, { role: "admin" }));
+    await assertFails(updateDoc(me, { status: "suspended", alertPrefs: prefs }));
+    await assertFails(updateDoc(doc(userA, "users/userB"), { alertPrefs: prefs }));
+  });
+
+  it("manages own push tokens with limited fields", async () => {
+    const t = doc(userA, "users/userA/push_tokens/tokNew");
+    await assertSucceeds(setDoc(t, { platform: "android", updatedAt: serverTimestamp() }));
+    await assertSucceeds(deleteDoc(t));
+    await assertFails(setDoc(t, { platform: "ios", updatedAt: serverTimestamp() }));
+    await assertFails(
+      setDoc(t, { platform: "android", updatedAt: serverTimestamp(), uid: "userB" }),
+    );
+    await assertFails(
+      setDoc(doc(userB, "users/userA/push_tokens/x"), {
+        platform: "android",
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it("writes own pipeline within the size and shape limits (D26)", async () => {
+    const p = doc(userA, "pipelines/userA");
+    await assertSucceeds(setDoc(p, pipeline()));
+    const ten = Array.from({ length: 10 }, (_, i) => branch(`b${i}`));
+    await assertSucceeds(setDoc(p, pipeline(ten)));
+    await assertSucceeds(setDoc(p, pipeline([branch("b1", Array(50).fill("DEVA"))])));
+    await assertSucceeds(deleteDoc(p));
+
+    await assertFails(setDoc(p, pipeline([...ten, branch("b10")])));
+    await assertFails(setDoc(p, pipeline([branch("b1", Array(51).fill("DEVA"))])));
+    await assertFails(setDoc(p, { ...pipeline(), name: "x".repeat(41) }));
+    await assertFails(setDoc(p, { ...pipeline(), name: "" }));
+    await assertFails(setDoc(p, { ...pipeline(), extra: 1 }));
+    await assertFails(setDoc(p, { ...pipeline(), updatedAt: 1 }));
+    await assertFails(setDoc(p, { ...pipeline(), source: { name: "Tank", lat: 99, lng: 120 } }));
+    await assertFails(setDoc(p, pipeline([{ ...branch("b1"), endLat: "16" }])));
+    await assertFails(setDoc(p, pipeline([{ ...branch("b1"), owner: "x" }])));
+    await assertFails(setDoc(p, pipeline([{ ...branch("b1"), endName: "y".repeat(41) }])));
+    await assertFails(setDoc(doc(userA, "pipelines/userB"), pipeline()));
+  });
+
+  it("writes nothing server-owned", async () => {
+    await assertFails(updateDoc(doc(userA, "device_health/DEVA"), { online: false }));
+    await assertFails(setDoc(doc(userA, "devices/DEVA/flow_logs/l2"), { flowStatus: "x" }));
+    await assertFails(setDoc(doc(userA, "phone_index/639170000000"), { uid: "userA" }));
+    await assertFails(setDoc(doc(userA, "users/userC"), { role: "user" }));
+  });
+});
+
+describe("admin (D24)", () => {
+  it("reads users, admins, the audit log and the allowlist", async () => {
+    await assertSucceeds(getDocs(collection(admin, "users")));
+    await assertSucceeds(getDoc(doc(admin, "users/userA")));
+    await assertSucceeds(getDocs(collection(admin, "admins")));
+    await assertSucceeds(getDocs(collection(admin, "admin_audit")));
     await assertSucceeds(getDocs(collection(admin, "allowed_devices")));
-    await assertSucceeds(getDoc(doc(admin, "config/system")));
   });
 
-  it("cannot read user docs or write anything", async () => {
-    await assertFails(getDoc(doc(admin, "users/client1")));
-    await assertFails(setDoc(doc(admin, "config/system"), { clientUid: "x" }));
+  it("never reads devices, health, flow logs, pipelines or push tokens", async () => {
+    await assertFails(getDoc(doc(admin, "devices/DEVA")));
+    await assertFails(getDocs(collection(admin, "devices")));
+    await assertFails(getDoc(doc(admin, "device_health/DEVA")));
+    await assertFails(getDocs(collection(admin, "device_health")));
+    await assertFails(getDocs(collection(admin, "devices/DEVA/flow_logs")));
+    await assertFails(getDoc(doc(admin, "pipelines/userA")));
+    await assertFails(getDoc(doc(admin, "users/userA/push_tokens/tokA")));
+    await assertFails(getDoc(doc(admin, "config/system")));
+  });
+
+  it("writes nothing directly (callables do the work)", async () => {
+    await assertFails(updateDoc(doc(admin, "users/userA"), { name: "x" }));
+    await assertFails(updateDoc(doc(admin, "users/userA"), { alertPrefs: prefs }));
+    await assertFails(setDoc(doc(admin, "admins/admin2"), { status: "active" }));
     await assertFails(setDoc(doc(admin, "allowed_devices/NEW1"), { addedAt: 1 }));
-    await assertFails(deleteDoc(doc(admin, "removed_devices/DEV9")));
-    await assertFails(updateDoc(doc(admin, "device_health/DEV1"), { online: false }));
+  });
+});
+
+describe("the audit log is immutable (D42)", () => {
+  it("nobody creates, changes or deletes an entry", async () => {
+    for (const s of [admin, userA, noRole, anon]) {
+      await assertFails(setDoc(doc(s, "admin_audit/a2"), { action: "user_restored" }));
+      await assertFails(updateDoc(doc(s, "admin_audit/a1"), { targetId: "x" }));
+      await assertFails(deleteDoc(doc(s, "admin_audit/a1")));
+    }
   });
 });
 
 describe("nobody", () => {
-  const everyone = () => [client, otherClient, admin, noRole, anon];
+  const everyone = () => [userA, userB, oldClient, admin, noRole, anon];
 
-  it("reads device_secrets, alert_state or alert_daily", async () => {
+  it("reads server-only collections", async () => {
     for (const s of everyone()) {
-      await assertFails(getDoc(doc(s, "device_secrets/DEV1")));
-      await assertFails(getDoc(doc(s, "alert_state/DEV1__flow")));
-      await assertFails(getDoc(doc(s, "alert_daily/2026-11-03")));
+      for (const p of [
+        "device_secrets/DEVA",
+        "phone_index/639171234567",
+        "password_resets/userA",
+        "alert_state/DEVA__flow",
+        "alert_daily/2026-11-14",
+        "alert_daily/2026-11-14__userA",
+        "rate_limits/register__1",
+        "error_logs/e1",
+      ]) {
+        await assertFails(getDoc(doc(s, p)));
+      }
+      await assertFails(getDocs(collection(s, "error_logs")));
     }
   });
 
-  it("reads or writes unlisted paths", async () => {
+  it("reads or writes paths removed in v2 or never listed", async () => {
     for (const s of everyone()) {
-      await assertFails(getDoc(doc(s, "unlisted/x")));
+      for (const p of [
+        "config/system",
+        "removed_devices/DEVA",
+        "ai_insights/client_summary",
+        "device_health/DEVA/battery_logs/b1",
+        "unlisted/x",
+      ]) {
+        await assertFails(getDoc(doc(s, p)));
+      }
       await assertFails(setDoc(doc(s, "unlisted/y"), { a: 1 }));
     }
   });
 
   it("without a role or sign-in reads nothing", async () => {
     for (const s of [noRole, anon]) {
-      await assertFails(getDoc(doc(s, "devices/DEV1")));
-      await assertFails(getDoc(doc(s, "device_health/DEV1")));
-      await assertFails(getDoc(doc(s, "ai_insights/client_summary")));
-      await assertFails(getDoc(doc(s, "config/system")));
-      await assertFails(getDoc(doc(s, "error_logs/e1")));
+      await assertFails(getDoc(doc(s, "devices/DEVA")));
+      await assertFails(getDoc(doc(s, "users/userA")));
+      await assertFails(getDoc(doc(s, "admins/admin1")));
+      await assertFails(getDoc(doc(s, "pipelines/userA")));
     }
   });
 });

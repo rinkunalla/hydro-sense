@@ -1,7 +1,5 @@
 import { onRequest } from "firebase-functions/https";
 import {
-  BATTERY_LOG_S,
-  BATTERY_LOG_TTL_DAYS,
   DEVICE_ID_PATTERN,
   FLOW_LOG_SAMPLE_S,
   FLOW_LOG_TTL_DAYS,
@@ -36,7 +34,7 @@ export async function ingest(deviceId: string, p: IngestPayload, nowMs: number) 
     const prevStatus = (device.get("flowStatus") as FlowStatus | null) ?? null;
     const statusChanged = prevStatus !== p.flowStatus;
     const locationChanged =
-      p.gpsValid && (device.get("lat") !== p.lat || device.get("lng") !== p.lng);
+      p.gpsValid && (device.get("gpsLat") !== p.lat || device.get("gpsLng") !== p.lng);
 
     if (
       shouldWriteDevices({
@@ -57,7 +55,7 @@ export async function ingest(deviceId: string, p: IngestPayload, nowMs: number) 
       tx.update(deviceRef, {
         flowStatus: p.flowStatus,
         flowRate: p.flowRate,
-        ...(p.gpsValid ? { lat: p.lat, lng: p.lng } : {}),
+        ...(p.gpsValid ? { gpsLat: p.lat, gpsLng: p.lng } : {}),
         ...(statusChanged ? { statusChangedAt: now } : {}),
         abnormalSince: abnormalSinceMs === null ? null : ts(abnormalSinceMs),
         updatedAt: now,
@@ -75,19 +73,15 @@ export async function ingest(deviceId: string, p: IngestPayload, nowMs: number) 
       ...(p.resetReason ? { resetReason: p.resetReason, resetAt: now } : {}),
     };
 
-    let percent: number | null = null;
-    let charging: string | null = null;
     if (p.batteryVoltage !== null) {
       const recent = appendVoltage(
         (health.get("recentVoltages") as number[] | undefined) ?? [],
         p.batteryVoltage,
       );
-      percent = batteryPercent(p.batteryVoltage);
-      charging = chargingTrend(recent);
       Object.assign(healthUpdate, {
         batteryVoltage: p.batteryVoltage,
-        batteryPercent: percent,
-        chargingStatus: charging,
+        batteryPercent: batteryPercent(p.batteryVoltage),
+        chargingStatus: chargingTrend(recent),
         recentVoltages: recent,
       });
     } else {
@@ -104,20 +98,6 @@ export async function ingest(deviceId: string, p: IngestPayload, nowMs: number) 
       });
       healthUpdate.lastFlowLogAt = now;
       wrote.push("flow_logs");
-    }
-
-    const batteryDue = sampleDue(ms(health.get("lastBatteryLogAt")), nowMs, BATTERY_LOG_S);
-    if ((p.batteryVoltage !== null && batteryDue) || p.lowVoltageSleep) {
-      tx.create(healthRef.collection(C.batteryLogs).doc(), {
-        ts: now,
-        batteryVoltage: p.batteryVoltage,
-        batteryPercent: percent,
-        chargingStatus: charging,
-        lowVoltageSleep: p.lowVoltageSleep,
-        expireAt: ts(nowMs + BATTERY_LOG_TTL_DAYS * DAY_MS),
-      });
-      healthUpdate.lastBatteryLogAt = now;
-      wrote.push("battery_logs");
     }
 
     tx.update(healthRef, healthUpdate);

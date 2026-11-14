@@ -13,7 +13,6 @@ DeviceView view(
   bool batteryFault = false,
   bool lowVoltageSleep = false,
   DateTime? statusChangedAt,
-  DateTime? pausedUntil,
   double? lat = 16.04,
 }) => DeviceView(
   Device(
@@ -24,7 +23,6 @@ DeviceView view(
     lat: lat,
     lng: lat == null ? null : 120.33,
     statusChangedAt: statusChangedAt,
-    pausedUntil: pausedUntil,
   ),
   Health(
     id: id,

@@ -6,7 +6,8 @@ import { getAuth } from "firebase-admin/auth";
 import { Timestamp } from "firebase-admin/firestore";
 import type { CallableRequest } from "firebase-functions/https";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { allowDevice, removeDevice } from "../src/admin/deviceAdmin";
+import { addAllowedDevice, removeDevice, restoreDevice } from "../src/admin/devices";
+import { setOwner } from "../src/admin/ownership";
 import { C, db } from "../src/lib/db";
 import { flipOfflineIfStale, runMonitorPass } from "../src/monitor/monitorDevices";
 
@@ -37,7 +38,7 @@ const register = (deviceId = ID, key = KEY ?? "") =>
 const reading = (over: Json = {}): Json => ({
   flowStatus: "Normal Flow",
   flowRate: 10,
-  pulseHz: 75,
+  pulseHz: 75, // still sent by firmware 0.2.0; ignored by the server (D29)
   batteryVoltage: 7.9,
   batteryFault: false,
   gpsValid: true,
@@ -109,25 +110,22 @@ describe("registerDevice", () => {
     expect(await get(dev())).toMatchObject({
       ownerUid: null,
       nickname: "Device E5F6",
-      pausedUntil: null,
     });
+    expect(await get(dev())).not.toHaveProperty("pausedUntil");
     expect(await get(health())).toMatchObject({ ownerUid: null, online: false, firmware: "1.0.0" });
     expect((await get(db.collection(C.deviceSecrets).doc(ID))).tokenHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("assigns the client as owner when the client account exists", async () => {
-    await db.collection(C.config).doc("system").set({ clientUid: "client1" });
-    await registered();
-    expect((await get(dev())).ownerUid).toBe("client1");
-    expect((await get(health())).ownerUid).toBe("client1");
-  });
-
-  it("refuses a removed device (403)", async () => {
+  it("keeps the owner and nickname of a device assigned before it registered (D41)", async () => {
     await allow();
-    await db.collection(C.removedDevices).doc(ID).set({ removedAt: Timestamp.now() });
-    const r = await register();
-    expect(r.status).toBe(403);
-    expect(r.body.code).toBe("DEVICE_REMOVED");
+    await setOwner(ID, "userA");
+    expect(await get(health())).toMatchObject({ ownerUid: "userA", registeredAt: null });
+    await dev().update({ nickname: "Garden Line" });
+    expect((await register()).status).toBe(200);
+    expect(await get(dev())).toMatchObject({ ownerUid: "userA", nickname: "Garden Line" });
+    const h = await get(health());
+    expect(h.ownerUid).toBe("userA");
+    expect(h.registeredAt).not.toBeNull();
   });
 
   it("refuses re-registration while online (409); allows it offline with a new token", async () => {
@@ -174,7 +172,7 @@ describe("deviceIngest", () => {
     expect(r.body).toEqual({ ok: true, lowFlowCutoff: 0.2, normalFlowCutoff: 2.0 });
 
     const d = await get(dev());
-    expect(d).toMatchObject({ flowStatus: "Normal Flow", flowRate: 10, lat: 16.04 });
+    expect(d).toMatchObject({ flowStatus: "Normal Flow", flowRate: 10, gpsLat: 16.04 });
     expect(d.statusChangedAt).toBeInstanceOf(Timestamp);
     const h = await get(health());
     expect(h).toMatchObject({ online: true, batteryVoltage: 7.9, batteryPercent: 72 });
@@ -253,21 +251,20 @@ describe("deviceIngest", () => {
     expect((await get(dev())).abnormalSince).toBeNull();
   });
 
-  it("samples battery_logs every 15 min plus the low-voltage sleep heartbeat", async () => {
+  it("keeps the low-voltage sleep flag on device_health and writes no battery history", async () => {
     const token = await registered();
-    const logs = health().collection(C.batteryLogs);
-    await ingest(token);
-    await ingest(token);
-    expect(await count(logs)).toBe(1);
-
     await ingest(token, { batteryVoltage: 6.7, lowVoltageSleep: true });
-    expect(await count(logs)).toBe(2);
     expect((await get(health())).lowVoltageSleep).toBe(true);
-
-    await health().update({ lastBatteryLogAt: ago(901) });
     await ingest(token);
-    expect(await count(logs)).toBe(3);
     expect((await get(health())).lowVoltageSleep).toBe(false);
+    expect(await count(health().collection("battery_logs"))).toBe(0);
+    expect(await get(health())).not.toHaveProperty("lastBatteryLogAt");
+  });
+
+  it("accepts any pulseHz from old firmware, even a negative one (D29)", async () => {
+    const token = await registered();
+    expect((await ingest(token, { pulseHz: -5 })).status).toBe(200);
+    expect((await ingest(token, { pulseHz: "fast" })).status).toBe(200);
   });
 
   it("logs repeated identical errors once per hour", async () => {
@@ -280,12 +277,12 @@ describe("deviceIngest", () => {
     expect(JSON.stringify(entry)).not.toMatch(/Garden|16\.04|120\.33/);
   });
 
-  it("never touches AI or alert collections", async () => {
+  it("never touches alert collections", async () => {
     const token = await registered();
     await ingest(token, { trigger: "status_change" });
     await ingest(token, { flowStatus: "No Flow", flowRate: 0, trigger: "status_change" });
     await ingest(token);
-    expect(await count(db.collection(C.aiInsights))).toBe(0);
+    expect(await count(db.collection("ai_insights"))).toBe(0);
     expect(await count(db.collection(C.alertState))).toBe(0);
     expect(await count(db.collection(C.alertDaily))).toBe(0);
   });
@@ -315,22 +312,35 @@ describe("monitorDevices", () => {
   });
 });
 
-describe("removeDevice and allowDevice", () => {
+describe("removeDevice", () => {
   const admin = <T>(data: T) =>
     ({ auth: { uid: "admin1", token: { role: "admin" } }, data }) as unknown as CallableRequest<T>;
 
-  it("removes a device so it cannot register until Allow again", async () => {
+  it("a removed device gets 403 and keeps its data; restoring lets it back in (D42)", async () => {
     await allow();
-    expect((await register()).status).toBe(200);
+    const token = await registered();
+    expect((await ingest(token)).status).toBe(200);
+    await health().update({ online: false });
 
-    await removeDevice.run(admin({ deviceId: ID.toLowerCase() }));
-    expect((await dev().get()).exists).toBe(false);
+    await removeDevice.run(admin({ deviceId: ID.toLowerCase(), confirmLabel: ID }));
+    expect((await get(dev())).removedAt).toBeTruthy();
     expect((await db.collection(C.allowedDevices).doc(ID).get()).exists).toBe(false);
+    expect((await ingest(token)).status).toBe(401); // its token is gone
     const blocked = await register();
     expect(blocked.status).toBe(403);
-    expect(blocked.body.code).toBe("DEVICE_REMOVED");
+    expect(blocked.body.code).toBe("DEVICE_NOT_ALLOWED");
 
-    await allowDevice.run(admin({ deviceId: ID }));
+    await restoreDevice.run(admin({ deviceId: ID }));
+    expect(await get(dev())).not.toHaveProperty("removedAt");
+    expect((await register()).status).toBe(200);
+  });
+
+  it("re-adding a removed ID restores it the same way", async () => {
+    await allow();
+    await registered();
+    await removeDevice.run(admin({ deviceId: ID, confirmLabel: ID }));
+    const r = await addAllowedDevice.run(admin({ deviceId: ID }));
+    expect(r).toEqual({ deviceId: ID, restored: true });
     expect((await register()).status).toBe(200);
   });
 });
@@ -364,12 +374,12 @@ describe("addAllowedDevice", () => {
 
   it("lets an admin add a normalized ID", async () => {
     const r = await call(await idToken("admin1", "admin"), { deviceId: "a1:b2:c3:d4:e5:f6" });
-    expect(r.result).toEqual({ deviceId: ID });
+    expect(r.result).toEqual({ deviceId: ID, restored: false });
     expect((await db.collection(C.allowedDevices).doc(ID).get()).exists).toBe(true);
   });
 
-  it("refuses a client and an invalid ID", async () => {
-    const client = await call(await idToken("client1", "client"), { deviceId: ID });
+  it("refuses a user and an invalid ID", async () => {
+    const client = await call(await idToken("userA", "user"), { deviceId: ID });
     expect(client.error?.status).toBe("PERMISSION_DENIED");
     expect(client.error?.details?.code).toBe("NOT_ADMIN");
 

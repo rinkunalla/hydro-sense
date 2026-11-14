@@ -15,15 +15,7 @@ abstract final class AppColors {
 }
 
 /// What a card, chip or pin shows for a device. Never color alone: color + icon + word.
-enum StatusKind {
-  normal,
-  lowFlow,
-  noFlow,
-  offline,
-  lowBattery,
-  paused,
-  waiting,
-}
+enum StatusKind { normal, lowFlow, noFlow, offline, lowBattery, waiting }
 
 class StatusStyle {
   const StatusStyle(
@@ -75,13 +67,6 @@ class StatusStyle {
       Color(0xFFFBE9C4),
       Color(0xFF7A4E00),
       'Low battery',
-    ),
-    StatusKind.paused: StatusStyle(
-      Icons.notifications_paused,
-      Color(0xFF4C6670),
-      Color(0xFFE2E6EA),
-      Color(0xFF4A5561),
-      'Alerts paused',
     ),
     StatusKind.waiting: StatusStyle(
       Icons.hourglass_empty,

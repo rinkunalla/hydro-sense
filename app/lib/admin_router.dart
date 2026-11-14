@@ -7,9 +7,6 @@ import 'data/providers.dart';
 import 'features/admin/admin_account_screen.dart';
 import 'features/admin/admin_shell.dart';
 import 'features/admin/devices_admin_screen.dart';
-import 'features/admin/errors_screen.dart';
-import 'features/admin/hardware_report_screen.dart';
-import 'features/admin/overview_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/reset_password_screen.dart';
 import 'router.dart' show redirectFor;
@@ -30,7 +27,7 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
     pageBuilder: (_, _) => NoTransitionPage(child: child),
   );
   return GoRouter(
-    initialLocation: '/overview',
+    initialLocation: '/devices',
     refreshListenable: refresh,
     redirect: (context, state) {
       final role = ref.read(roleProvider);
@@ -42,7 +39,7 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         profileLoaded: true,
         mustChangePassword: false,
         requiredRole: 'admin',
-        home: '/overview',
+        home: '/devices',
       );
     },
     routes: [
@@ -61,10 +58,7 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, state, child) =>
             AdminShell(location: state.uri.path, child: child),
         routes: [
-          page('/overview', const OverviewScreen()),
           page('/devices', const DevicesAdminScreen()),
-          page('/errors', const ErrorsScreen()),
-          page('/report', const HardwareReportScreen()),
           page('/account', const AdminAccountScreen()),
         ],
       ),

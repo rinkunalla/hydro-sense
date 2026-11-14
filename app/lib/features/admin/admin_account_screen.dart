@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../data/providers.dart';
 import '../client/account_screen.dart' show ChangePasswordDialog;
 import 'admin_widgets.dart';
+import 'create_user_card.dart';
 
 class AdminAccountScreen extends ConsumerWidget {
   const AdminAccountScreen({super.key});
@@ -15,6 +16,8 @@ class AdminAccountScreen extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(AppSpace.xl),
       children: [
+        const CreateUserCard(),
+        const SizedBox(height: AppSpace.l),
         SectionCard(
           title: 'Account',
           child: Column(

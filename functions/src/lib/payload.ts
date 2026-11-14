@@ -1,4 +1,4 @@
-import { DEVICE_ID_PATTERN, FLOW_RATE_MAX, PULSES_PER_LPM } from "../config";
+import { DEVICE_ID_PATTERN, FLOW_RATE_MAX } from "../config";
 
 export const FLOW_STATUSES = ["Normal Flow", "Low Flow", "No Flow"] as const;
 export type FlowStatus = (typeof FLOW_STATUSES)[number];
@@ -11,7 +11,6 @@ export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 export interface IngestPayload {
   flowStatus: FlowStatus;
   flowRate: number;
-  pulseHz: number | null;
   batteryVoltage: number | null;
   batteryFault: boolean;
   lat: number | null;
@@ -91,10 +90,6 @@ export function parseIngestPayload(body: unknown): Parsed<IngestPayload> {
     if (rawRate < 0) throw new Invalid("flowRate must not be negative");
     const flowRate = clamp(rawRate, 0, FLOW_RATE_MAX);
 
-    const rawHz = optionalFinite(body.pulseHz, "pulseHz");
-    if (rawHz !== null && rawHz < 0) throw new Invalid("pulseHz must not be negative");
-    const pulseHz = rawHz === null ? null : clamp(rawHz, 0, FLOW_RATE_MAX * PULSES_PER_LPM);
-
     const batteryFault = optionalBool(body.batteryFault, "batteryFault");
     let batteryVoltage: number | null = null;
     if (!batteryFault) {
@@ -119,7 +114,6 @@ export function parseIngestPayload(body: unknown): Parsed<IngestPayload> {
     return {
       flowStatus,
       flowRate,
-      pulseHz,
       batteryVoltage,
       batteryFault,
       lat,

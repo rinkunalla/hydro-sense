@@ -3,12 +3,15 @@ import "./globalOptions";
 export { registerDevice } from "./device/registerDevice";
 export { deviceIngest } from "./device/deviceIngest";
 export { monitorDevices } from "./monitor/monitorDevices";
-export { generateClientFlowSummary, generateClientFlowSummaryOnChange } from "./ai/summary";
-export { calibrateFlowThresholds, calibrateFlowThresholdsWeekly } from "./calibration/calibrate";
+export { calibrateFlowThresholdsWeekly } from "./calibration/calibrate";
+export { confirmPasswordChanged } from "./admin/legacyAuth";
+export { createUser, updateUser, deleteUser, restoreUser } from "./admin/users";
 export {
-  generateAdminHardwareReport,
-  generateAdminHardwareReportDaily,
-} from "./admin/hardwareReport";
-export { createClientAccount, confirmPasswordChanged } from "./admin/clientAccount";
-export { addAllowedDevice } from "./admin/addAllowedDevice";
-export { removeDevice, allowDevice } from "./admin/deviceAdmin";
+  addAllowedDevice,
+  updateDeviceLabel,
+  assignDevice,
+  removeDevice,
+  restoreDevice,
+  adminListDevices,
+} from "./admin/devices";
+export { listAdminAudit } from "./admin/audit";

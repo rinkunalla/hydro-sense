@@ -14,7 +14,6 @@ class Device {
     this.normalFlowCutoff = 2.0,
     this.calibratedAt,
     this.statusChangedAt,
-    this.pausedUntil,
   });
 
   final String id;
@@ -28,7 +27,6 @@ class Device {
   final double normalFlowCutoff;
   final DateTime? calibratedAt;
   final DateTime? statusChangedAt;
-  final DateTime? pausedUntil;
 }
 
 /// `device_health/{id}`.
@@ -95,17 +93,7 @@ class DeviceView {
         h.batteryPercent! < AppConfig.lowBatteryPercent;
   }
 
-  bool pausedAt(DateTime now) =>
-      device.pausedUntil != null && device.pausedUntil!.isAfter(now);
-
   bool get hasLocation => device.lat != null && device.lng != null;
-}
-
-class Summary {
-  const Summary({this.text, this.lastUpdated});
-
-  final String? text;
-  final DateTime? lastUpdated;
 }
 
 class StatusChange {
@@ -135,11 +123,4 @@ class Fleet {
 
   final List<DeviceView> views;
   final bool fromCache;
-}
-
-class CalibrationResult {
-  const CalibrationResult(this.nickname, this.result);
-
-  final String nickname;
-  final String result; // "updated" | "kept_insufficient" | "kept_recent_alert"
 }

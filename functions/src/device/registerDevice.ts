@@ -6,6 +6,7 @@ import {
   STARTER_NORMAL_FLOW_CUTOFF,
 } from "../config";
 import { C, db, ts } from "../lib/db";
+import { newDeviceDoc, newHealthDoc } from "../lib/deviceDocs";
 import { header, sendError, sendOk } from "../lib/http";
 import { logError } from "../lib/logError";
 import { parseRegisterBody } from "../lib/payload";
@@ -15,7 +16,7 @@ export const PROVISIONING_KEY = defineSecret("PROVISIONING_KEY");
 
 type Outcome =
   | { kind: "ok"; token: string; lowFlowCutoff: number; normalFlowCutoff: number; created: boolean }
-  | { kind: "removed" | "not_allowed" | "active" | "rate_limited" };
+  | { kind: "not_allowed" | "active" | "rate_limited" };
 
 const HOUR_MS = 3_600_000;
 
@@ -25,20 +26,17 @@ async function register(deviceId: string, firmware: string | null, nowMs: number
 
   return db.runTransaction<Outcome>(async (tx) => {
     const rateRef = db.collection(C.rateLimits).doc(`register__${hour}`);
-    const [rate, removed, allowed, device, health, system] = await Promise.all([
+    const [rate, allowed, device, health] = await Promise.all([
       tx.get(rateRef),
-      tx.get(db.collection(C.removedDevices).doc(deviceId)),
       tx.get(db.collection(C.allowedDevices).doc(deviceId)),
       tx.get(db.collection(C.devices).doc(deviceId)),
       tx.get(db.collection(C.deviceHealth).doc(deviceId)),
-      tx.get(db.collection(C.config).doc("system")),
     ]);
 
     const count = (rate.get("count") as number | undefined) ?? 0;
     if (count >= REGISTER_MAX_PER_HOUR) return { kind: "rate_limited" };
     tx.set(rateRef, { count: count + 1, expireAt: ts(nowMs + 2 * HOUR_MS) });
 
-    if (removed.exists) return { kind: "removed" };
     if (!allowed.exists) return { kind: "not_allowed" };
     if (device.exists && health.get("online") === true) return { kind: "active" };
 
@@ -49,9 +47,14 @@ async function register(deviceId: string, firmware: string | null, nowMs: number
     });
 
     if (device.exists) {
+      // Records made by assignDevice before the first registration keep their owner
+      // and nickname; only the registration time and firmware are filled in (D41).
       tx.set(
         db.collection(C.deviceHealth).doc(deviceId),
-        { firmware: firmware ?? health.get("firmware") ?? null },
+        {
+          firmware: firmware ?? health.get("firmware") ?? null,
+          ...(health.get("registeredAt") ? {} : { registeredAt: now }),
+        },
         { merge: true },
       );
       return {
@@ -63,39 +66,9 @@ async function register(deviceId: string, firmware: string | null, nowMs: number
       };
     }
 
-    const ownerUid = (system.get("clientUid") as string | undefined) ?? null;
-    tx.create(db.collection(C.devices).doc(deviceId), {
-      ownerUid,
-      nickname: `Device ${deviceId.slice(-4)}`,
-      flowStatus: null,
-      flowRate: null,
-      lat: null,
-      lng: null,
-      lowFlowCutoff: STARTER_LOW_FLOW_CUTOFF,
-      normalFlowCutoff: STARTER_NORMAL_FLOW_CUTOFF,
-      calibratedAt: null,
-      abnormalSince: null,
-      statusChangedAt: null,
-      pausedUntil: null,
-      updatedAt: now,
-    });
-    tx.create(db.collection(C.deviceHealth).doc(deviceId), {
-      ownerUid,
-      online: false,
-      lastSeen: null,
-      batteryVoltage: null,
-      batteryPercent: null,
-      chargingStatus: null,
-      recentVoltages: [],
-      batteryFault: false,
-      lowVoltageSleep: false,
-      lastBatteryLogAt: null,
-      lastFlowLogAt: null,
-      resetReason: null,
-      registeredAt: now,
-      firmware,
-      rssi: null,
-    });
+    // A device never assigned registers unassigned; the admin assigns it (D10 superseded).
+    tx.create(db.collection(C.devices).doc(deviceId), newDeviceDoc(deviceId, null, now));
+    tx.create(db.collection(C.deviceHealth).doc(deviceId), newHealthDoc(null, now, firmware));
     return {
       kind: "ok",
       token,
@@ -133,8 +106,6 @@ export const registerDevice = onRequest(
             lowFlowCutoff: out.lowFlowCutoff,
             normalFlowCutoff: out.normalFlowCutoff,
           });
-        case "removed":
-          return sendError(res, "DEVICE_REMOVED", "This device was removed by the admin.");
         case "not_allowed":
           return sendError(res, "DEVICE_NOT_ALLOWED", "This device ID is not on the allowlist.");
         case "active":
