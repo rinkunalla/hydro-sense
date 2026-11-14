@@ -1,6 +1,11 @@
 import { defineSecret } from "firebase-functions/params";
 import { createTransport, type Transporter } from "nodemailer";
-import { ALERT_EMAIL_FROM_NAME, PROVIDER_TIMEOUT_MS, SEMAPHORE_URL } from "../config";
+import {
+  ALERT_EMAIL_FROM_NAME,
+  PROVIDER_TIMEOUT_MS,
+  SEMAPHORE_OTP_URL,
+  SEMAPHORE_URL,
+} from "../config";
 
 export const SEMAPHORE_API_KEY = defineSecret("SEMAPHORE_API_KEY");
 export const GMAIL_USER = defineSecret("GMAIL_USER");
@@ -8,6 +13,7 @@ export const GMAIL_APP_PASSWORD = defineSecret("GMAIL_APP_PASSWORD");
 
 export const ALERT_SECRETS = [SEMAPHORE_API_KEY, GMAIL_USER, GMAIL_APP_PASSWORD];
 export const MAIL_SECRETS = [GMAIL_USER, GMAIL_APP_PASSWORD];
+export const OTP_SECRETS = [SEMAPHORE_API_KEY, GMAIL_USER, GMAIL_APP_PASSWORD];
 
 export interface SmsSender {
   /** Throws on any failure. */
@@ -19,9 +25,18 @@ export interface EmailSender {
   send(to: string, subject: string, text: string): Promise<void>;
 }
 
+export interface OtpSender {
+  /**
+   * Sends a sign-in code on Semaphore's OTP route. message contains {otp}.
+   * Returns the code actually sent (Semaphore echoes it). Throws on any failure.
+   */
+  send(number: string, message: string, code: string): Promise<string>;
+}
+
 export interface Providers {
   sms: SmsSender;
   email: EmailSender;
+  otp: OtpSender;
 }
 
 class SemaphoreSms implements SmsSender {
@@ -37,6 +52,27 @@ class SemaphoreSms implements SmsSender {
     const first = Array.isArray(body) ? (body[0] as { status?: string } | undefined) : undefined;
     if (!first) throw new Error("Semaphore returned no message");
     if (first.status === "Failed") throw new Error("Semaphore message status Failed");
+  }
+}
+
+/** OTP route: priority delivery, 2 credits per SMS, only for codes (Semaphore docs). */
+class SemaphoreOtp implements OtpSender {
+  async send(number: string, message: string, code: string) {
+    const res = await fetch(SEMAPHORE_OTP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ apikey: SEMAPHORE_API_KEY.value(), number, message, code }),
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    });
+    const body: unknown = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(`Semaphore OTP HTTP ${res.status}`);
+    const first = Array.isArray(body)
+      ? (body[0] as { status?: string; code?: unknown } | undefined)
+      : undefined;
+    if (!first) throw new Error("Semaphore OTP returned no message");
+    if (first.status === "Failed") throw new Error("Semaphore OTP status Failed");
+    // The docs name the parameter both code and otp: trust the echoed code if present.
+    return first.code === undefined || first.code === null ? code : String(first.code);
   }
 }
 
@@ -74,6 +110,13 @@ class DryRun implements Providers {
       console.log(JSON.stringify({ severity: "INFO", event: "email_dry_run", subject }));
     },
   };
+  // Emulator only: the code is logged so a developer can finish the flow locally.
+  otp: OtpSender = {
+    send: async (_n, _m, code) => {
+      console.log(JSON.stringify({ severity: "INFO", event: "otp_dry_run", code }));
+      return code;
+    },
+  };
 }
 
 let override: Providers | null = null;
@@ -89,6 +132,6 @@ export function providers(): Providers {
   if (process.env.FUNCTIONS_EMULATOR === "true" && process.env.HYDROSENSE_REAL_PROVIDERS !== "1") {
     return new DryRun();
   }
-  real ??= { sms: new SemaphoreSms(), email: new GmailEmail() };
+  real ??= { sms: new SemaphoreSms(), email: new GmailEmail(), otp: new SemaphoreOtp() };
   return real;
 }

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 
 import '../core/config.dart';
 import 'models.dart';
@@ -15,18 +14,15 @@ abstract class ClientRepository {
   Stream<List<StatusChange>> statusChanges(String deviceId);
 
   Future<void> rename(String deviceId, String nickname);
-
-  Future<void> confirmPasswordChanged();
 }
 
 DateTime? _time(Object? v) => v is Timestamp ? v.toDate() : null;
 double? _num(Object? v) => v is num ? v.toDouble() : null;
 
 class FirestoreClientRepository implements ClientRepository {
-  FirestoreClientRepository(this._db, this._functions);
+  FirestoreClientRepository(this._db);
 
   final FirebaseFirestore _db;
-  final FirebaseFunctions _functions;
 
   static Device _device(DocumentSnapshot<Map<String, dynamic>> d) {
     final m = d.data() ?? const {};
@@ -122,7 +118,6 @@ class FirestoreClientRepository implements ClientRepository {
           email: m['email'] as String?,
           phone: m['phone'] as String?,
           displayName: m['name'] as String?,
-          mustChangePassword: m['mustChangePassword'] == true,
         );
       });
 
@@ -147,9 +142,4 @@ class FirestoreClientRepository implements ClientRepository {
   @override
   Future<void> rename(String deviceId, String nickname) =>
       _db.doc('devices/$deviceId').update({'nickname': nickname});
-
-  @override
-  Future<void> confirmPasswordChanged() async {
-    await _functions.httpsCallable('confirmPasswordChanged').call<Object?>();
-  }
 }

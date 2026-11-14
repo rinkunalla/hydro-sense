@@ -47,6 +47,7 @@ export const ERROR_LOG_MESSAGE_MAX = 300;
 
 // Outbound providers
 export const SEMAPHORE_URL = "https://api.semaphore.co/api/v4/messages";
+export const SEMAPHORE_OTP_URL = "https://api.semaphore.co/api/v4/otp"; // 2 credits per SMS
 export const PROVIDER_TIMEOUT_MS = 10000;
 export const ALERT_EMAIL_FROM_NAME = "Hydro Sense";
 
@@ -77,3 +78,17 @@ export const AUDIT_TTL_DAYS = 365;
 export const AUDIT_LIST_LIMIT = 50;
 export const PIPELINE_MAX_BRANCHES = 10;
 export const PIPELINE_MAX_DEVICES_PER_BRANCH = 50;
+
+// Sign-in codes and admin setup (CLAUDE.md sections 6 and 8, D22, D23, D30, D31)
+export const RESET_CODE_LENGTH = 6;
+export const RESET_CODE_TTL_S = 300;
+export const RESET_MAX_ATTEMPTS = 5;
+export const RESET_RESEND_S = 60;
+export const RESET_MAX_PER_PHONE_DAY = 5;
+export const RESET_TOKEN_TTL_S = 600;
+export const OTP_PROJECT_DAILY_CAP = 30;
+export const MIN_PASSWORD_LENGTH = 8;
+export const ADMIN_SETUP_MAX_PER_HOUR = 10;
+export const ADMIN_SETUP_TOKEN_TTL_S = 3600;
+export const ADMIN_RECOMMENDED_MIN = 2;
+export const ADMIN_SITE_URL = "https://hydro-sense-dc836.web.app";

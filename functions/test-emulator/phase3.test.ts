@@ -57,6 +57,7 @@ class Fake implements Providers {
       this.emailSent.push({ to, subject, text });
     },
   };
+  otp = { send: async (_n: string, _m: string, code: string) => code };
 }
 
 let fake: Fake;
@@ -145,6 +146,8 @@ beforeEach(async () => {
   fake = new Fake();
   setProviders(fake);
   T0 = Math.floor(Date.now() / MIN) * MIN;
+  // Admin callables need a live admin record, not only the claim.
+  await db.collection(C.admins).doc("admin1").set({ name: "A", status: "active" });
 });
 
 afterAll(() => setProviders(null));
@@ -729,7 +732,7 @@ describe("device admin (D20, D24, D32, D41, D42)", () => {
       updateDeviceLabel.run(asAdmin({ deviceId: "A1B2C3D4E5F6", label: "x".repeat(25) })),
     ).rejects.toMatchObject({ details: { code: "LABEL_INVALID" } });
     await expect(addAllowedDevice.run(asAdmin({ deviceId: "A1B2C3D4E5F6" }))).rejects.toMatchObject(
-      { details: { code: "DEVICE_ALREADY_LISTED" } },
+      { details: { code: "DEVICE_EXISTS" } },
     );
   });
 
@@ -774,7 +777,7 @@ describe("device admin (D20, D24, D32, D41, D42)", () => {
       .doc("A1B2C3D4E5F6")
       .update({ purgeAfter: ts(Date.now() - MIN) });
     await expect(restoreDevice.run(asAdmin({ deviceId: "A1B2C3D4E5F6" }))).rejects.toMatchObject({
-      details: { code: "NOT_RESTORABLE" },
+      details: { code: "RESTORE_EXPIRED" },
     });
   });
 

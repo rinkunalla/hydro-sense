@@ -258,7 +258,6 @@ void main() {
       roleLoaded: true,
       role: role,
       profileLoaded: true,
-      mustChangePassword: false,
       requiredRole: 'admin',
       home: '/devices',
     );

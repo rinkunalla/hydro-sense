@@ -104,17 +104,11 @@ class StatusChange {
 }
 
 class UserProfile {
-  const UserProfile({
-    this.email,
-    this.phone,
-    this.displayName,
-    this.mustChangePassword = false,
-  });
+  const UserProfile({this.email, this.phone, this.displayName});
 
   final String? email;
   final String? phone;
   final String? displayName;
-  final bool mustChangePassword;
 }
 
 /// The client's fleet, with whether it came from the offline cache.

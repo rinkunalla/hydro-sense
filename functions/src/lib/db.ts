@@ -14,6 +14,7 @@ export const C = {
   pipelines: "pipelines",
   pushTokens: "push_tokens",
   passwordResets: "password_resets",
+  adminSetupTokens: "admin_setup_tokens",
   devices: "devices",
   flowLogs: "flow_logs",
   deviceHealth: "device_health",

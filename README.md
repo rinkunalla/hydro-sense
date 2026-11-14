@@ -97,8 +97,8 @@ Debug builds use the emulators by default; release builds use the real project
 (`--dart-define=USE_EMULATOR=false` points a debug build at the real project).
 
 1. `npm run emulators` (leave running), then `npm run seed:emulator` once. It creates
-   `client@hydrosense.test` / `hydrosense-dev` (and `admin@hydrosense.test`). Add `--temp`
-   (`npm run seed:emulator -- --temp`) to test the temporary-password flow.
+   `user@hydrosense.test` / `hydrosense-dev` (and `admin@hydrosense.test`). Assign simulator
+   devices to the user on the website (Devices).
 2. `npm run simulate -- --devices 3 --duration 600 --heartbeat 10` feeds live devices.
    In PowerShell, quote the separator so npm passes the options through:
    `npm run simulate '--' --devices 3 --duration 600 --heartbeat 10` (or call
@@ -123,8 +123,10 @@ Devices screen states with 1, 3 and 10 devices, 1.5x text at 360 dp).
   `127.0.0.1`), via `android/app/src/debug/res/xml/network_security_config.xml`. Release builds are
   HTTPS-only.
 
-Admins: `npm run create-admin -- --email you@example.com` (real project: prints a
-password-setup link) or add `--emulator`.
+Admins: `npm run seed:admins -- --email a@example.com --email b@example.com` (real project: each
+admin is invited and a one-time setup link is printed, valid once for 1 hour) or add `--emulator`.
+Seed two admins so you can't be locked out. v1 data moves to v2 with `npm run migrate:v2` (dry run;
+add `-- --apply` only after checking the list).
 
 ## Admin website (Flutter web)
 
@@ -133,7 +135,7 @@ password-setup link) or add `--emulator`.
   http://127.0.0.1:5000. Sign in as `admin@hydrosense.test` / `hydrosense-dev`.
   (`flutter run -d chrome` also works and uses the emulators in debug.)
 * Production build: `cd app && flutter build web` (release, real project), then
-  `firebase deploy --only hosting:admin`. Create real admins with `npm run create-admin -- --email ...`.
+  `firebase deploy --only hosting:admin`. Create real admins with `npm run seed:admins -- --email ...`.
 * Privacy: the admin site reads only `device_health`, `allowed_devices` and `config/system`
   (stage 2 narrows this to D24). `app/test/admin_privacy_test.dart` fails if admin code names
   `devices` or `flow_logs`, and the Firestore rules deny those reads to admins anyway.

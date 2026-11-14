@@ -55,3 +55,68 @@ describe("admin input", () => {
     expect(confirmMatches(undefined, "Unit 1")).toBe(false);
   });
 });
+
+describe("sign-in code helpers", () => {
+  it("makes 6-digit codes, keeps leading zeros, binds hashes to the account", async () => {
+    const { generateCode, codeHash } = await import("../src/lib/otp");
+    for (let i = 0; i < 200; i++) expect(generateCode()).toMatch(/^\d{6}$/);
+    expect(codeHash("u1", "123456")).not.toBe(codeHash("u2", "123456"));
+  });
+
+  it("one-time tokens carry their uid and hash differently from the token", async () => {
+    const { newOneTimeToken, uidOfToken } = await import("../src/lib/otp");
+    const { token, hash } = newOneTimeToken("abc");
+    expect(uidOfToken(token)).toBe("abc");
+    expect(hash).not.toContain(token.split(".")[1]);
+    expect(uidOfToken("no-dot")).toBeNull();
+    expect(uidOfToken(42)).toBeNull();
+  });
+
+  it("masks a mobile as 0917 ••• 4567", async () => {
+    const { maskPhone } = await import("../src/lib/otp");
+    expect(maskPhone("639171234567")).toBe("0917 ••• 4567");
+  });
+
+  it("checks the resend gap before the daily limits", async () => {
+    const { sendDecision } = await import("../src/lib/otp");
+    const now = 1_000_000;
+    expect(
+      sendDecision({ lastSentMs: now - 10_000, phoneToday: 5, projectToday: 30 }, now),
+    ).toEqual({
+      kind: "cooldown",
+      retryAfterSeconds: 50,
+    });
+    expect(
+      sendDecision({ lastSentMs: now - 60_000, phoneToday: 5, projectToday: 0 }, now).kind,
+    ).toBe("phone_limit");
+    expect(sendDecision({ lastSentMs: null, phoneToday: 4, projectToday: 30 }, now).kind).toBe(
+      "project_limit",
+    );
+    expect(sendDecision({ lastSentMs: null, phoneToday: 0, projectToday: 0 }, now).kind).toBe(
+      "send",
+    );
+  });
+
+  it("codeVerdict: right, wrong with tries left, expired, locked", async () => {
+    const { codeVerdict } = await import("../src/lib/otp");
+    const now = 1_000_000;
+    const live = now + 60_000;
+    expect(codeVerdict({ attempts: 0, expiresAtMs: live, matches: true }, now)).toEqual({
+      kind: "ok",
+    });
+    expect(codeVerdict({ attempts: 0, expiresAtMs: live, matches: false }, now)).toEqual({
+      kind: "invalid",
+      triesLeft: 4,
+    });
+    expect(codeVerdict({ attempts: 4, expiresAtMs: live, matches: false }, now)).toEqual({
+      kind: "invalid",
+      triesLeft: 0,
+    });
+    expect(codeVerdict({ attempts: 5, expiresAtMs: live, matches: true }, now)).toEqual({
+      kind: "locked",
+    });
+    expect(codeVerdict({ attempts: 0, expiresAtMs: now - 1, matches: true }, now)).toEqual({
+      kind: "expired",
+    });
+  });
+});

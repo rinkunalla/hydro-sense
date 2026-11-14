@@ -3,7 +3,7 @@ import 'package:hydro_sense/core/theme.dart';
 import 'package:hydro_sense/core/time_format.dart';
 import 'package:hydro_sense/data/fleet_logic.dart';
 import 'package:hydro_sense/data/models.dart';
-import 'package:hydro_sense/features/auth/set_password_screen.dart';
+import 'package:hydro_sense/features/auth/password_rules.dart';
 import 'package:hydro_sense/features/client/device_detail_screen.dart';
 import 'package:hydro_sense/router.dart';
 
@@ -119,14 +119,12 @@ void main() {
       bool roleLoaded = true,
       String? role = 'user',
       bool profileLoaded = true,
-      bool must = false,
     }) => redirectFor(
       location: loc,
       signedIn: signedIn,
       roleLoaded: roleLoaded,
       role: role,
       profileLoaded: profileLoaded,
-      mustChangePassword: must,
     );
 
     test('signed out goes to Login, except Reset', () {
@@ -138,13 +136,6 @@ void main() {
       expect(go('/devices', role: 'admin'), '/login?refused=admin');
       expect(go('/devices', role: null), '/login?refused=other');
       expect(go('/login?refused=admin', role: 'admin'), isNull);
-    });
-
-    test('a temporary password forces Set a new password first', () {
-      expect(go('/devices', must: true), '/set-password');
-      expect(go('/map', must: true), '/set-password');
-      expect(go('/set-password', must: true), isNull);
-      expect(go('/set-password'), '/devices');
     });
 
     test('waits for the role and profile before deciding', () {

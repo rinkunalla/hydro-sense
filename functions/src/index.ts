@@ -4,7 +4,6 @@ export { registerDevice } from "./device/registerDevice";
 export { deviceIngest } from "./device/deviceIngest";
 export { monitorDevices } from "./monitor/monitorDevices";
 export { calibrateFlowThresholdsWeekly } from "./calibration/calibrate";
-export { confirmPasswordChanged } from "./admin/legacyAuth";
 export { createUser, updateUser, deleteUser, restoreUser } from "./admin/users";
 export {
   addAllowedDevice,
@@ -15,3 +14,23 @@ export {
   adminListDevices,
 } from "./admin/devices";
 export { listAdminAudit } from "./admin/audit";
+export {
+  inviteAdmin,
+  resendAdminInvite,
+  cancelAdminInvite,
+  requestAdminSetup,
+  completeAdminSetup,
+  removeAdmin,
+  listAdmins,
+  updateMyAdminName,
+  syncMyAdmin,
+  signOutEverywhere,
+} from "./admin/admins";
+export { requestResetCode, verifyResetCode, setPasswordWithResetToken } from "./auth/reset";
+export {
+  updateMyName,
+  requestPhoneChangeCode,
+  confirmPhoneChange,
+  syncMyEmail,
+  requestAccountDeletion,
+} from "./auth/self";

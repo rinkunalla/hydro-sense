@@ -82,6 +82,8 @@ beforeEach(async () => {
   await fetch(`http://${FIRESTORE}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, {
     method: "DELETE",
   });
+  // Admin callables need a live admin record, not only the claim.
+  await db.collection(C.admins).doc("admin1").set({ name: "A", status: "active" });
 });
 
 describe("registerDevice", () => {

@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/errors.dart';
 import '../../core/theme.dart';
 import '../../data/providers.dart';
-import '../auth/set_password_screen.dart' show validateNewPassword;
+import '../auth/password_rules.dart';
 
 /// Email, phone (read only), Change password, Sign out. No delete-account.
 class AccountScreen extends ConsumerWidget {

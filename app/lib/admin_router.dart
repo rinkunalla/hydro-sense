@@ -37,7 +37,6 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         roleLoaded: role.hasValue || role.hasError,
         role: role.valueOrNull,
         profileLoaded: true,
-        mustChangePassword: false,
         requiredRole: 'admin',
         home: '/devices',
       );

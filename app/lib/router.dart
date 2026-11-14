@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import 'data/providers.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/reset_password_screen.dart';
-import 'features/auth/set_password_screen.dart';
 import 'features/client/account_screen.dart';
 import 'features/client/device_detail_screen.dart';
 import 'features/client/devices_screen.dart';
@@ -22,7 +21,6 @@ String? redirectFor({
   required bool roleLoaded,
   required String? role,
   required bool profileLoaded,
-  required bool mustChangePassword,
   String requiredRole = 'user',
   String home = '/devices',
 }) {
@@ -35,13 +33,10 @@ String? redirectFor({
         : (role == 'admin' ? 'admin' : 'other');
     return location.startsWith('/login') ? null : '/login?refused=$reason';
   }
-  if (requiredRole == 'user') {
-    if (!profileLoaded) return location == '/loading' ? null : '/loading';
-    if (mustChangePassword) {
-      return location == '/set-password' ? null : '/set-password';
-    }
+  if (requiredRole == 'user' && !profileLoaded) {
+    return location == '/loading' ? null : '/loading';
   }
-  if (onAuthPage || location == '/loading' || location == '/set-password') {
+  if (onAuthPage || location == '/loading') {
     return home;
   }
   return null;
@@ -72,7 +67,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         roleLoaded: role.hasValue || role.hasError,
         role: role.valueOrNull,
         profileLoaded: profile.hasValue || profile.hasError,
-        mustChangePassword: profile.valueOrNull?.mustChangePassword ?? false,
       );
     },
     routes: [
@@ -82,10 +76,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             LoginScreen(refused: s.uri.queryParameters['refused']),
       ),
       GoRoute(path: '/reset', builder: (_, _) => const ResetPasswordScreen()),
-      GoRoute(
-        path: '/set-password',
-        builder: (_, _) => const SetPasswordScreen(),
-      ),
       GoRoute(
         path: '/loading',
         builder: (_, _) =>

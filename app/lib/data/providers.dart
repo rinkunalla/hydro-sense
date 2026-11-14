@@ -1,12 +1,10 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/config.dart';
 import 'models.dart';
 import 'repository.dart';
 
@@ -22,10 +20,7 @@ Future<void> signOut(WidgetRef ref) async {
 }
 
 final repositoryProvider = Provider<ClientRepository>(
-  (ref) => FirestoreClientRepository(
-    FirebaseFirestore.instance,
-    FirebaseFunctions.instanceFor(region: AppConfig.functionsRegion),
-  ),
+  (ref) => FirestoreClientRepository(FirebaseFirestore.instance),
 );
 
 /// The signed-in user (null when signed out).

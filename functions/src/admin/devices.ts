@@ -13,8 +13,11 @@ import { setOwner } from "./ownership";
 
 const DAY_MS = 86_400_000;
 
-const fail = (status: "not-found" | "failed-precondition", code: string, message: string) =>
-  new HttpsError(status, message, { code });
+const fail = (
+  status: "not-found" | "failed-precondition" | "invalid-argument" | "already-exists",
+  code: string,
+  message: string,
+) => new HttpsError(status, message, { code });
 
 async function allowedEntry(deviceId: string) {
   const snap = await db.collection(C.allowedDevices).doc(deviceId).get();
@@ -42,7 +45,7 @@ async function unremove(deviceId: string, device: DocumentSnapshot, nowMs: numbe
 
 /** Adds an ID to the allowlist (D12, D41). Re-adding a removed ID restores it (D42). */
 export const addAllowedDevice = onCall({ secrets: MAIL_SECRETS }, async (request) => {
-  const adminUid = requireAdmin(request);
+  const adminUid = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const deviceId = parseDeviceId(d.deviceId);
   const label = parseLabel(d.label);
@@ -65,14 +68,14 @@ export const addAllowedDevice = onCall({ secrets: MAIL_SECRETS }, async (request
   const ref = db.collection(C.allowedDevices).doc(deviceId);
   const existing = await ref.get();
   if (existing.exists) {
-    throw fail("failed-precondition", "DEVICE_ALREADY_LISTED", "This device ID is already listed.");
+    throw fail("already-exists", "DEVICE_EXISTS", "This device is already added.");
   }
   await ref.set({ addedAt: ts(nowMs), ...(label ? { label } : {}) });
   return { deviceId, restored: false };
 });
 
 export const updateDeviceLabel = onCall(async (request) => {
-  requireAdmin(request);
+  await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const deviceId = parseDeviceId(d.deviceId);
   const label = parseLabel(d.label);
@@ -82,7 +85,7 @@ export const updateDeviceLabel = onCall(async (request) => {
 });
 
 export const assignDevice = onCall({ secrets: MAIL_SECRETS }, async (request) => {
-  const adminUid = requireAdmin(request);
+  const adminUid = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const deviceId = parseDeviceId(d.deviceId);
   const uid = d.uid === null ? null : parseUid(d.uid);
@@ -113,13 +116,13 @@ export const assignDevice = onCall({ secrets: MAIL_SECRETS }, async (request) =>
 
 /** Takes the ID off the allowlist and keeps its data for the restore window (D42). */
 export const removeDevice = onCall({ secrets: MAIL_SECRETS }, async (request) => {
-  const adminUid = requireAdmin(request);
+  const adminUid = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const deviceId = parseDeviceId(d.deviceId);
   const entry = await allowedEntry(deviceId);
   const label = (entry.get("label") as string | undefined) ?? null;
   if (!confirmMatches(d.confirmLabel, label ?? deviceId)) {
-    throw fail("failed-precondition", "CONFIRM_MISMATCH", "The typed label does not match.");
+    throw fail("invalid-argument", "CONFIRM_MISMATCH", "The typed label does not match.");
   }
 
   const nowMs = Date.now();
@@ -148,13 +151,16 @@ export const removeDevice = onCall({ secrets: MAIL_SECRETS }, async (request) =>
 });
 
 export const restoreDevice = onCall({ secrets: MAIL_SECRETS }, async (request) => {
-  const adminUid = requireAdmin(request);
+  const adminUid = await requireAdmin(request);
   const deviceId = parseDeviceId((request.data as { deviceId?: unknown } | null)?.deviceId);
   const device = await db.collection(C.devices).doc(deviceId).get();
   const purgeAfterMs = ms(device.get("purgeAfter"));
   const nowMs = Date.now();
-  if (!device.get("removedAt") || purgeAfterMs === null || purgeAfterMs <= nowMs) {
-    throw fail("failed-precondition", "NOT_RESTORABLE", "This device cannot be restored.");
+  if (!device.get("removedAt")) {
+    throw fail("failed-precondition", "NOT_SUSPENDED", "This device is not removed.");
+  }
+  if (purgeAfterMs === null || purgeAfterMs <= nowMs) {
+    throw fail("failed-precondition", "RESTORE_EXPIRED", "The 30 days to restore have passed.");
   }
   const label = await unremove(deviceId, device, nowMs);
   await audit({
@@ -223,6 +229,6 @@ export async function listDevicesForAdmin(): Promise<AdminDeviceRow[]> {
 }
 
 export const adminListDevices = onCall(async (request) => {
-  requireAdmin(request);
+  await requireAdmin(request);
   return { rows: await listDevicesForAdmin() };
 });

@@ -119,6 +119,7 @@ beforeEach(async () => {
       "device_secrets/DEVA",
       "phone_index/639171234567",
       "password_resets/userA",
+      "admin_setup_tokens/admin2",
       "alert_state/DEVA__flow",
       "alert_daily/2026-11-14",
       "alert_daily/2026-11-14__userA",
@@ -297,6 +298,22 @@ describe("admin (D24)", () => {
   });
 });
 
+describe("an admin claim without an active record (D40)", () => {
+  it("reads nothing: invited, removed or unknown admins", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(db(ctx), "admins/admin2"), { status: "invited" });
+    });
+    const invited = db(env.authenticatedContext("admin2", { role: "admin" }));
+    const removed = db(env.authenticatedContext("admin9", { role: "admin" }));
+    for (const s of [invited, removed]) {
+      await assertFails(getDocs(collection(s, "users")));
+      await assertFails(getDocs(collection(s, "admins")));
+      await assertFails(getDocs(collection(s, "admin_audit")));
+      await assertFails(getDocs(collection(s, "allowed_devices")));
+    }
+  });
+});
+
 describe("the audit log is immutable (D42)", () => {
   it("nobody creates, changes or deletes an entry", async () => {
     for (const s of [admin, userA, noRole, anon]) {
@@ -316,6 +333,7 @@ describe("nobody", () => {
         "device_secrets/DEVA",
         "phone_index/639171234567",
         "password_resets/userA",
+        "admin_setup_tokens/admin2",
         "alert_state/DEVA__flow",
         "alert_daily/2026-11-14",
         "alert_daily/2026-11-14__userA",

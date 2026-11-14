@@ -33,7 +33,7 @@ async function loadUser(uid: string) {
 }
 
 export const createUser = onCall(async (request) => {
-  requireAdmin(request);
+  await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const name = parseName(d.name);
   const email = parseEmail(d.email);
@@ -80,7 +80,7 @@ export const createUser = onCall(async (request) => {
 });
 
 export const updateUser = onCall(async (request) => {
-  requireAdmin(request);
+  await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const uid = parseUid(d.uid);
   const user = await loadUser(uid);
@@ -127,13 +127,13 @@ export const updateUser = onCall(async (request) => {
 
 /** Suspends the account (D42): sign-in refused, no alerts, data and devices kept. */
 export const deleteUser = onCall({ secrets: MAIL_SECRETS }, async (request) => {
-  const adminUid = requireAdmin(request);
+  const adminUid = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
   const uid = parseUid(d.uid);
   const user = await loadUser(uid);
   const name = user.get("name") as string;
   if (!confirmMatches(d.confirmName, name)) {
-    throw new HttpsError("failed-precondition", "The typed name does not match.", {
+    throw new HttpsError("invalid-argument", "The typed name does not match.", {
       code: "CONFIRM_MISMATCH",
     });
   }
@@ -156,14 +156,19 @@ export const deleteUser = onCall({ secrets: MAIL_SECRETS }, async (request) => {
 });
 
 export const restoreUser = onCall({ secrets: MAIL_SECRETS }, async (request) => {
-  const adminUid = requireAdmin(request);
+  const adminUid = await requireAdmin(request);
   const uid = parseUid((request.data as { uid?: unknown } | null)?.uid);
   const user = await loadUser(uid);
   const purgeAfterMs = ms(user.get("purgeAfter"));
   const nowMs = Date.now();
-  if (user.get("status") !== "suspended" || purgeAfterMs === null || purgeAfterMs <= nowMs) {
-    throw new HttpsError("failed-precondition", "This user cannot be restored.", {
-      code: "NOT_RESTORABLE",
+  if (user.get("status") !== "suspended") {
+    throw new HttpsError("failed-precondition", "This user is not deleted.", {
+      code: "NOT_SUSPENDED",
+    });
+  }
+  if (purgeAfterMs === null || purgeAfterMs <= nowMs) {
+    throw new HttpsError("failed-precondition", "The 30 days to restore have passed.", {
+      code: "RESTORE_EXPIRED",
     });
   }
   await getAuth().updateUser(uid, { disabled: false });
