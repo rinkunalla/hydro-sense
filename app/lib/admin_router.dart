@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 
 import 'data/providers.dart';
 import 'features/admin/admin_account_screen.dart';
+import 'features/admin/admin_setup_screen.dart';
 import 'features/admin/admin_shell.dart';
 import 'features/admin/devices_admin_screen.dart';
+import 'features/admin/users_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/reset_password_screen.dart';
 import 'router.dart' show redirectFor;
@@ -27,7 +29,7 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
     pageBuilder: (_, _) => NoTransitionPage(child: child),
   );
   return GoRouter(
-    initialLocation: '/devices',
+    initialLocation: '/users',
     refreshListenable: refresh,
     redirect: (context, state) {
       final role = ref.read(roleProvider);
@@ -40,7 +42,7 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         role: role.valueOrNull,
         profileLoaded: true,
         requiredRole: 'admin',
-        home: '/devices',
+        home: '/users',
       );
     },
     routes: [
@@ -53,6 +55,16 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(path: '/reset', builder: (_, _) => const ResetPasswordScreen()),
+      // The emailed setup link carries ?token=; without it, ask for a link.
+      GoRoute(
+        path: '/setup',
+        builder: (_, s) {
+          final token = s.uri.queryParameters['token'];
+          return token == null || token.isEmpty
+              ? const AdminSetupRequestScreen()
+              : AdminSetPasswordScreen(token: token);
+        },
+      ),
       GoRoute(
         path: '/loading',
         builder: (_, _) =>
@@ -62,6 +74,7 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, state, child) =>
             AdminShell(location: state.uri.path, child: child),
         routes: [
+          page('/users', const UsersScreen()),
           page('/devices', const DevicesAdminScreen()),
           page('/account', const AdminAccountScreen()),
         ],

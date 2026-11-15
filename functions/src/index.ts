@@ -4,7 +4,7 @@ export { registerDevice } from "./device/registerDevice";
 export { deviceIngest } from "./device/deviceIngest";
 export { monitorDevices } from "./monitor/monitorDevices";
 export { calibrateFlowThresholdsWeekly } from "./calibration/calibrate";
-export { createUser, updateUser, deleteUser, restoreUser } from "./admin/users";
+export { adminListUsers, createUser, updateUser, deleteUser, restoreUser } from "./admin/users";
 export {
   addAllowedDevice,
   updateDeviceLabel,

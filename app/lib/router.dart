@@ -31,7 +31,10 @@ String? redirectFor({
 }) {
   final uri = Uri.parse(location);
   final path = uri.path;
-  final onAuthPage = path == '/login' || path == '/reset';
+  // /setup is the admin website's first-time setup (D23); the phone app has
+  // no such route.
+  final onAuthPage =
+      path == '/login' || path == '/reset' || path.startsWith('/setup');
   final carried = uri.queryParameters['next'];
   final next =
       carried != null &&
@@ -41,8 +44,11 @@ String? redirectFor({
           !carried.startsWith('/loading')
       ? carried
       : null;
+  // The page to come back to after Loading: one already carried, else the
+  // page asked for (a reload of /devices stays on /devices).
+  final back = next ?? (onAuthPage || path == '/loading' ? null : location);
   String withNext(String to) =>
-      next == null ? to : '$to?next=${Uri.encodeComponent(next)}';
+      back == null ? to : '$to?next=${Uri.encodeComponent(back)}';
 
   if (!signedIn) {
     if (onAuthPage) return null;

@@ -233,8 +233,13 @@ void main() {
     });
 
     test('waits for the role and profile before deciding', () {
-      expect(go('/devices', roleLoaded: false), '/loading');
-      expect(go('/devices', profileLoaded: false), '/loading');
+      expect(go('/devices', roleLoaded: false), '/loading?next=%2Fdevices');
+      expect(
+        go('/devices/ABC', profileLoaded: false),
+        '/loading?next=%2Fdevices%2FABC',
+      );
+      // A reload comes back to the same page.
+      expect(go('/loading?next=%2Fdevices%2FABC'), '/devices/ABC');
       expect(go('/loading'), '/devices');
       expect(go('/devices/ABC'), isNull);
     });

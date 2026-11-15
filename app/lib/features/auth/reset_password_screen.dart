@@ -1,8 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/errors.dart';
+import '../../core/glass.dart';
 import '../../core/theme.dart';
 import '../../data/providers.dart';
 
@@ -48,41 +50,61 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Reset password')),
+  Widget build(BuildContext context) => AppBackground(
+    child: Scaffold(
+      backgroundColor: Colors.transparent,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpace.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Enter your email. If it has an account, we will send a reset link.',
-              ),
-              const SizedBox(height: AppSpace.l),
-              TextField(
-                controller: _email,
-                enabled: !_busy,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email'),
-              ),
-              const SizedBox(height: AppSpace.l),
-              FilledButton(
-                onPressed: _busy ? null : _send,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpace.l),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: GlassPanel(
+                padding: const EdgeInsets.all(AppSpace.xl),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Semantics(
+                      header: true,
+                      child: Text('Reset password', style: AppText.title(24)),
+                    ),
+                    const SizedBox(height: AppSpace.m),
+                    Text(
+                      'Enter your email. If it has an admin account, we send a '
+                      'link to choose a new password.',
+                      style: AppText.body.copyWith(color: AppColors.steel),
+                    ),
+                    const SizedBox(height: AppSpace.l),
+                    TextField(
+                      controller: _email,
+                      enabled: !_busy,
+                      keyboardType: TextInputType.emailAddress,
+                      autofillHints: const [AutofillHints.email],
+                      decoration: const InputDecoration(labelText: 'Email'),
+                      onSubmitted: (_) => _busy ? null : _send(),
+                    ),
+                    const SizedBox(height: AppSpace.l),
+                    PrimaryButton(
+                      label: 'Send reset link',
+                      busy: _busy,
+                      onPressed: _send,
+                    ),
+                    if (_message != null) ...[
+                      const SizedBox(height: AppSpace.l),
+                      Text(_message!, style: AppText.body),
+                    ],
+                    const SizedBox(height: AppSpace.s),
+                    TextButton(
+                      onPressed: () => context.go('/login'),
+                      child: const Text('Back to sign in'),
+                    ),
+                  ],
                 ),
-                child: const Text('Send reset link'),
               ),
-              if (_message != null) ...[
-                const SizedBox(height: AppSpace.l),
-                Text(_message!),
-              ],
-            ],
+            ),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }

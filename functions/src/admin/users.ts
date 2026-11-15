@@ -32,6 +32,29 @@ async function loadUser(uid: string) {
   return snap;
 }
 
+/**
+ * The Users page (D24): only what the table and side panel show. The website
+ * reads no collection directly; everything comes through callables.
+ */
+export const adminListUsers = onCall(async (request) => {
+  await requireAdmin(request);
+  const snap = await db.collection(C.users).where("role", "==", "user").get();
+  return {
+    users: snap.docs.map((d) => ({
+      uid: d.id,
+      name: (d.get("name") as string | undefined) ?? "",
+      email: (d.get("email") as string | undefined) ?? "",
+      phone: (d.get("phone") as string | undefined) ?? "",
+      deviceCount: (d.get("deviceCount") as number | undefined) ?? 0,
+      passwordSet: d.get("passwordSet") === true,
+      status: d.get("status") === "suspended" ? "suspended" : "active",
+      purgeAfterMs: ms(d.get("purgeAfter")),
+      deletionRequestedAtMs: ms(d.get("deletionRequestedAt")),
+      createdAtMs: ms(d.get("createdAt")),
+    })),
+  };
+});
+
 export const createUser = onCall(async (request) => {
   await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;

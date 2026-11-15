@@ -5,12 +5,16 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 
 import 'app.dart';
 import 'core/config.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
+  // Admin website: plain paths (/setup?token=...) so emailed links open the
+  // right page; Hosting rewrites every path to index.html.
+  if (kIsWeb) usePathUrlStrategy();
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   if (AppConfig.useEmulator) await _useEmulators();

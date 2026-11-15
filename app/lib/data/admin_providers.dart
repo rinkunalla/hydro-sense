@@ -21,3 +21,17 @@ final adminDevicesProvider = StreamProvider<List<AdminDevice>>((ref) async* {
     const Duration(seconds: AppConfig.adminDevicesRefreshS),
   ).asyncMap((_) => repo.devices());
 });
+
+/// adminListUsers; screens invalidate it after a change.
+final adminUsersProvider = FutureProvider<List<AdminUser>>(
+  (ref) => ref.watch(adminRepositoryProvider).users(),
+);
+
+final adminsProvider =
+    FutureProvider<({List<AdminInfo> admins, bool belowRecommended})>(
+      (ref) => ref.watch(adminRepositoryProvider).admins(),
+    );
+
+final adminAuditProvider = FutureProvider<List<AuditEntry>>(
+  (ref) => ref.watch(adminRepositoryProvider).audit(),
+);

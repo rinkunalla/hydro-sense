@@ -16,7 +16,7 @@ import {
   syncMyAdmin,
   updateMyAdminName,
 } from "../src/admin/admins";
-import { createUser, deleteUser } from "../src/admin/users";
+import { adminListUsers, createUser, deleteUser } from "../src/admin/users";
 import { listDevicesForAdmin } from "../src/admin/devices";
 import { runAlertPass } from "../src/alerts/alertPass";
 import { requestResetCode, setPasswordWithResetToken, verifyResetCode } from "../src/auth/reset";
@@ -353,6 +353,35 @@ describe("user self-service (D31, D42)", () => {
     const uid = await newUser();
     await deleteUser.run(asAdmin({ uid, confirmName: "Juan" }));
     expect(await codeOf(updateMyName.run(asUser({ name: "x" }, uid)))).toBe("NOT_USER");
+  });
+});
+
+describe("admin user list (D24)", () => {
+  it("lists users with only the table's fields; admins only", async () => {
+    const uid = await newUser();
+    const out = (await adminListUsers.run(asAdmin({}))) as { users: Record<string, unknown>[] };
+    const row = out.users.find((u) => u.uid === uid)!;
+    expect(row).toMatchObject({
+      name: "Juan",
+      passwordSet: false,
+      status: "active",
+      deviceCount: 0,
+    });
+    expect(Object.keys(row).sort()).toEqual(
+      [
+        "createdAtMs",
+        "deletionRequestedAtMs",
+        "deviceCount",
+        "email",
+        "name",
+        "passwordSet",
+        "phone",
+        "purgeAfterMs",
+        "status",
+        "uid",
+      ].sort(),
+    );
+    expect(await codeOf(adminListUsers.run(asUser({}, uid)))).not.toBe("ok");
   });
 });
 

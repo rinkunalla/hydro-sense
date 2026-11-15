@@ -249,6 +249,7 @@ export const listAdmins = onCall(async (request) => {
       inviteExpired:
         invited && (sentMs === null || sentMs + ADMIN_SETUP_TOKEN_TTL_S * 1000 <= nowMs),
       lastSignInMs: lastSignIn.get(d.id) ?? null,
+      activatedAtMs: ms(d.get("activatedAt")),
     };
   });
   const activeCount = admins.filter((a) => a.status === "active").length;

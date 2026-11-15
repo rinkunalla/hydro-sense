@@ -27,6 +27,9 @@ abstract final class AppConfig {
 
   // Data rules mirrored from the backend
   static const int nicknameMax = 24;
+  static const int userNameMax = 60; // USER_NAME_MAX
+  static const int labelMax = 24; // LABEL_MAX
+  static const int restoreWindowDays = 30; // RESTORE_WINDOW_DAYS (D42)
   static const int lowBatteryPercent = 20;
   static const double starterLowCutoff = 0.2; // STARTER_LOW_FLOW_CUTOFF
   static const double starterNormalCutoff = 2.0; // STARTER_NORMAL_FLOW_CUTOFF
