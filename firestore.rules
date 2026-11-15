@@ -110,13 +110,10 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['alertPrefs'])
         && validAlertPrefs(request.resource.data.alertPrefs);
 
+      // Registered only through claimPushToken (D45), which first removes the
+      // phone from any other account; the owner may delete it (Sign out).
       match /push_tokens/{token} {
         allow read, delete: if isSelf(uid);
-        allow create, update: if isSelf(uid)
-          && token.size() <= 4096
-          && request.resource.data.keys().hasOnly(['platform', 'updatedAt'])
-          && request.resource.data.platform in ['android', 'web']
-          && request.resource.data.updatedAt == request.time;
       }
     }
 

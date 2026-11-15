@@ -11,6 +11,8 @@ import {
 export const SEMAPHORE_API_KEY = defineSecret("SEMAPHORE_API_KEY");
 export const GMAIL_USER = defineSecret("GMAIL_USER");
 export const GMAIL_APP_PASSWORD = defineSecret("GMAIL_APP_PASSWORD");
+// Server key restricted to Places API (New) (D46); never in the app.
+export const GOOGLE_PLACES_KEY = defineSecret("GOOGLE_PLACES_KEY");
 
 export const ALERT_SECRETS = [SEMAPHORE_API_KEY, GMAIL_USER, GMAIL_APP_PASSWORD];
 export const MAIL_SECRETS = [GMAIL_USER, GMAIL_APP_PASSWORD];

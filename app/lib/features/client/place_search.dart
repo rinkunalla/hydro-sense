@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -8,12 +10,16 @@ import '../../core/glass.dart';
 import '../../core/theme.dart';
 import '../../data/places.dart';
 
-/// "Search a town, barangay or landmark": searches only when the person taps
-/// Search or the keyboard's search key, never while typing (Nominatim policy).
+/// "Search a place or building": suggestions appear while typing, after a
+/// short pause (Google Places through placeSuggest, D46). Shown only over a
+/// Google map, as Google's terms require.
 class PlaceSearchBar extends ConsumerStatefulWidget {
-  const PlaceSearchBar({super.key, required this.onPick});
+  const PlaceSearchBar({super.key, required this.onPick, this.near});
 
   final ValueChanged<Place> onPick;
+
+  /// The map's centre, so nearby places come first.
+  final LatLng? Function()? near;
 
   @override
   ConsumerState<PlaceSearchBar> createState() => _PlaceSearchBarState();
@@ -22,70 +28,123 @@ class PlaceSearchBar extends ConsumerStatefulWidget {
 class _PlaceSearchBarState extends ConsumerState<PlaceSearchBar> {
   final _c = TextEditingController();
   final _focus = FocusNode();
+  String _session = newPlacesSession();
+  Timer? _pause;
+  int _seq = 0;
   bool _busy = false;
   String? _message;
-  List<Place>? _results;
+  List<PlaceSuggestion>? _results;
 
   @override
   void dispose() {
+    _pause?.cancel();
     _c.dispose();
     _focus.dispose();
     super.dispose();
   }
 
-  Future<void> _search() async {
-    final q = _c.text.trim();
+  String _errorText(Object e) => switch (callableDetails(e).code) {
+    'SEARCH_OFF' => 'Place search is off for now. Move the map by hand.',
+    'PLACES_USER_LIMIT' =>
+      "You've searched a lot today. Try again tomorrow, or move the map by hand.",
+    'PLACES_PROJECT_LIMIT' =>
+      'Place search is resting until tomorrow. Move the map by hand.',
+    'QUERY_INVALID' => 'Type at least ${AppConfig.placeQueryMin} letters.',
+    _ => "Search isn't working right now. Check your internet.",
+  };
+
+  void _typed(String text) {
+    _pause?.cancel();
+    final q = text.trim();
     if (q.length < AppConfig.placeQueryMin) {
+      _seq++; // drop any answer still on its way
       setState(() {
+        _busy = false;
         _results = null;
-        _message = 'Type at least ${AppConfig.placeQueryMin} letters.';
+        _message = null;
       });
       return;
     }
-    _focus.unfocus();
-    setState(() {
-      _busy = true;
-      _message = null;
-      _results = null;
-    });
+    setState(() {});
+    _pause = Timer(
+      const Duration(milliseconds: AppConfig.placeTypingPauseMs),
+      () => _suggest(q),
+    );
+  }
+
+  Future<void> _suggest(String q) async {
+    final id = ++_seq;
+    setState(() => _busy = true);
     try {
-      final r = await ref.read(placeSearchProvider).search(q);
-      if (!mounted) return;
+      final r = await ref
+          .read(placeSearchProvider)
+          .suggest(q, _session, near: widget.near?.call());
+      if (!mounted || id != _seq) return; // a newer search is on its way
       setState(() {
         _results = r;
         _message = r.isEmpty
-            ? 'No places found. Try a town or barangay name.'
+            ? 'No places found. Try another name or a nearby landmark.'
             : null;
       });
     } catch (e) {
-      if (!mounted) return;
-      setState(
-        () => _message = switch (callableDetails(e).code) {
-          'SEARCH_OFF' => 'Place search is off for now. Move the map by hand.',
-          'SEARCH_BUSY' => 'Search is busy. Try again in a moment.',
-          'QUERY_INVALID' =>
-            'Type at least ${AppConfig.placeQueryMin} letters.',
-          _ => "Search isn't working right now. Check your internet.",
-        },
-      );
+      if (!mounted || id != _seq) return;
+      setState(() {
+        _results = null;
+        _message = _errorText(e);
+      });
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && id == _seq) setState(() => _busy = false);
     }
   }
 
-  void _pick(Place p) {
+  Future<void> _pick(PlaceSuggestion s) async {
+    _pause?.cancel();
+    final id = ++_seq;
+    _focus.unfocus();
+    setState(() => _busy = true);
+    try {
+      final at = await ref
+          .read(placeSearchProvider)
+          .locate(s.placeId, _session);
+      if (!mounted || id != _seq) return;
+      _session = newPlacesSession(); // that search is over
+      _c.text = s.main;
+      setState(() {
+        _results = null;
+        _message = null;
+      });
+      widget.onPick(Place(s.main, at.latitude, at.longitude));
+    } catch (e) {
+      if (mounted && id == _seq) setState(() => _message = _errorText(e));
+    } finally {
+      if (mounted && id == _seq) setState(() => _busy = false);
+    }
+  }
+
+  void _submitted(String text) {
+    final r = _results;
+    if (r != null && r.isNotEmpty) {
+      _pick(r.first);
+    } else if (text.trim().length >= AppConfig.placeQueryMin) {
+      _pause?.cancel();
+      _suggest(text.trim());
+    } else {
+      setState(
+        () => _message = 'Type at least ${AppConfig.placeQueryMin} letters.',
+      );
+    }
+  }
+
+  void _clear() {
+    _pause?.cancel();
+    _seq++;
     setState(() {
+      _c.clear();
+      _busy = false;
       _results = null;
       _message = null;
     });
-    widget.onPick(p);
   }
-
-  void _clear() => setState(() {
-    _c.clear();
-    _results = null;
-    _message = null;
-  });
 
   @override
   Widget build(BuildContext context) {
@@ -101,9 +160,10 @@ class _PlaceSearchBarState extends ConsumerState<PlaceSearchBar> {
             focusNode: _focus,
             maxLength: AppConfig.placeQueryMax,
             textInputAction: TextInputAction.search,
-            onSubmitted: (_) => _search(),
+            onChanged: _typed,
+            onSubmitted: _submitted,
             decoration: InputDecoration(
-              hintText: 'Search a town, barangay or landmark',
+              hintText: 'Search a place or building',
               counterText: '',
               prefixIcon: const Icon(
                 Icons.search_rounded,
@@ -118,23 +178,14 @@ class _PlaceSearchBarState extends ConsumerState<PlaceSearchBar> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_c.text.isNotEmpty || results != null)
-                          IconButton(
-                            tooltip: 'Clear search',
-                            icon: const Icon(Icons.close_rounded),
-                            onPressed: _clear,
-                          ),
-                        TextButton(
-                          onPressed: _search,
-                          child: const Text('Search'),
-                        ),
-                      ],
-                    ),
+                  : _c.text.isNotEmpty
+                  ? IconButton(
+                      tooltip: 'Clear search',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: _clear,
+                    )
+                  : null,
             ),
-            onChanged: (_) => setState(() {}),
           ),
         ),
         if (_message != null) ...[
@@ -159,7 +210,7 @@ class _PlaceSearchBarState extends ConsumerState<PlaceSearchBar> {
               children: [
                 for (final p in results)
                   InkWell(
-                    onTap: () => _pick(p),
+                    onTap: _busy ? null : () => _pick(p),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: AppSpace.m,
@@ -174,29 +225,29 @@ class _PlaceSearchBarState extends ConsumerState<PlaceSearchBar> {
                           ),
                           const SizedBox(width: AppSpace.s),
                           Expanded(
-                            child: Text(
-                              p.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppText.body.copyWith(fontSize: 14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  p.main,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppText.strong.copyWith(fontSize: 14),
+                                ),
+                                if (p.secondary.isNotEmpty)
+                                  Text(
+                                    p.secondary,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppText.note.copyWith(fontSize: 12),
+                                  ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpace.m,
-                    AppSpace.xs,
-                    AppSpace.m,
-                    AppSpace.xs,
-                  ),
-                  child: Text(
-                    'Search © OpenStreetMap contributors',
-                    style: AppText.note.copyWith(fontSize: 11),
-                  ),
-                ),
               ],
             ),
           ),
@@ -206,85 +257,62 @@ class _PlaceSearchBarState extends ConsumerState<PlaceSearchBar> {
   }
 }
 
-/// Round glass button that finds the phone and reports where it is.
-class MyLocationButton extends ConsumerStatefulWidget {
-  const MyLocationButton({super.key, required this.onFound});
+/// Glass pill with an icon and its words, for map actions (full screen,
+/// back to the pipeline, use my location).
+class MapPillButton extends StatelessWidget {
+  const MapPillButton({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.busy = false,
+  });
 
-  final ValueChanged<LatLng> onFound;
-
-  @override
-  ConsumerState<MyLocationButton> createState() => _MyLocationButtonState();
-}
-
-class _MyLocationButtonState extends ConsumerState<MyLocationButton> {
-  bool _busy = false;
-
-  Future<void> _locate() async {
-    setState(() => _busy = true);
-    try {
-      final at = await ref.read(myLocationProvider).current();
-      if (mounted) widget.onFound(at);
-    } on LocationError catch (e) {
-      if (mounted) showToast(context, e.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+  final String label;
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
-    label: 'My location',
+    label: label,
     excludeSemantics: true,
-    child: Tooltip(
-      message: 'My location',
-      child: GestureDetector(
-        onTap: _busy ? null : _locate,
-        child: Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            color: const Color(0xF2FFFFFF),
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.rim),
-            boxShadow: const [
-              BoxShadow(color: Color(0x290A1B2E), blurRadius: 10),
-            ],
-          ),
-          child: Center(
-            child: _busy
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  )
-                : const Icon(
-                    Icons.my_location_rounded,
-                    color: AppColors.deepCyan,
+    child: Material(
+      color: const Color(0xF2FFFFFF),
+      shape: const StadiumBorder(side: BorderSide(color: AppColors.rim)),
+      elevation: 2,
+      shadowColor: const Color(0x290A1B2E),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: busy ? null : onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2.2),
+                      )
+                    : Icon(icon, size: 20, color: AppColors.deepCyan),
+                const SizedBox(width: AppSpace.s),
+                // Wraps instead of overflowing with large text.
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    style: AppText.strong.copyWith(fontSize: 14),
                   ),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    ),
-  );
-}
-
-/// The blue "you are here" dot.
-class YouAreHere extends StatelessWidget {
-  const YouAreHere({super.key});
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    container: true,
-    label: 'You are here',
-    child: Container(
-      width: 22,
-      height: 22,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppColors.royal,
-        border: Border.all(color: Colors.white, width: 3),
-        boxShadow: const [BoxShadow(color: Color(0x552563EB), blurRadius: 12)],
       ),
     ),
   );

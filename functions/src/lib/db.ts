@@ -24,7 +24,6 @@ export const C = {
   alertDaily: "alert_daily",
   errorLogs: "error_logs",
   rateLimits: "rate_limits",
-  geocodeCache: "geocode_cache",
   settings: "settings",
 } as const;
 

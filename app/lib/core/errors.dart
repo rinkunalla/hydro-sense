@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 /// User-facing wording (docs/UI_UX_SPEC.md section 4, docs/ERROR_HANDLING.md section 4).
 abstract final class Messages {
+  static const enterBoth = 'Enter your email and password.';
   static const wrongCredentials =
       'That email or password is not right. Try again.';
   static const suspended =

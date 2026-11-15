@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/errors.dart';
+import '../../core/password_field.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
 import '../../data/account_repository.dart';
@@ -49,6 +51,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _signIn() async {
+    if (_email.text.trim().isEmpty || _password.text.isEmpty) {
+      setState(() => _error = Messages.enterBoth);
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -60,6 +66,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             email: _email.text.trim(),
             password: _password.text,
           );
+      // Lets the password manager offer to save what worked.
+      TextInput.finishAutofillContext();
       if (!widget.admin) {
         // Best effort: a missed sync is retried at the next sign-in.
         ref
@@ -135,14 +143,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           decoration: const InputDecoration(labelText: 'Email'),
                         ),
                         const SizedBox(height: AppSpace.m),
-                        TextField(
+                        // Password managers may fill it (NIST SP 800-63B
+                        // SHALL); they ask for the phone's lock before filling.
+                        PasswordField(
                           controller: _password,
-                          enabled: !_busy,
-                          obscureText: true,
+                          label: 'Password',
                           autofillHints: const [AutofillHints.password],
-                          decoration: const InputDecoration(
-                            labelText: 'Password',
-                          ),
+                          enabled: !_busy,
                           onSubmitted: (_) => _busy ? null : _signIn(),
                         ),
                         if (_error != null) ...[

@@ -11,6 +11,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/pipeline.dart';
 import '../../data/pipeline_logic.dart';
+import '../../data/places.dart';
 import '../../data/providers.dart';
 import 'map_tiles.dart';
 import 'place_search.dart';
@@ -89,16 +90,25 @@ class _EditPipelineState extends ConsumerState<EditPipelineScreen> {
     return pending != null ? pending.at != null : v.device.manualPin;
   }
 
-  Future<LatLng?> _placePin(String title, LatLng? start, List<LatLng> near) =>
-      Navigator.of(context).push<LatLng>(
-        MaterialPageRoute(
-          fullscreenDialog: true,
-          builder: (_) => PinPicker(
-            title: title,
-            start: start ?? (near.isNotEmpty ? near.first : null),
-          ),
-        ),
-      );
+  // Above the tab bar, so nothing covers the map's own buttons.
+  Future<PinResult?> _placePin(
+    String title,
+    LatLng? start,
+    List<LatLng> near, {
+    DeviceView? device,
+  }) => Navigator.of(context, rootNavigator: true).push<PinResult>(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => PinPicker(
+        title: title,
+        start: start ?? (near.isNotEmpty ? near.first : null),
+        forDevice: device != null,
+        deviceGps: device != null && device.hasGps
+            ? LatLng(device.device.gpsLat!, device.device.gpsLng!)
+            : null,
+      ),
+    ),
+  );
 
   void _sortByDistance(List<DeviceView> views) {
     if (_source == null) return;
@@ -249,27 +259,25 @@ class _EditPipelineState extends ConsumerState<EditPipelineScreen> {
           decoration: InputDecoration(labelText: '$label name'),
           onChanged: (_) => _dirty = true,
         ),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                at == null ? 'Not placed on the map yet' : 'Placed on the map',
-                style: AppText.note,
-              ),
-            ),
-            SecondaryButton(
-              label: 'Move pin',
-              icon: Icons.place_outlined,
-              onPressed: () async {
-                final p = await _placePin(
-                  'Place the ${label.toLowerCase()}',
-                  at,
-                  near,
-                );
-                if (p != null) _changed(() => set(p));
-              },
-            ),
-          ],
+        Text(
+          at == null ? 'Not placed on the map yet' : 'Placed on the map',
+          style: AppText.note,
+        ),
+        const SizedBox(height: AppSpace.s),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SecondaryButton(
+            label: at == null ? 'Set location' : 'Edit location',
+            icon: Icons.edit_location_alt_outlined,
+            onPressed: () async {
+              final p = await _placePin(
+                '${at == null ? 'Set' : 'Edit'} the ${label.toLowerCase()}',
+                at,
+                near,
+              );
+              if (p?.at != null) _changed(() => set(p!.at!));
+            },
+          ),
         ),
       ],
     );
@@ -390,19 +398,21 @@ class _EditPipelineState extends ConsumerState<EditPipelineScreen> {
                             view: v,
                             located: _locationOf(v) != null,
                             manual: _isManual(v),
-                            onPin: () async {
+                            onEdit: () async {
                               final p = await _placePin(
-                                'Place ${v.nickname}',
+                                'Location of ${v.nickname}',
                                 _locationOf(v),
                                 near,
+                                device: v,
                               );
-                              if (p != null) {
-                                _changed(() => _pins[v.id] = (at: p));
-                              }
+                              if (p == null) return;
+                              // Device GPS clears the manual pin (D25).
+                              _changed(
+                                () => _pins[v.id] = (
+                                  at: p.deviceGps ? null : p.at,
+                                ),
+                              );
                             },
-                            onUseGps: _isManual(v) && v.hasGps
-                                ? () => _changed(() => _pins[v.id] = (at: null))
-                                : null,
                           ),
                       ],
                     ),
@@ -429,21 +439,19 @@ class _DeviceRow extends StatelessWidget {
     required this.view,
     required this.located,
     required this.manual,
-    required this.onPin,
-    this.onUseGps,
+    required this.onEdit,
   });
 
   final int index;
   final DeviceView view;
   final bool located;
   final bool manual;
-  final VoidCallback onPin;
-  final VoidCallback? onUseGps;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
     final where = !located
-        ? 'No location yet. Tap the pin to set it.'
+        ? 'No location yet'
         : manual
         ? 'Location set by you'
         : "Location from the device's GPS";
@@ -473,25 +481,18 @@ class _DeviceRow extends StatelessWidget {
                   style: AppText.strong,
                 ),
                 Text(where, style: AppText.note),
-                if (onUseGps != null)
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      alignment: Alignment.centerLeft,
-                    ),
-                    onPressed: onUseGps,
-                    child: const Text('Use GPS instead'),
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 40),
+                    alignment: Alignment.centerLeft,
                   ),
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+                  label: Text(located ? 'Edit location' : 'Set location'),
+                ),
               ],
             ),
-          ),
-          IconButton(
-            tooltip: 'Set the location of ${view.nickname}',
-            icon: Icon(
-              located ? Icons.place_rounded : Icons.add_location_alt_outlined,
-              color: AppColors.deepCyan,
-            ),
-            onPressed: onPin,
           ),
         ],
       ),
@@ -499,12 +500,27 @@ class _DeviceRow extends StatelessWidget {
   }
 }
 
-/// Places a pin: move the map under the fixed centre mark, then confirm.
+/// What the picker chose: a point on the map (the pin, or the phone's
+/// position), or "follow the device's own GPS" (clears a manual pin, D25).
+typedef PinResult = ({LatLng? at, bool deviceGps});
+
+/// Edit location: move the map under the fixed centre mark and confirm, or
+/// take the phone's position, or (devices only) the device's own GPS.
 class PinPicker extends ConsumerStatefulWidget {
-  const PinPicker({super.key, required this.title, this.start});
+  const PinPicker({
+    super.key,
+    required this.title,
+    this.start,
+    this.forDevice = false,
+    this.deviceGps,
+  });
 
   final String title;
   final LatLng? start;
+
+  /// Show "Use device GPS" (enabled only when the device has a fix).
+  final bool forDevice;
+  final LatLng? deviceGps;
 
   @override
   ConsumerState<PinPicker> createState() => _PinPickerState();
@@ -512,12 +528,28 @@ class PinPicker extends ConsumerStatefulWidget {
 
 class _PinPickerState extends ConsumerState<PinPicker> {
   final _map = MapController();
+  bool _locating = false;
+
+  Future<void> _usePhone() async {
+    setState(() => _locating = true);
+    try {
+      final at = await ref.read(myLocationProvider).current();
+      if (mounted) {
+        Navigator.pop<PinResult>(context, (at: at, deviceGps: false));
+      }
+    } on LocationError catch (e) {
+      if (mounted) showToast(context, e.message);
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final view = ref.watch(mapViewProvider);
-    final session = ref.watch(googleSessionProvider).valueOrNull;
-    final satellite = view == MapView.satellite && session != null;
+    final session = ref.watch(googleSessionProvider(view));
+    final google = session.valueOrNull != null;
+    final gps = widget.deviceGps;
     return AppBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -532,12 +564,33 @@ class _PinPickerState extends ConsumerState<PinPicker> {
               options: MapOptions(
                 initialCenter: widget.start ?? const LatLng(12.88, 121.77),
                 initialZoom: widget.start == null ? 6 : 17,
+                minZoom: AppConfig.mapMinZoom,
+                maxZoom: AppConfig.mapMaxZoom,
               ),
               children: [
-                satellite ? googleSatelliteLayer(session) : osmLayer(),
-                MapAttribution(
-                  view: satellite ? MapView.satellite : MapView.map,
-                ),
+                baseLayer(session, view),
+                if (gps != null)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: gps,
+                        width: 22,
+                        height: 22,
+                        child: Semantics(
+                          container: true,
+                          label: "The device's GPS position",
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppColors.royal,
+                              border: Border.all(color: Colors.white, width: 3),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                MapAttribution(google: google),
               ],
             ),
             const IgnorePointer(
@@ -552,30 +605,61 @@ class _PinPickerState extends ConsumerState<PinPicker> {
                 ),
               ),
             ),
-            // Search or My location gets close; the crosshair does the last metres.
-            Positioned(
-              left: AppSpace.l,
-              right: AppSpace.l,
-              top: AppSpace.s,
-              child: PlaceSearchBar(
-                onPick: (p) => _map.move(p.at, AppConfig.placeZoom + 1),
+            // Google place results only over Google tiles (D46).
+            if (google)
+              Positioned(
+                left: AppSpace.l,
+                right: AppSpace.l,
+                top: AppSpace.s,
+                child: PlaceSearchBar(
+                  near: () => _map.camera.center,
+                  onPick: (p) => _map.move(p.at, AppConfig.placeZoom + 1),
+                ),
               ),
-            ),
-            Positioned(
-              right: AppSpace.l,
-              bottom: 104,
-              child: MyLocationButton(
-                onFound: (at) => _map.move(at, AppConfig.placeZoom + 2),
-              ),
-            ),
             Positioned(
               left: AppSpace.l,
               right: AppSpace.l,
               bottom: AppSpace.xl,
               child: SafeArea(
-                child: PrimaryButton(
-                  label: 'Place the pin here',
-                  onPressed: () => Navigator.pop(context, _map.camera.center),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: AppSpace.s,
+                      runSpacing: AppSpace.s,
+                      children: [
+                        if (widget.forDevice)
+                          MapPillButton(
+                            label: gps == null
+                                ? 'No device GPS yet'
+                                : 'Use device GPS',
+                            icon: Icons.satellite_alt_rounded,
+                            onTap: gps == null
+                                ? null
+                                : () => Navigator.pop<PinResult>(context, (
+                                    at: null,
+                                    deviceGps: true,
+                                  )),
+                          ),
+                        MapPillButton(
+                          label: "Use my phone's location",
+                          icon: Icons.my_location_rounded,
+                          busy: _locating,
+                          onTap: _usePhone,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpace.m),
+                    PrimaryButton(
+                      label: 'Place the pin here',
+                      onPressed: () => Navigator.pop<PinResult>(context, (
+                        at: _map.camera.center,
+                        deviceGps: false,
+                      )),
+                    ),
+                  ],
                 ),
               ),
             ),

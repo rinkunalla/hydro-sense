@@ -1,4 +1,4 @@
-// Map search and My location (fakes for the search callable and the GPS).
+// Live place search (Google Places, D46) and My location, with fakes.
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,86 +9,119 @@ import 'package:hydro_sense/features/client/place_search.dart';
 import 'package:latlong2/latlong.dart';
 
 class FakeSearch implements PlaceSearch {
-  final queries = <String>[];
+  final typed = <String>[];
+  final sessions = <String>[];
+  final located = <String>[];
+  LatLng? nearSeen;
   Object? error;
 
   @override
-  Future<List<Place>> search(String query) async {
-    queries.add(query);
+  Future<List<PlaceSuggestion>> suggest(
+    String input,
+    String session, {
+    LatLng? near,
+  }) async {
+    typed.add(input);
+    sessions.add(session);
+    nearSeen = near;
     if (error != null) throw error!;
     return const [
-      Place('San Fabian, Pangasinan, Philippines', 16.12, 120.40),
-      Place('San Fabian Church, San Fabian, Pangasinan', 16.13, 120.41),
+      PlaceSuggestion('p1', 'SM City Rosales', 'Rosales, Pangasinan'),
+      PlaceSuggestion('p2', 'Rosales Public Market', ''),
     ];
   }
-}
-
-class FakeLocation implements MyLocation {
-  FakeLocation(this.result);
-
-  final Object result;
 
   @override
-  Future<LatLng> current() async {
-    if (result is LocationError) throw result;
-    return result as LatLng;
+  Future<LatLng> locate(String placeId, String session) async {
+    located.add('$placeId@$session');
+    return const LatLng(15.89, 120.6);
   }
 }
 
-Widget harness(Widget child, {PlaceSearch? search, MyLocation? location}) =>
-    ProviderScope(
-      overrides: [
-        if (search != null) placeSearchProvider.overrideWithValue(search),
-        if (location != null) myLocationProvider.overrideWithValue(location),
-      ],
-      child: MaterialApp(
-        theme: buildLightTheme(),
-        home: Scaffold(
-          body: Padding(padding: const EdgeInsets.all(16), child: child),
-        ),
-      ),
-    );
+Widget harness(Widget child, {PlaceSearch? search}) => ProviderScope(
+  overrides: [
+    if (search != null) placeSearchProvider.overrideWithValue(search),
+  ],
+  child: MaterialApp(
+    theme: buildLightTheme(),
+    home: Scaffold(
+      body: Padding(padding: const EdgeInsets.all(16), child: child),
+    ),
+  ),
+);
+
+const pause = Duration(milliseconds: 400);
 
 void main() {
-  testWidgets('searches only on tap, then a picked result is reported', (
-    t,
-  ) async {
+  test('session tokens are fresh UUID v4s', () {
+    final a = newPlacesSession();
+    expect(
+      RegExp(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+      ).hasMatch(a),
+      isTrue,
+    );
+    expect(newPlacesSession(), isNot(a));
+  });
+
+  testWidgets('suggests while typing after a pause, then a pick is located '
+      'in the same session', (t) async {
+    final search = FakeSearch();
+    Place? picked;
+    await t.pumpWidget(
+      harness(
+        PlaceSearchBar(
+          onPick: (p) => picked = p,
+          near: () => const LatLng(16, 120.4),
+        ),
+        search: search,
+      ),
+    );
+    await t.enterText(find.byType(TextField), 'sm');
+    await t.pump(pause);
+    expect(search.typed, isEmpty, reason: 'under 3 letters');
+
+    await t.enterText(find.byType(TextField), 'sm c');
+    await t.pump(const Duration(milliseconds: 100));
+    await t.enterText(find.byType(TextField), 'sm ci');
+    await t.pump(pause);
+    await t.pump();
+    expect(search.typed, ['sm ci'], reason: 'one call after the pause');
+    expect(search.nearSeen, const LatLng(16, 120.4));
+    expect(find.text('SM City Rosales'), findsOneWidget);
+    expect(find.text('Rosales, Pangasinan'), findsOneWidget);
+
+    await t.tap(find.text('SM City Rosales'));
+    await t.pumpAndSettle();
+    expect(picked?.name, 'SM City Rosales');
+    expect(picked?.lat, 15.89);
+    expect(search.located, ['p1@${search.sessions.single}']);
+    expect(find.text('Rosales Public Market'), findsNothing);
+
+    // The next search starts a new session.
+    await t.enterText(find.byType(TextField), 'market');
+    await t.pump(pause);
+    await t.pump();
+    expect(search.sessions.last, isNot(search.sessions.first));
+  });
+
+  testWidgets('the keyboard search key picks the first suggestion', (t) async {
     final search = FakeSearch();
     Place? picked;
     await t.pumpWidget(
       harness(PlaceSearchBar(onPick: (p) => picked = p), search: search),
     );
-    await t.enterText(find.byType(TextField), 'San Fabian');
+    await t.enterText(find.byType(TextField), 'rosales');
+    await t.pump(pause);
     await t.pump();
-    expect(search.queries, isEmpty, reason: 'no search-as-you-type');
-    await t.tap(find.text('Search'));
+    await t.testTextInput.receiveAction(TextInputAction.search);
     await t.pumpAndSettle();
-    expect(search.queries, ['San Fabian']);
-    expect(find.text('San Fabian, Pangasinan, Philippines'), findsOneWidget);
-    expect(find.text('Search © OpenStreetMap contributors'), findsOneWidget);
-    await t.tap(find.text('San Fabian Church, San Fabian, Pangasinan'));
-    await t.pumpAndSettle();
-    expect(picked?.lat, 16.13);
-    expect(find.text('San Fabian, Pangasinan, Philippines'), findsNothing);
+    expect(picked?.name, 'SM City Rosales');
   });
 
-  testWidgets('the keyboard search key works too; one letter is refused', (
+  testWidgets('says when search is off or the daily limit is reached', (
     t,
   ) async {
-    final search = FakeSearch();
-    await t.pumpWidget(harness(PlaceSearchBar(onPick: (_) {}), search: search));
-    await t.enterText(find.byType(TextField), 'a');
-    await t.testTextInput.receiveAction(TextInputAction.search);
-    await t.pump();
-    expect(find.text('Type at least 2 letters.'), findsOneWidget);
-    expect(search.queries, isEmpty);
-    await t.enterText(find.byType(TextField), 'Dagupan');
-    await t.testTextInput.receiveAction(TextInputAction.search);
-    await t.pumpAndSettle();
-    expect(search.queries, ['Dagupan']);
-  });
-
-  testWidgets('says when search is switched off or busy', (t) async {
     final search = FakeSearch()
       ..error = FirebaseFunctionsException(
         code: 'failed-precondition',
@@ -96,9 +129,9 @@ void main() {
         details: {'code': 'SEARCH_OFF'},
       );
     await t.pumpWidget(harness(PlaceSearchBar(onPick: (_) {}), search: search));
-    await t.enterText(find.byType(TextField), 'Dagupan');
-    await t.tap(find.text('Search'));
-    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField), 'dagupan');
+    await t.pump(pause);
+    await t.pump();
     expect(
       find.text('Place search is off for now. Move the map by hand.'),
       findsOneWidget,
@@ -106,42 +139,11 @@ void main() {
     search.error = FirebaseFunctionsException(
       code: 'resource-exhausted',
       message: 'x',
-      details: {'code': 'SEARCH_BUSY'},
+      details: {'code': 'PLACES_USER_LIMIT'},
     );
-    await t.tap(find.text('Search'));
-    await t.pumpAndSettle();
-    expect(find.text('Search is busy. Try again in a moment.'), findsOneWidget);
+    await t.enterText(find.byType(TextField), 'dagupan city');
+    await t.pump(pause);
+    await t.pump();
+    expect(find.textContaining("You've searched a lot today"), findsOneWidget);
   });
-
-  testWidgets('My location reports the position', (t) async {
-    LatLng? found;
-    await t.pumpWidget(
-      harness(
-        MyLocationButton(onFound: (at) => found = at),
-        location: FakeLocation(const LatLng(16.05, 120.33)),
-      ),
-    );
-    await t.tap(find.bySemanticsLabel('My location'));
-    await t.pumpAndSettle();
-    expect(found, const LatLng(16.05, 120.33));
-  });
-
-  for (final (problem, words) in [
-    (LocationProblem.servicesOff, 'Turn on Location in your phone settings'),
-    (LocationProblem.denied, 'Allow location to show where you are.'),
-    (LocationProblem.blocked, 'Location is blocked for Hydro Sense'),
-  ]) {
-    testWidgets('My location explains: ${problem.name}', (t) async {
-      await t.pumpWidget(
-        harness(
-          MyLocationButton(onFound: (_) {}),
-          location: FakeLocation(LocationError(problem)),
-        ),
-      );
-      await t.tap(find.bySemanticsLabel('My location'));
-      await t.pump();
-      await t.pump();
-      expect(find.textContaining(words), findsOneWidget);
-    });
-  }
 }

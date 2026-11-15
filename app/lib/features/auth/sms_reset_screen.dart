@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/config.dart';
+import '../../core/password_field.dart';
 import '../../core/errors.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
@@ -320,22 +321,18 @@ class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
         children: [
           const StepHeader(step: 3, title: 'New password'),
           const SizedBox(height: AppSpace.l),
-          TextField(
+          PasswordField(
             controller: _a,
+            label: 'New password',
             enabled: !_busy,
-            obscureText: true,
             autofillHints: const [AutofillHints.newPassword],
-            decoration: const InputDecoration(
-              labelText: 'New password',
-              helperText: 'At least 8 characters',
-            ),
+            showTips: true,
           ),
           const SizedBox(height: AppSpace.m),
-          TextField(
+          PasswordField(
             controller: _b,
+            label: 'Type it again',
             enabled: !_busy,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'Type it again'),
             onSubmitted: (_) => _save(),
           ),
           _errorText(),

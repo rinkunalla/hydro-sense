@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -5,7 +7,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/config.dart';
 
-/// One search result (the searchPlace callable, OpenStreetMap Nominatim data).
+/// A picked place: the suggestion's name and its location (D46).
 class Place {
   const Place(this.name, this.lat, this.lng);
 
@@ -16,12 +18,39 @@ class Place {
   LatLng get at => LatLng(lat, lng);
 }
 
-/// Place search. Searches run on a button tap, never while typing (Nominatim
-/// usage policy); the backend caches results and keeps the request rate.
+/// One live suggestion (Google Places autocomplete, through placeSuggest).
+class PlaceSuggestion {
+  const PlaceSuggestion(this.placeId, this.main, this.secondary);
+
+  final String placeId;
+  final String main;
+  final String secondary;
+}
+
+/// A fresh Places session token (UUID v4, URL-safe). One per search: from the
+/// first letter typed to the place picked, so Google bills it as one session.
+String newPlacesSession([Random? random]) {
+  final r = random ?? Random.secure();
+  final b = List<int>.generate(16, (_) => r.nextInt(256));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  final h = b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+  return '${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-'
+      '${h.substring(16, 20)}-${h.substring(20)}';
+}
+
+/// Live place search. Both calls throw FirebaseFunctionsException with
+/// QUERY_INVALID, SEARCH_OFF, SEARCH_FAILED, PLACES_USER_LIMIT or
+/// PLACES_PROJECT_LIMIT.
 abstract class PlaceSearch {
-  /// Throws FirebaseFunctionsException with QUERY_INVALID, SEARCH_OFF,
-  /// SEARCH_BUSY or SEARCH_FAILED.
-  Future<List<Place>> search(String query);
+  Future<List<PlaceSuggestion>> suggest(
+    String input,
+    String session, {
+    LatLng? near,
+  });
+
+  /// Ends the session: the picked place's location.
+  Future<LatLng> locate(String placeId, String session);
 }
 
 class FunctionsPlaceSearch implements PlaceSearch {
@@ -30,21 +59,37 @@ class FunctionsPlaceSearch implements PlaceSearch {
   final FirebaseFunctions _functions;
 
   @override
-  Future<List<Place>> search(String query) async {
-    final r = await _functions.httpsCallable('searchPlace').call<Object?>({
-      'query': query,
+  Future<List<PlaceSuggestion>> suggest(
+    String input,
+    String session, {
+    LatLng? near,
+  }) async {
+    final r = await _functions.httpsCallable('placeSuggest').call<Object?>({
+      'input': input,
+      'sessionToken': session,
+      if (near != null) 'near': {'lat': near.latitude, 'lng': near.longitude},
     });
-    final list = r.data is Map ? (r.data as Map)['places'] : null;
+    final list = r.data is Map ? (r.data as Map)['suggestions'] : null;
     return [
       if (list is List)
         for (final p in list)
-          if (p is Map && p['lat'] is num && p['lng'] is num)
-            Place(
-              '${p['name']}',
-              (p['lat'] as num).toDouble(),
-              (p['lng'] as num).toDouble(),
+          if (p is Map && p['placeId'] is String && p['main'] is String)
+            PlaceSuggestion(
+              p['placeId'] as String,
+              p['main'] as String,
+              (p['secondary'] as String?) ?? '',
             ),
     ];
+  }
+
+  @override
+  Future<LatLng> locate(String placeId, String session) async {
+    final r = await _functions.httpsCallable('placeLocation').call<Object?>({
+      'placeId': placeId,
+      'sessionToken': session,
+    });
+    final m = r.data as Map;
+    return LatLng((m['lat'] as num).toDouble(), (m['lng'] as num).toDouble());
   }
 }
 

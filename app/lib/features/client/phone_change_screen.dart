@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/config.dart';
+import '../../core/password_field.dart';
 import '../../core/errors.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
@@ -127,13 +128,10 @@ class _PhoneChangeScreenState extends ConsumerState<PhoneChangeScreen> {
                 ),
               ),
               const SizedBox(height: AppSpace.m),
-              TextField(
+              PasswordField(
                 controller: _password,
+                label: 'Current password',
                 enabled: !_busy,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Current password',
-                ),
                 onSubmitted: (_) => _send(),
               ),
               error,

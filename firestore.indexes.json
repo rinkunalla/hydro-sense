@@ -83,10 +83,18 @@
       "indexes": []
     },
     {
-      "collectionGroup": "geocode_cache",
-      "fieldPath": "expireAt",
-      "ttl": true,
-      "indexes": []
+      "collectionGroup": "push_tokens",
+      "fieldPath": "fid",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
     }
   ]
 }

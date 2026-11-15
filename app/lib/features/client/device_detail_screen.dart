@@ -138,6 +138,23 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
                   ),
               ],
             ),
+            const SizedBox(height: AppSpace.m),
+            // Where it is: the Map tab centred on this device, or setting its
+            // location when it has none yet.
+            Align(
+              alignment: Alignment.centerLeft,
+              child: v.hasLocation
+                  ? SecondaryButton(
+                      label: 'Show on map',
+                      icon: Icons.map_rounded,
+                      onPressed: () => context.go('/map?device=${v.id}'),
+                    )
+                  : SecondaryButton(
+                      label: 'Set its location',
+                      icon: Icons.add_location_alt_rounded,
+                      onPressed: () => context.go('/map/edit'),
+                    ),
+            ),
             const SizedBox(height: AppSpace.l),
             GlassPanel(
               child: Column(

@@ -125,8 +125,7 @@ beforeEach(async () => {
       "alert_daily/2026-11-14__userA",
       "rate_limits/register__1",
       "error_logs/e1",
-      "geocode_cache/abc",
-      "settings/geocoding",
+      "settings/places",
       "config/system",
       "unlisted/x",
     ]) {
@@ -239,20 +238,15 @@ describe("user writes", () => {
     await assertFails(updateDoc(doc(userA, "users/userB"), { alertPrefs: prefs }));
   });
 
-  it("manages own push tokens with limited fields", async () => {
-    const t = doc(userA, "users/userA/push_tokens/tokNew");
-    await assertSucceeds(setDoc(t, { platform: "android", updatedAt: serverTimestamp() }));
-    await assertSucceeds(deleteDoc(t));
-    await assertFails(setDoc(t, { platform: "ios", updatedAt: serverTimestamp() }));
+  it("deletes own push registration but never writes one (claimPushToken does, D45)", async () => {
+    await assertSucceeds(deleteDoc(doc(userA, "users/userA/push_tokens/tokA")));
     await assertFails(
-      setDoc(t, { platform: "android", updatedAt: serverTimestamp(), uid: "userB" }),
-    );
-    await assertFails(
-      setDoc(doc(userB, "users/userA/push_tokens/x"), {
+      setDoc(doc(userA, "users/userA/push_tokens/tokNew"), {
         platform: "android",
         updatedAt: serverTimestamp(),
       }),
     );
+    await assertFails(deleteDoc(doc(userB, "users/userA/push_tokens/tokA")));
   });
 
   it("writes own pipeline within the size and shape limits (D26)", async () => {
@@ -353,8 +347,7 @@ describe("nobody", () => {
         "alert_daily/2026-11-14__userA",
         "rate_limits/register__1",
         "error_logs/e1",
-        "geocode_cache/abc",
-        "settings/geocoding",
+        "settings/places",
       ]) {
         await assertFails(getDoc(doc(s, p)));
       }

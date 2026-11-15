@@ -97,18 +97,19 @@ export const ADMIN_SETUP_TOKEN_TTL_S = 3600;
 export const ADMIN_RECOMMENDED_MIN = 2;
 export const ADMIN_SITE_URL = "https://hydro-sense-dc836.web.app";
 
-// Place search on the map (Nominatim usage policy: at most 1 request per second
-// for the whole app, own User-Agent, cached results, no search-as-you-type).
-export const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
-export const GEOCODE_USER_AGENT = "HydroSense/1.0 (+https://hydro-sense-dc836.web.app)";
-export const GEOCODE_COUNTRY = "ph";
-export const GEOCODE_MAX_RESULTS = 5;
-export const GEOCODE_MIN_GAP_MS = 1100;
-// A search books its send time; at most this far ahead (about 4 queued) ...
-export const GEOCODE_MAX_QUEUE_MS = 4500;
-// ... and books again if a slow commit made it later than this, so sends
-// stay at least GEOCODE_MIN_GAP_MS - GEOCODE_SLOT_LATE_MS (1 s) apart.
-export const GEOCODE_SLOT_LATE_MS = 100;
-export const GEOCODE_CACHE_TTL_DAYS = 30;
-export const GEOCODE_QUERY_MIN = 2;
-export const GEOCODE_QUERY_MAX = 100;
+// Place search on the map: Google Places API (New), live suggestions (D46).
+// Places results may only be shown on a Google map, so the app's Map view uses
+// Google road map tiles too. Free each month: 10,000 Autocomplete Requests and
+// 10,000 Place Details Essentials (only `location` is asked for; the name comes
+// from the suggestion, since displayName is the Pro SKU).
+export const PLACES_AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete";
+export const PLACES_DETAILS_URL = "https://places.googleapis.com/v1/places";
+export const PLACES_REGION = "ph";
+export const PLACES_LANGUAGE = "en";
+export const PLACES_INPUT_MIN = 3;
+export const PLACES_INPUT_MAX = 100;
+export const PLACES_BIAS_RADIUS_M = 50000; // API maximum
+// Calls (suggestions + picks) per day: one user, and the whole project
+// (300 a day stays under the 10,000 free a month).
+export const PLACES_USER_DAILY_CAP = 150;
+export const PLACES_PROJECT_DAILY_CAP = 300;

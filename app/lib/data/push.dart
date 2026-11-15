@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/config.dart';
 
 /// Where a tapped push should open (D37): a single device opens its Details; a
 /// batch opens the Map centred on the problem, or Devices when there is no
@@ -30,10 +33,11 @@ abstract class PushService {
 }
 
 class FcmPushService implements PushService {
-  FcmPushService(this._db, this._messaging);
+  FcmPushService(this._db, this._messaging, this._functions);
 
   final FirebaseFirestore _db;
   final FirebaseMessaging _messaging;
+  final FirebaseFunctions _functions;
   final _subs = <StreamSubscription<Object?>>[];
   String? _fid;
 
@@ -46,10 +50,15 @@ class FcmPushService implements PushService {
     _subs.add(
       _messaging.onRegistered.listen((fid) async {
         _fid = fid;
-        await _doc(uid, fid).set({
-          'platform': 'android',
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        // Through the server, which first removes this phone from any other
+        // account (D45: the app signs out on every fresh start).
+        try {
+          await _functions.httpsCallable('claimPushToken').call<Object?>({
+            'fid': fid,
+          });
+        } catch (_) {
+          // Retried at the next sign-in; SMS and email still work.
+        }
       }),
     );
     _subs.add(
@@ -96,6 +105,9 @@ class FcmPushService implements PushService {
 }
 
 final pushServiceProvider = Provider<PushService>(
-  (ref) =>
-      FcmPushService(FirebaseFirestore.instance, FirebaseMessaging.instance),
+  (ref) => FcmPushService(
+    FirebaseFirestore.instance,
+    FirebaseMessaging.instance,
+    FirebaseFunctions.instanceFor(region: AppConfig.functionsRegion),
+  ),
 );

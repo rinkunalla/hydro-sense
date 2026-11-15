@@ -17,7 +17,9 @@ import 'features/client/map_screen.dart';
 
 /// Where the person should be, given auth state (pure, unit-tested).
 /// Android is user-only and the web build admin-only (CLAUDE.md D21):
-/// any other role goes back to Login with `refused` set.
+/// any other role goes back to Login with `refused` set. The phone signs out
+/// on every fresh start (D45), so a screen asked for while signed out (a
+/// tapped alert, D37) rides along as `next` and opens after the sign-in.
 String? redirectFor({
   required String location,
   required bool signedIn,
@@ -27,21 +29,39 @@ String? redirectFor({
   String requiredRole = 'user',
   String home = '/devices',
 }) {
-  final onAuthPage = location == '/login' || location == '/reset';
-  if (!signedIn) return onAuthPage ? null : '/login';
-  if (!roleLoaded) return location == '/loading' ? null : '/loading';
+  final uri = Uri.parse(location);
+  final path = uri.path;
+  final onAuthPage = path == '/login' || path == '/reset';
+  final carried = uri.queryParameters['next'];
+  final next =
+      carried != null &&
+          carried.startsWith('/') &&
+          !carried.startsWith('//') &&
+          !carried.startsWith('/login') &&
+          !carried.startsWith('/loading')
+      ? carried
+      : null;
+  String withNext(String to) =>
+      next == null ? to : '$to?next=${Uri.encodeComponent(next)}';
+
+  if (!signedIn) {
+    if (onAuthPage) return null;
+    final keep = path != '/loading' && location != home;
+    return keep ? '/login?next=${Uri.encodeComponent(location)}' : '/login';
+  }
+  if (!roleLoaded) return path == '/loading' ? null : withNext('/loading');
   if (role != requiredRole) {
     final reason = requiredRole == 'admin'
         ? 'notadmin'
         : (role == 'admin' ? 'admin' : 'other');
-    return location.startsWith('/login') ? null : '/login?refused=$reason';
+    return path == '/login' && uri.queryParameters['refused'] != null
+        ? null
+        : '/login?refused=$reason';
   }
   if (requiredRole == 'user' && !profileLoaded) {
-    return location == '/loading' ? null : '/loading';
+    return path == '/loading' ? null : withNext('/loading');
   }
-  if (onAuthPage || location == '/loading') {
-    return home;
-  }
+  if (onAuthPage || path == '/loading') return next ?? home;
   return null;
 }
 
@@ -67,9 +87,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       return redirectFor(
         location: state.uri.toString(),
         signedIn: user.valueOrNull != null,
-        roleLoaded: role.hasValue || role.hasError,
+        // Not while it reloads: after a sign-in the role briefly still holds
+        // the signed-out "none", which would refuse the account.
+        roleLoaded: !role.isLoading && (role.hasValue || role.hasError),
         role: role.valueOrNull,
-        profileLoaded: profile.hasValue || profile.hasError,
+        profileLoaded:
+            !profile.isLoading && (profile.hasValue || profile.hasError),
       );
     },
     routes: [
@@ -116,6 +139,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: '/map',
                 builder: (_, s) => MapScreen(
                   focusProblem: s.uri.queryParameters['focus'] == 'problem',
+                  focusDevice: s.uri.queryParameters['device'],
                 ),
                 routes: [
                   GoRoute(

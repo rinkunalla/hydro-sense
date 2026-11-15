@@ -238,6 +238,26 @@ void main() {
       expect(go('/loading'), '/devices');
       expect(go('/devices/ABC'), isNull);
     });
+
+    test('a screen asked for while signed out opens after sign-in (D45)', () {
+      // A tapped alert after the app signed out on start.
+      expect(
+        go('/devices/ABC', signedIn: false),
+        '/login?next=%2Fdevices%2FABC',
+      );
+      expect(go('/login?next=%2Fdevices%2FABC', signedIn: false), isNull);
+      // The way through Loading keeps it.
+      expect(
+        go('/login?next=%2Fdevices%2FABC', roleLoaded: false),
+        '/loading?next=%2Fdevices%2FABC',
+      );
+      expect(go('/loading?next=%2Fdevices%2FABC'), '/devices/ABC');
+      expect(go('/login?next=%2Fmap%3Ffocus%3Dproblem'), '/map?focus=problem');
+      // Only screens inside the app; anything else goes home.
+      expect(go('/login?next=%2F%2Fevil.com'), '/devices');
+      expect(go('/login?next=https%3A%2F%2Fevil.com'), '/devices');
+      expect(go('/login?next=%2Flogin'), '/devices');
+    });
   });
 
   group('form rules', () {

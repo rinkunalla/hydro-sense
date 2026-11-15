@@ -34,7 +34,9 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
       return redirectFor(
         location: state.uri.toString(),
         signedIn: ref.read(userProvider).valueOrNull != null,
-        roleLoaded: role.hasValue || role.hasError,
+        // Not while it reloads: after a sign-in the role briefly still holds
+        // the signed-out "none", which would refuse the account.
+        roleLoaded: !role.isLoading && (role.hasValue || role.hasError),
         role: role.valueOrNull,
         profileLoaded: true,
         requiredRole: 'admin',

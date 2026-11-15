@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/glass.dart';
 import '../../core/theme.dart';
+import 'map_screen.dart' show mapFullscreenProvider;
 
 /// The Arctic background behind every tab and a glass bottom bar with three
 /// tabs: Devices, Map, Account (docs/UI_UX_SPEC.md section 3).
-class HomeShell extends StatelessWidget {
+class HomeShell extends ConsumerWidget {
   const HomeShell({super.key, required this.shell});
 
   final StatefulNavigationShell shell;
@@ -18,41 +20,45 @@ class HomeShell extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The full-screen map (D46) hides the bar, on the Map tab only.
+    final hideBar = ref.watch(mapFullscreenProvider) && shell.currentIndex == 1;
     return AppBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
         extendBody: true,
         body: shell,
-        bottomNavigationBar: SafeArea(
-          minimum: const EdgeInsets.fromLTRB(
-            AppSpace.l,
-            0,
-            AppSpace.l,
-            AppSpace.m,
-          ),
-          child: GlassPanel(
-            radius: AppSpace.pill,
-            padding: const EdgeInsets.all(6),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                for (final (i, t) in _tabs.indexed)
-                  Expanded(
-                    child: _Tab(
-                      icon: i == shell.currentIndex ? t.$2 : t.$1,
-                      label: t.$3,
-                      selected: i == shell.currentIndex,
-                      onTap: () => shell.goBranch(
-                        i,
-                        initialLocation: i == shell.currentIndex,
-                      ),
-                    ),
+        bottomNavigationBar: hideBar
+            ? null
+            : SafeArea(
+                minimum: const EdgeInsets.fromLTRB(
+                  AppSpace.l,
+                  0,
+                  AppSpace.l,
+                  AppSpace.m,
+                ),
+                child: GlassPanel(
+                  radius: AppSpace.pill,
+                  padding: const EdgeInsets.all(6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      for (final (i, t) in _tabs.indexed)
+                        Expanded(
+                          child: _Tab(
+                            icon: i == shell.currentIndex ? t.$2 : t.$1,
+                            label: t.$3,
+                            selected: i == shell.currentIndex,
+                            onTap: () => shell.goBranch(
+                              i,
+                              initialLocation: i == shell.currentIndex,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-              ],
-            ),
-          ),
-        ),
+                ),
+              ),
       ),
     );
   }

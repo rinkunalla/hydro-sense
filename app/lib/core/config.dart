@@ -76,10 +76,17 @@ abstract final class AppConfig {
   // Map
   static const double mapFitPadding = 56;
   static const double mapDefaultZoom = 15;
+  // Out to the whole country (no repeated world copies), in to street level.
+  static const double mapMinZoom = 4;
+  static const double mapMaxZoom = 20;
+  // A few missing tiles (rural imagery, a slow connection) are normal; only
+  // this many failures since the last view change show "Map can't load".
+  static const int mapTileErrorsForBanner = 8;
   static const double placeZoom = 16;
   static const int myLocationTimeoutS = 15;
-  static const int placeQueryMin = 2; // GEOCODE_QUERY_MIN
-  static const int placeQueryMax = 100; // GEOCODE_QUERY_MAX
+  static const int placeQueryMin = 3; // PLACES_INPUT_MIN
+  static const int placeQueryMax = 100; // PLACES_INPUT_MAX
+  static const int placeTypingPauseMs = 350; // wait this long after a key
   static const int pipelineMaxDevicesPerBranch =
       50; // PIPELINE_MAX_DEVICES_PER_BRANCH
 }

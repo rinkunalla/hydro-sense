@@ -1,7 +1,10 @@
 // Map tab and Edit pipeline (KICKOFF.md stage 5a, docs/UI_UX_SPEC.md 4.4, 4.5).
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:hydro_sense/data/places.dart';
 import 'package:hydro_sense/app.dart';
 import 'package:hydro_sense/core/glass.dart';
 import 'package:hydro_sense/core/theme.dart';
@@ -21,13 +24,15 @@ Widget harness(
   Widget screen, {
   List<DeviceView> views = const [],
   Pipeline? pipeline,
+  MyLocation? location,
 }) => ProviderScope(
   overrides: [
     fleetProvider.overrideWith((_) => Stream.value(Fleet(views))),
     pipelineProvider.overrideWith((_) => Stream.value(pipeline)),
     clockProvider.overrideWith((_) => Stream.value(testNow)),
-    googleSessionProvider.overrideWith((_) async => null),
+    googleSessionProvider.overrideWith((ref, view) async => null),
     uidProvider.overrideWithValue('u1'),
+    if (location != null) myLocationProvider.overrideWithValue(location),
   ],
   child: MaterialApp(
     theme: buildLightTheme(),
@@ -51,7 +56,80 @@ DeviceView at(String id, double? lat, {String status = 'Normal Flow'}) =>
     view(id, nickname: id, lat: lat, flowStatus: status);
 
 void main() {
-  testWidgets('no pipeline yet: device pins and the Draw your pipeline card', (
+  testWidgets('Show on map centres on that device and rings its pin', (
+    t,
+  ) async {
+    await phone(t);
+    final views = [at('Garden', 16.041), at('Farm', 16.300)];
+    await t.pumpWidget(harness(const MapScreen(), views: views));
+    await t.pump();
+    await t.pump();
+    // Both in view when the map opens normally.
+    expect(find.bySemanticsLabel('Garden, Normal'), findsOneWidget);
+    expect(find.bySemanticsLabel('Farm, Normal'), findsOneWidget);
+
+    await t.pumpWidget(const SizedBox());
+    await t.pumpWidget(
+      harness(const MapScreen(focusDevice: 'Farm'), views: views),
+    );
+    await t.pump();
+    await t.pump();
+    expect(find.bySemanticsLabel('Farm, Normal'), findsOneWidget);
+    expect(find.bySemanticsLabel('Garden, Normal'), findsNothing);
+  });
+
+  testWidgets('labelled buttons: My devices brings them back, Full screen', (
+    t,
+  ) async {
+    await phone(t);
+    await t.pumpWidget(
+      harness(const MapScreen(), views: [at('Garden', 16.041)]),
+    );
+    await t.pump();
+    await t.pump();
+    expect(find.text('My devices'), findsOneWidget);
+    expect(find.text('Full screen'), findsOneWidget);
+    expect(
+      find.text("Use my phone's location"),
+      findsNothing,
+      reason: 'pin picker only',
+    );
+    for (var i = 0; i < 4; i++) {
+      await t.drag(find.byType(FlutterMap), const Offset(-300, -300));
+      await t.pumpAndSettle();
+    }
+    expect(find.bySemanticsLabel('Garden, Normal'), findsNothing);
+    await t.tap(find.text('My devices'));
+    await t.pumpAndSettle();
+    expect(find.bySemanticsLabel('Garden, Normal'), findsOneWidget);
+  });
+
+  testWidgets('full screen hides the title and returns on the button or Back', (
+    t,
+  ) async {
+    await phone(t);
+    await t.pumpWidget(
+      harness(const MapScreen(), views: [at('Garden', 16.041)]),
+    );
+    await t.pump();
+    await t.pump();
+    expect(find.text('Draw pipeline'), findsOneWidget);
+    await t.tap(find.text('Full screen'));
+    await t.pump();
+    expect(find.text('Draw pipeline'), findsNothing);
+    expect(find.bySemanticsLabel('Garden, Normal'), findsOneWidget);
+    await t.tap(find.text('Exit full screen'));
+    await t.pump();
+    expect(find.text('Draw pipeline'), findsOneWidget);
+
+    await t.tap(find.text('Full screen'));
+    await t.pump();
+    await t.binding.handlePopRoute();
+    await t.pump();
+    expect(find.text('Draw pipeline'), findsOneWidget, reason: 'Back exits');
+  });
+
+  testWidgets('no pipeline yet: device pins and one Draw pipeline button', (
     t,
   ) async {
     await phone(t);
@@ -61,11 +139,9 @@ void main() {
     await t.pump();
     await t.pump();
     expect(find.text('Map'), findsOneWidget);
-    expect(
-      find.text('Draw your pipeline: set the source, then add a branch.'),
-      findsOneWidget,
-    );
-    expect(find.text('Start'), findsOneWidget);
+    expect(find.text('Draw pipeline'), findsOneWidget);
+    expect(find.text('Edit pipeline'), findsNothing);
+    expect(find.text('Start'), findsNothing);
     expect(find.bySemanticsLabel('Garden, Normal'), findsOneWidget);
   });
 
@@ -76,7 +152,7 @@ void main() {
     await t.pumpWidget(harness(const MapScreen()));
     await t.pump();
     expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
-    expect(satelliteAvailable, isFalse);
+    expect(googleTilesAvailable, isFalse);
     expect(find.text('Satellite'), findsNothing);
   });
 
@@ -126,11 +202,75 @@ void main() {
         .where((s) => s == 'Far' || s == 'Near' || s == 'Unknown')
         .toList();
     expect(names, ['Near', 'Far', 'Unknown']);
-    expect(
-      find.text('No location yet. Tap the pin to set it.'),
-      findsOneWidget,
-    );
+    expect(find.text('No location yet'), findsOneWidget);
     expect(find.text("Location from the device's GPS"), findsNWidgets(2));
+  });
+
+  testWidgets('edit: Set location opens the map; the phone sets it', (t) async {
+    await phone(t);
+    await t.pumpWidget(
+      harness(
+        const EditPipelineScreen(),
+        views: [at('Near', 16.041)],
+        location: const _Here(LatLng(16.05, 120.34)),
+      ),
+    );
+    await t.pump();
+    await t.pump();
+    expect(find.text('Placed on the map'), findsNothing);
+    await t.tap(find.widgetWithText(SecondaryButton, 'Set location').first);
+    await t.pumpAndSettle();
+    expect(find.text('Place the pin here'), findsOneWidget);
+    expect(find.text('Use device GPS'), findsNothing, reason: 'devices only');
+    await t.tap(find.text("Use my phone's location"));
+    await t.pumpAndSettle();
+    expect(find.text('Placed on the map'), findsOneWidget);
+  });
+
+  testWidgets('edit: a device offers its GPS only once it has a fix', (
+    t,
+  ) async {
+    await phone(t);
+    await t.pumpWidget(
+      harness(
+        const EditPipelineScreen(),
+        views: [at('Near', 16.041)],
+        pipeline: const Pipeline(name: 'Farm pipeline', source: source),
+      ),
+    );
+    await t.pump();
+    await t.pump();
+    final row = find.widgetWithText(TextButton, 'Edit location');
+    await t.ensureVisible(row);
+    await t.pumpAndSettle();
+    await t.tap(row);
+    await t.pumpAndSettle();
+    expect(find.text('No device GPS yet'), findsOneWidget);
+    expect(find.text("Use my phone's location"), findsOneWidget);
+  });
+
+  testWidgets('edit: the picker explains a location problem', (t) async {
+    await phone(t);
+    await t.pumpWidget(
+      harness(
+        const EditPipelineScreen(),
+        views: [at('Near', 16.041)],
+        location: const _Fails(LocationProblem.servicesOff),
+      ),
+    );
+    await t.pump();
+    await t.pump();
+    await t.tap(find.widgetWithText(SecondaryButton, 'Set location').first);
+    await t.pumpAndSettle();
+    await t.tap(find.text("Use my phone's location"));
+    await t.pump();
+    await t.pump();
+    expect(find.textContaining('Turn on Location'), findsOneWidget);
+    expect(
+      find.text('Place the pin here'),
+      findsOneWidget,
+      reason: 'stays open',
+    );
   });
 
   testWidgets('edit: leaving with changes asks to discard them', (t) async {
@@ -156,4 +296,22 @@ void main() {
     expect(find.text('Discard your changes?'), findsNothing);
     expect(find.text('Edit pipeline'), findsOneWidget);
   });
+}
+
+class _Here implements MyLocation {
+  const _Here(this.at);
+
+  final LatLng at;
+
+  @override
+  Future<LatLng> current() async => at;
+}
+
+class _Fails implements MyLocation {
+  const _Fails(this.problem);
+
+  final LocationProblem problem;
+
+  @override
+  Future<LatLng> current() async => throw LocationError(problem);
 }

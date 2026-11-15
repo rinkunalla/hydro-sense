@@ -19,11 +19,18 @@ import 'widgets.dart';
 /// Map (docs/UI_UX_SPEC.md 4.4, D26, D33, D37): the pipeline as a pipe line from
 /// the source through its devices to the end point, pins in status colours,
 /// and the segment where water stops drawn as a red dashed break.
+/// Full-screen map (D46): the tab bar and the title hide, the map fills the
+/// screen. Back or the button returns.
+final mapFullscreenProvider = StateProvider<bool>((ref) => false);
+
 class MapScreen extends ConsumerStatefulWidget {
-  const MapScreen({super.key, this.focusProblem = false});
+  const MapScreen({super.key, this.focusProblem = false, this.focusDevice});
 
   /// Opened from a batched push: centre on the problem segment (D37).
   final bool focusProblem;
+
+  /// Opened from a device's "Show on map": centre on it and ring its pin.
+  final String? focusDevice;
 
   @override
   ConsumerState<MapScreen> createState() => _MapScreenState();
@@ -32,23 +39,33 @@ class MapScreen extends ConsumerStatefulWidget {
 class _MapScreenState extends ConsumerState<MapScreen> {
   final _map = MapController();
   bool _tileError = false;
-  bool _ready = false;
-  bool _fitted = false;
+  int _tileErrors = 0;
+
+  /// Every placed point (devices, source, end point): where "Back" returns to.
+  List<LatLng> _home = const [];
+
+  /// The device the camera was last centred on for "Show on map".
+  String? _centredOn;
+  bool _mapReady = false;
   String? _googleCopyright;
 
   /// The place picked from a search and the phone's own position, if asked for.
   Place? _picked;
-  LatLng? _me;
 
   void _onError() {
-    if (!_tileError && mounted) setState(() => _tileError = true);
+    _tileErrors++;
+    if (!_tileError &&
+        mounted &&
+        _tileErrors >= AppConfig.mapTileErrorsForBanner) {
+      setState(() => _tileError = true);
+    }
   }
 
   Future<void> _refreshCopyright() async {
-    final session = ref.read(googleSessionProvider).valueOrNull;
-    if (session == null || ref.read(mapViewProvider) != MapView.satellite) {
-      return;
-    }
+    final session = ref
+        .read(googleSessionProvider(ref.read(mapViewProvider)))
+        .valueOrNull;
+    if (session == null) return;
     final b = _map.camera.visibleBounds;
     final text = await googleCopyright(
       session,
@@ -60,23 +77,71 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  /// Fit every placed point once, or the problem segment when asked to (D37).
-  void _fit(List<LatLng> all, List<LatLng> problem) {
-    if (!_ready || _fitted) return;
-    final target = widget.focusProblem && problem.length == 2 ? problem : all;
-    if (target.isEmpty) return;
-    _fitted = true;
-    if (target.length == 1) {
-      _map.move(target.single, AppConfig.mapDefaultZoom);
+  void _ready() {
+    _mapReady = true;
+    _refreshCopyright();
+  }
+
+  /// Back to the pipeline and devices after panning away.
+  void _backHome() {
+    if (_home.isEmpty) return;
+    if (_home.length == 1) {
+      _map.move(_home.single, AppConfig.mapDefaultZoom);
     } else {
       _map.fitCamera(
         CameraFit.coordinates(
-          coordinates: target,
+          coordinates: _home,
           padding: const EdgeInsets.all(AppConfig.mapFitPadding),
           maxZoom: 18,
         ),
       );
     }
+  }
+
+  /// Opens straight on the devices (or the problem segment, D37), so the map
+  /// never loads the whole country first and then jumps.
+  MapOptions _options(List<LatLng> all, List<LatLng> problem, LatLng? device) {
+    final target = device != null
+        ? [device]
+        : widget.focusProblem && problem.length == 2
+        ? problem
+        : all;
+    if (device != null) _centredOn = widget.focusDevice;
+    void onEvent(MapEvent e) {
+      if (e is MapEventMoveEnd ||
+          e is MapEventFlingAnimationEnd ||
+          e is MapEventDoubleTapZoomEnd) {
+        _refreshCopyright();
+      }
+    }
+
+    if (target.length >= 2) {
+      return MapOptions(
+        initialCameraFit: CameraFit.coordinates(
+          coordinates: target,
+          padding: const EdgeInsets.all(AppConfig.mapFitPadding),
+          maxZoom: 18,
+        ),
+        minZoom: AppConfig.mapMinZoom,
+        maxZoom: AppConfig.mapMaxZoom,
+        onMapReady: _ready,
+        onMapEvent: onEvent,
+      );
+    }
+    return MapOptions(
+      initialCenter: target.isEmpty
+          ? const LatLng(12.88, 121.77) // the Philippines
+          : target.single,
+      initialZoom: target.isEmpty
+          ? 5
+          : device != null
+          ? AppConfig.placeZoom
+          : AppConfig.mapDefaultZoom,
+      minZoom: AppConfig.mapMinZoom,
+      maxZoom: AppConfig.mapMaxZoom,
+      onMapReady: _ready,
+      onMapEvent: onEvent,
+    );
   }
 
   void _showSheet(DeviceView v, int? position) {
@@ -137,7 +202,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ref.watch(fleetProvider).valueOrNull?.views ?? const <DeviceView>[];
     final pipeline = ref.watch(pipelineProvider);
     final view = ref.watch(mapViewProvider);
-    final session = ref.watch(googleSessionProvider).valueOrNull;
+    final session = ref.watch(googleSessionProvider(view));
+    final google = session.valueOrNull != null;
+    final full = ref.watch(mapFullscreenProvider);
+    final loaded = ref.watch(fleetProvider).hasValue && pipeline.hasValue;
+    ref.listen(googleSessionProvider(view), (_, next) {
+      if (next.valueOrNull != null) _refreshCopyright();
+    });
     final p = pipeline.valueOrNull;
     final branch = p != null && p.branches.isNotEmpty ? p.branches.first : null;
     final ordered = branch == null ? <DeviceView>[] : inBranch(branch, views);
@@ -145,7 +216,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final banner = branch == null ? null : mapBanner(branch, ordered);
     final stop = waterStops(ordered);
     final missing = views.where((v) => !v.hasLocation).length;
-    final satellite = view == MapView.satellite && session != null;
 
     LatLng pt(DeviceView v) => LatLng(v.device.lat!, v.device.lng!);
 
@@ -191,13 +261,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         );
     }
 
-    final placed = <LatLng>[
+    final placed = _home = <LatLng>[
       for (final v in views)
         if (v.hasLocation) pt(v),
       if (p != null) LatLng(p.source.lat, p.source.lng),
       if (branch != null) LatLng(branch.end.lat, branch.end.lng),
     ];
-    WidgetsBinding.instance.addPostFrameCallback((_) => _fit(placed, problem));
+
+    // "Show on map" from a device's Details. The Map tab keeps its state, so
+    // a map that is already open moves to the device instead of reopening.
+    LatLng? focusAt;
+    for (final v in views) {
+      if (v.id == widget.focusDevice && v.hasLocation) focusAt = pt(v);
+    }
+    if (focusAt != null && _mapReady && _centredOn != widget.focusDevice) {
+      _centredOn = widget.focusDevice;
+      final at = focusAt;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _map.move(at, AppConfig.placeZoom),
+      );
+    }
 
     final markers = <Marker>[
       if (_picked != null)
@@ -216,8 +299,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
         ),
-      if (_me != null)
-        Marker(point: _me!, width: 28, height: 28, child: const YouAreHere()),
       if (p != null)
         Marker(
           point: LatLng(p.source.lat, p.source.lng),
@@ -269,8 +350,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         if (v.hasLocation)
           Marker(
             point: pt(v),
-            width: 48,
-            height: 48,
+            width: v.id == widget.focusDevice ? 64 : 48,
+            height: v.id == widget.focusDevice ? 64 : 48,
             child: Semantics(
               button: true,
               label: '${v.nickname}, ${StatusStyle.of(v.status).word}',
@@ -281,20 +362,34 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
                 child: Center(
                   child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: StatusStyle.of(v.status).strong,
-                      border: Border.all(color: Colors.white, width: 2.5),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x330A1B2E), blurRadius: 6),
-                      ],
-                    ),
-                    child: Icon(
-                      StatusStyle.of(v.status).icon,
-                      size: 20,
-                      color: Colors.white,
+                    // The device opened with "Show on map" gets a ring.
+                    padding: EdgeInsets.all(v.id == widget.focusDevice ? 6 : 0),
+                    decoration: v.id == widget.focusDevice
+                        ? BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0x334F46E5),
+                            border: Border.all(
+                              color: AppColors.indigo,
+                              width: 3,
+                            ),
+                          )
+                        : null,
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: StatusStyle.of(v.status).strong,
+                        border: Border.all(color: Colors.white, width: 2.5),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0x330A1B2E), blurRadius: 6),
+                        ],
+                      ),
+                      child: Icon(
+                        StatusStyle.of(v.status).icon,
+                        size: 20,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -303,203 +398,205 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
     ];
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpace.l,
-                AppSpace.l,
-                AppSpace.s,
-                0,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Semantics(
-                      header: true,
-                      child: Text(
-                        p?.name ?? 'Map',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.title(26),
-                      ),
-                    ),
+    void setFull(bool v) => ref.read(mapFullscreenProvider.notifier).state = v;
+
+    return PopScope(
+      canPop: !full,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) setFull(false);
+      },
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!full)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpace.l,
+                    AppSpace.l,
+                    AppSpace.s,
+                    0,
                   ),
-                  const SizedBox(width: AppSpace.s),
-                  // Labelled, not a bare pencil: owners didn't read the icon.
-                  // Shrinks instead of overflowing with large text sizes.
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 170),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: SecondaryButton(
-                        label: 'Edit pipeline',
-                        icon: Icons.edit_rounded,
-                        onPressed: () => context.go('/map/edit'),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (satelliteAvailable)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpace.l,
-                  AppSpace.s,
-                  AppSpace.l,
-                  0,
-                ),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: _ViewToggle(
-                    value: view,
-                    onChanged: (v) {
-                      ref.read(mapViewProvider.notifier).set(v);
-                      setState(() => _tileError = false);
-                      if (v == MapView.satellite) _refreshCopyright();
-                    },
-                  ),
-                ),
-              ),
-            if (banner != null || _tileError)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpace.l,
-                  AppSpace.s,
-                  AppSpace.l,
-                  0,
-                ),
-                child: AppBanner(
-                  icon: _tileError
-                      ? Icons.map_outlined
-                      : StatusStyle.of(StatusKind.noFlow).icon,
-                  color: _tileError
-                      ? AppColors.steel
-                      : StatusStyle.of(StatusKind.noFlow).strong,
-                  text: _tileError ? Messages.mapFailed : banner!,
-                ),
-              ),
-            const SizedBox(height: AppSpace.s),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpace.l,
-                  0,
-                  AppSpace.l,
-                  96,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(AppSpace.cardRadius),
-                  child: Stack(
+                  child: Row(
                     children: [
-                      FlutterMap(
-                        mapController: _map,
-                        options: MapOptions(
-                          initialCenter: placed.isEmpty
-                              ? const LatLng(12.88, 121.77) // the Philippines
-                              : placed.first,
-                          initialZoom: placed.isEmpty
-                              ? 5
-                              : AppConfig.mapDefaultZoom,
-                          onMapReady: () {
-                            _ready = true;
-                            _fit(placed, problem);
-                            _refreshCopyright();
-                          },
-                          onMapEvent: (e) {
-                            if (e is MapEventMoveEnd ||
-                                e is MapEventFlingAnimationEnd ||
-                                e is MapEventDoubleTapZoomEnd) {
-                              _refreshCopyright();
-                            }
-                          },
-                        ),
-                        children: [
-                          satellite
-                              ? googleSatelliteLayer(session, onError: _onError)
-                              : osmLayer(onError: _onError),
-                          PolylineLayer(polylines: lines),
-                          MarkerLayer(markers: markers),
-                          MapAttribution(
-                            view: satellite ? MapView.satellite : MapView.map,
-                            googleCopyright: _googleCopyright,
+                      Expanded(
+                        child: Semantics(
+                          header: true,
+                          child: Text(
+                            p?.name ?? 'Map',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.title(26),
                           ),
-                        ],
-                      ),
-                      Positioned(
-                        left: AppSpace.m,
-                        right: AppSpace.m,
-                        top: AppSpace.m,
-                        child: PlaceSearchBar(
-                          onPick: (place) {
-                            setState(() => _picked = place);
-                            _map.move(place.at, AppConfig.placeZoom);
-                          },
                         ),
                       ),
-                      Positioned(
-                        right: AppSpace.m,
-                        bottom: 40,
-                        child: MyLocationButton(
-                          onFound: (at) {
-                            setState(() => _me = at);
-                            _map.move(at, AppConfig.placeZoom + 1);
-                          },
+                      const SizedBox(width: AppSpace.s),
+                      // Labelled, not a bare pencil: owners didn't read the icon.
+                      // Shrinks instead of overflowing with large text sizes.
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 170),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: SecondaryButton(
+                            // One way in: "Draw" until there is a pipeline.
+                            label: p == null
+                                ? 'Draw pipeline'
+                                : 'Edit pipeline',
+                            icon: Icons.edit_rounded,
+                            onPressed: () => context.go('/map/edit'),
+                          ),
                         ),
                       ),
-                      if (pipeline.hasValue && p == null)
-                        Positioned(
-                          left: AppSpace.m,
-                          right: 76,
-                          bottom: 40,
-                          child: GlassPanel(
-                            child: Row(
+                    ],
+                  ),
+                ),
+              if (googleTilesAvailable)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpace.l,
+                    AppSpace.s,
+                    AppSpace.l,
+                    0,
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _ViewToggle(
+                      value: view,
+                      onChanged: (v) {
+                        ref.read(mapViewProvider.notifier).set(v);
+                        setState(() {
+                          _tileError = false;
+                          _tileErrors = 0;
+                          _googleCopyright = null;
+                        });
+                      },
+                    ),
+                  ),
+                ),
+              if (banner != null || _tileError)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpace.l,
+                    AppSpace.s,
+                    AppSpace.l,
+                    0,
+                  ),
+                  child: AppBanner(
+                    icon: _tileError
+                        ? Icons.map_outlined
+                        : StatusStyle.of(StatusKind.noFlow).icon,
+                    color: _tileError
+                        ? AppColors.steel
+                        : StatusStyle.of(StatusKind.noFlow).strong,
+                    text: _tileError ? Messages.mapFailed : banner!,
+                  ),
+                ),
+              const SizedBox(height: AppSpace.s),
+              Expanded(
+                child: Padding(
+                  padding: full
+                      ? EdgeInsets.zero
+                      : const EdgeInsets.fromLTRB(
+                          AppSpace.l,
+                          0,
+                          AppSpace.l,
+                          96,
+                        ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(
+                      full ? 0 : AppSpace.cardRadius,
+                    ),
+                    child: Stack(
+                      children: [
+                        if (!loaded)
+                          const Center(child: CircularProgressIndicator())
+                        else
+                          FlutterMap(
+                            mapController: _map,
+                            options: _options(placed, problem, focusAt),
+                            children: [
+                              baseLayer(session, view, onError: _onError),
+                              PolylineLayer(polylines: lines),
+                              MarkerLayer(markers: markers),
+                              MapAttribution(
+                                google: google,
+                                googleCopyright: _googleCopyright,
+                              ),
+                            ],
+                          ),
+                        // Google place results only over Google tiles (D46).
+                        if (google && loaded)
+                          Positioned(
+                            left: AppSpace.m,
+                            right: AppSpace.m,
+                            top: AppSpace.m,
+                            child: PlaceSearchBar(
+                              near: () => _map.camera.center,
+                              onPick: (place) {
+                                setState(() => _picked = place);
+                                _map.move(place.at, AppConfig.placeZoom);
+                              },
+                            ),
+                          ),
+                        // Labelled, not bare icons: owners could not tell
+                        // round icon buttons apart.
+                        if (loaded)
+                          Positioned(
+                            right: AppSpace.m,
+                            bottom: 40,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    'Draw your pipeline: set the source, then add a branch.',
-                                    style: AppText.strong,
+                                if (_home.isNotEmpty) ...[
+                                  MapPillButton(
+                                    label: p == null
+                                        ? 'My devices'
+                                        : 'My pipeline',
+                                    icon: Icons.filter_center_focus_rounded,
+                                    onTap: _backHome,
                                   ),
-                                ),
-                                const SizedBox(width: AppSpace.s),
-                                PrimaryButton(
-                                  label: 'Start',
-                                  onPressed: () => context.go('/map/edit'),
+                                  const SizedBox(height: AppSpace.s),
+                                ],
+                                MapPillButton(
+                                  label: full
+                                      ? 'Exit full screen'
+                                      : 'Full screen',
+                                  icon: full
+                                      ? Icons.fullscreen_exit_rounded
+                                      : Icons.fullscreen_rounded,
+                                  onTap: () => setFull(!full),
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            if (missing > 0)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpace.l,
-                  0,
-                  AppSpace.l,
-                  0,
-                ),
-                child: Transform.translate(
-                  offset: const Offset(0, -88),
-                  child: Text(
-                    missing == 1
-                        ? '1 device has no location yet. Set it in Edit pipeline.'
-                        : '$missing devices have no location yet. Set them in Edit pipeline.',
-                    style: AppText.note.copyWith(color: AppColors.ink),
+              if (missing > 0 && !full)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpace.l,
+                    0,
+                    AppSpace.l,
+                    0,
+                  ),
+                  child: Transform.translate(
+                    offset: const Offset(0, -88),
+                    child: Text(
+                      missing == 1
+                          ? '1 device has no location yet. Set it in Edit pipeline.'
+                          : '$missing devices have no location yet. Set them in Edit pipeline.',
+                      style: AppText.note.copyWith(color: AppColors.ink),
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -6,7 +6,7 @@
 import { getAuth } from "firebase-admin/auth";
 import { Timestamp } from "firebase-admin/firestore";
 import type { CallableRequest } from "firebase-functions/https";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { listAdminAudit } from "../src/admin/audit";
 import {
   addAllowedDevice,
@@ -24,7 +24,8 @@ import { runAlertPass } from "../src/alerts/alertPass";
 import { calibrateDevice } from "../src/calibration/calibrate";
 import { C, db, ts } from "../src/lib/db";
 import { migrateV2 } from "../src/migration/v2";
-import { searchPlaces, setGeocodeFetch } from "../src/maps/searchPlace";
+import { locatePlace, setPlacesHttp, suggestPlaces } from "../src/maps/places";
+import { claimPushTokenFor } from "../src/alerts/pushTokens";
 import { setProviders, type Providers } from "../src/lib/providers";
 import { manilaDateKey } from "../src/lib/time";
 import { runMonitorPass } from "../src/monitor/monitorDevices";
@@ -1075,58 +1076,144 @@ describe("deviceCount (TODO(human) in admin/ownership.ts)", () => {
   });
 });
 
-describe("place search (Nominatim policy)", () => {
-  const calls: { url: string; ua: string; at: number }[] = [];
+describe("place search (Google Places, D46)", () => {
+  const sent: { url: string; headers: Record<string, string>; body?: unknown }[] = [];
+  let failNext = false;
+  const SESSION = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+
+  beforeAll(() =>
+    setPlacesHttp({
+      async post(url, headers, body) {
+        sent.push({ url, headers, body });
+        if (failNext) throw new Error("HTTP 500");
+        return {
+          suggestions: [
+            {
+              placePrediction: {
+                placeId: "ChIJsm1",
+                text: { text: "SM City Rosales, Rosales, Pangasinan" },
+                structuredFormat: {
+                  mainText: { text: "SM City Rosales" },
+                  secondaryText: { text: "Rosales, Pangasinan, Philippines" },
+                },
+              },
+            },
+            { queryPrediction: { text: { text: "sm city" } } },
+          ],
+        };
+      },
+      async get(url, headers) {
+        sent.push({ url, headers });
+        return { location: { latitude: 15.89, longitude: 120.6 } };
+      },
+    }),
+  );
+  afterAll(() => setPlacesHttp(null));
   beforeEach(() => {
-    calls.length = 0;
-    setGeocodeFetch(async (url, headers) => {
-      calls.push({ url, ua: headers["User-Agent"]!, at: Date.now() });
-      return [{ display_name: "San Fabian, Pangasinan, Philippines", lat: "16.12", lon: "120.40" }];
-    });
+    sent.length = 0;
+    failNext = false;
   });
-  afterAll(() => setGeocodeFetch(null));
 
-  it("asks once per query, in the Philippines, with the app's own User-Agent", async () => {
-    const first = await searchPlaces("  San Fabian ");
-    const again = await searchPlaces("san fabian");
-    expect(first).toEqual([
-      { name: "San Fabian, Pangasinan, Philippines", lat: 16.12, lng: 120.4 },
+  it("suggests places in the Philippines near the map, then locates the pick", async () => {
+    const out = await suggestPlaces(
+      "u1",
+      { input: "  sm  city ", sessionToken: SESSION, near: { lat: 16, lng: 120.4 } },
+      "KEY",
+    );
+    expect(out).toEqual([
+      {
+        placeId: "ChIJsm1",
+        main: "SM City Rosales",
+        secondary: "Rosales, Pangasinan, Philippines",
+      },
     ]);
-    expect(again).toEqual(first);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.url).toContain("countrycodes=ph");
-    expect(calls[0]!.url).toContain("q=san%20fabian");
-    expect(calls[0]!.ua).toMatch(/^HydroSense\//);
-    // The cache keeps only a hash of the query, never the text.
-    const cached = await db.collection(C.geocodeCache).get();
-    expect(JSON.stringify(cached.docs.map((d) => [d.id, d.data()]))).not.toContain("san fabian");
-  });
-
-  it("keeps parallel searches at least 1.1 s apart for the whole app", async () => {
-    await Promise.all(["alaminos", "lingayen", "bolinao"].map((q) => searchPlaces(q)));
-    const times = calls.map((c) => c.at).sort((a, b) => a - b);
-    expect(times).toHaveLength(3);
-    expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(1000);
-    expect(times[2]! - times[1]!).toBeGreaterThanOrEqual(1000);
-  });
-
-  it("can be switched off without an app update, and checks the query", async () => {
-    await db.collection(C.settings).doc("geocoding").set({ enabled: false });
-    await expect(searchPlaces("dagupan")).rejects.toMatchObject({
-      details: { code: "SEARCH_OFF" },
+    expect(sent[0].headers["X-Goog-Api-Key"]).toBe("KEY");
+    expect(sent[0].body).toMatchObject({
+      input: "sm city",
+      sessionToken: SESSION,
+      includedRegionCodes: ["ph"],
+      locationBias: { circle: { center: { latitude: 16, longitude: 120.4 }, radius: 50000 } },
     });
-    await db.collection(C.settings).doc("geocoding").set({ enabled: true });
-    await expect(searchPlaces("x")).rejects.toMatchObject({ details: { code: "QUERY_INVALID" } });
-    expect(calls).toHaveLength(0);
+
+    expect(await locatePlace("u1", { placeId: "ChIJsm1", sessionToken: SESSION }, "KEY")).toEqual({
+      lat: 15.89,
+      lng: 120.6,
+    });
+    // Only the location field (Essentials), and the same session closes it.
+    expect(sent[1].url).toBe(
+      `https://places.googleapis.com/v1/places/ChIJsm1?sessionToken=${SESSION}`,
+    );
+    expect(sent[1].headers["X-Goog-FieldMask"]).toBe("location");
   });
 
-  it("reports a failed search without caching it", async () => {
-    setGeocodeFetch(async () => {
-      throw new Error("Nominatim HTTP 503");
+  it("checks the input, honours the off switch and reports failures", async () => {
+    await expect(
+      suggestPlaces("u1", { input: "sm", sessionToken: SESSION }, "K"),
+    ).rejects.toMatchObject({
+      details: { code: "QUERY_INVALID" },
     });
-    await expect(searchPlaces("urdaneta")).rejects.toMatchObject({
+    await expect(
+      suggestPlaces("u1", { input: "sm city", sessionToken: "x" }, "K"),
+    ).rejects.toMatchObject({
+      details: { code: "QUERY_INVALID" },
+    });
+    await expect(
+      locatePlace("u1", { placeId: "../evil", sessionToken: SESSION }, "K"),
+    ).rejects.toMatchObject({ details: { code: "QUERY_INVALID" } });
+
+    failNext = true;
+    await expect(
+      suggestPlaces("u1", { input: "dagupan", sessionToken: SESSION }, "K"),
+    ).rejects.toMatchObject({
       details: { code: "SEARCH_FAILED" },
     });
-    expect((await db.collection(C.geocodeCache).get()).size).toBe(0);
+
+    await db.collection(C.settings).doc("places").set({ enabled: false });
+    await expect(
+      suggestPlaces("u1", { input: "dagupan", sessionToken: SESSION }, "K"),
+    ).rejects.toMatchObject({
+      details: { code: "SEARCH_OFF" },
+    });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("caps calls per user and for the project each day", async () => {
+    const now = Date.UTC(2026, 10, 14, 4);
+    const day = "2026-11-14";
+    await db.collection(C.rateLimits).doc(`places__u2__${day}`).set({ count: 150 });
+    await expect(
+      suggestPlaces("u2", { input: "dagupan", sessionToken: SESSION }, "K", now),
+    ).rejects.toMatchObject({ details: { code: "PLACES_USER_LIMIT" } });
+
+    await db.collection(C.rateLimits).doc(`places__${day}`).set({ count: 299 });
+    await suggestPlaces("u3", { input: "dagupan", sessionToken: SESSION }, "K", now);
+    await expect(
+      suggestPlaces("u4", { input: "dagupan", sessionToken: SESSION }, "K", now),
+    ).rejects.toMatchObject({ details: { code: "PLACES_PROJECT_LIMIT" } });
+    expect((await db.collection(C.rateLimits).doc(`places__u3__${day}`).get()).get("count")).toBe(
+      1,
+    );
+  });
+});
+
+describe("push registration moves with the person who signs in (D45)", () => {
+  it("a phone's FID belongs to one account at a time", async () => {
+    const tokens = (uid: string) => db.collection(C.users).doc(uid).collection(C.pushTokens);
+    expect(await claimPushTokenFor("ana", "fid_phone_1", 1000)).toEqual({ removed: 0 });
+    await claimPushTokenFor("ana", "fid_phone_2", 1000);
+    expect((await tokens("ana").get()).size).toBe(2);
+
+    // Someone else signs in on phone 1.
+    expect(await claimPushTokenFor("ben", "fid_phone_1", 2000)).toEqual({ removed: 1 });
+    expect((await tokens("ana").get()).docs.map((d) => d.id)).toEqual(["fid_phone_2"]);
+    expect((await tokens("ben").doc("fid_phone_1").get()).data()).toMatchObject({
+      platform: "android",
+      fid: "fid_phone_1",
+    });
+    // Signing in again on your own phone removes nothing.
+    expect(await claimPushTokenFor("ben", "fid_phone_1", 3000)).toEqual({ removed: 0 });
+    await expect(claimPushTokenFor("ben", "a/b")).rejects.toMatchObject({
+      details: { code: "PAYLOAD_INVALID" },
+    });
   });
 });

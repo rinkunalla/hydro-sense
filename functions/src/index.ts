@@ -35,4 +35,5 @@ export {
   syncPasswordSet,
   requestAccountDeletion,
 } from "./auth/self";
-export { searchPlace } from "./maps/searchPlace";
+export { placeSuggest, placeLocation } from "./maps/places";
+export { claimPushToken } from "./alerts/pushTokens";

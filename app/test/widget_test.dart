@@ -339,6 +339,30 @@ void main() {
     expect(t.hasRunningAnimations, isTrue);
   });
 
+  testWidgets('Details: Show on map, or Set its location without one', (
+    t,
+  ) async {
+    await phone(t);
+    await t.pumpWidget(
+      harness(
+        Stream.value(Fleet([view('1')])),
+        home: const DeviceDetailScreen(deviceId: '1'),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.text('Show on map'), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+    await t.pumpWidget(
+      harness(
+        Stream.value(Fleet([view('1', lat: null)])),
+        home: const DeviceDetailScreen(deviceId: '1'),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.text('Show on map'), findsNothing);
+    expect(find.text('Set its location'), findsOneWidget);
+  });
+
   testWidgets('under reduce motion nothing animates on Details', (t) async {
     await phone(t);
     await t.pumpWidget(
