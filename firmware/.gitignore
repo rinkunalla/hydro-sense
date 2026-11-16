@@ -3,3 +3,6 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Serial captures (contain Wi-Fi names and local addresses)
+serial-*.log

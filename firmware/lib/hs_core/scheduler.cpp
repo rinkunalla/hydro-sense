@@ -17,6 +17,13 @@ const char* triggerName(Trigger t) {
   }
 }
 
+static uint32_t clampU(uint32_t v, uint32_t lo, uint32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+void UploadScheduler::setPace(uint32_t heartbeatS, uint32_t rateMinIntervalS) {
+  heartbeatS_ = clampU(heartbeatS, HEARTBEAT_MIN_S, HEARTBEAT_MAX_S);
+  rateMinIntervalS_ = clampU(rateMinIntervalS, RATE_INTERVAL_MIN_S, RATE_INTERVAL_MAX_S);
+}
+
 UploadDecision UploadScheduler::send(uint32_t nowS, Trigger t, float rate) {
   sentAny_ = true;
   lastUpload_ = nowS;
@@ -62,12 +69,12 @@ UploadDecision UploadScheduler::tick(uint32_t nowS, Status classified, float rat
   const float delta = fabsf(rate - lastSentRate_);
   if (!hasPending_ && delta >= RATE_REPORT_MIN_ABS &&
       delta >= (RATE_REPORT_DELTA_PCT / 100.0f) * lastSentRate_ &&
-      nowS - lastRateUpload_ >= RATE_REPORT_MIN_INTERVAL_S) {
+      nowS - lastRateUpload_ >= rateMinIntervalS_) {
     return send(nowS, Trigger::RateChange, rate);
   }
 
   // Rule C: heartbeat when nothing else was sent.
-  if (!sentAny_ || nowS - lastUpload_ >= HEARTBEAT_S) {
+  if (!sentAny_ || nowS - lastUpload_ >= heartbeatS_) {
     return send(nowS, Trigger::Heartbeat, rate);
   }
   return {};

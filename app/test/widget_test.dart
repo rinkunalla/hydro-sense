@@ -149,7 +149,25 @@ void main() {
     expect(find.byType(AppBanner), findsNothing);
   });
 
-  testWidgets('Live within 90 s, Late after, Offline replaces both', (t) async {
+  testWidgets('an offline device shows its battery as when last seen', (t) async {
+    await phone(t);
+    await t.pumpWidget(
+      harness(
+        Stream.value(
+          Fleet([
+            view('1', nickname: 'Up', battery: 82),
+            view('2', nickname: 'Gone', online: false, battery: 77),
+          ]),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.text('82%'), findsOneWidget);
+    expect(find.text('77% when last seen'), findsOneWidget);
+    expect(find.text('77%'), findsNothing);
+  });
+
+  testWidgets('Live within 45 s, Late after, Offline replaces both', (t) async {
     await phone(t);
     await t.pumpWidget(
       harness(
@@ -174,6 +192,9 @@ void main() {
     expect(find.text('Live'), findsOneWidget);
     expect(find.text('Late'), findsOneWidget);
     expect(find.text('Offline'), findsOneWidget);
+    // Live stays calm (no seconds counter); only Late shows its age.
+    expect(find.text('12 s ago'), findsNothing);
+    expect(find.text('2 min ago'), findsOneWidget);
   });
 
   testWidgets('Offline device: "–" L/min, Offline since, sleeping note', (

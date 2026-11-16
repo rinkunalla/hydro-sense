@@ -2,6 +2,7 @@ import {
   BATTERY_CELL_EMPTY_V,
   BATTERY_CELL_SPAN_V,
   BATTERY_SERIES_CELLS,
+  BATTERY_SMOOTH_SAMPLES,
   CHARGING_FULL_PER_CELL_V,
   CHARGING_RISE_PER_CELL_V,
   CHARGING_TREND_SAMPLES,
@@ -22,6 +23,14 @@ export function appendVoltage(list: readonly number[], v: number, cap = RECENT_V
 }
 
 const mean = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+/** Mean of the newest [samples] readings, for a steady batteryPercent. */
+export function smoothedVoltage(
+  recent: readonly number[],
+  samples = BATTERY_SMOOTH_SAMPLES,
+): number {
+  return mean(recent.slice(-samples));
+}
 
 /** Newest vs oldest CHARGING_TREND_SAMPLES means of recentVoltages (CLAUDE.md section 6). */
 export function chargingTrend(

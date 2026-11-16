@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isStale,
+  offlineAfterS,
   nextAbnormalSince,
   rateChangedEnough,
   sampleDue,
@@ -55,8 +56,8 @@ describe("shouldWriteDevices", () => {
   });
 
   it("writes a 20 % rate change only after 30 s", () => {
-    expect(shouldWriteDevices({ ...base, nextRate: 12, updatedAtMs: NOW - 10 * S })).toBe(false);
-    expect(shouldWriteDevices({ ...base, nextRate: 12, updatedAtMs: NOW - 30 * S })).toBe(true);
+    expect(shouldWriteDevices({ ...base, nextRate: 12, updatedAtMs: NOW - 9 * S })).toBe(false);
+    expect(shouldWriteDevices({ ...base, nextRate: 12, updatedAtMs: NOW - 10 * S })).toBe(true);
   });
 
   it("refreshes updatedAt after 5 min even when steady", () => {
@@ -76,5 +77,13 @@ describe("sampleDue and isStale", () => {
     expect(isStale(NOW - 179 * S, NOW)).toBe(false);
     expect(isStale(NOW - 180 * S, NOW)).toBe(true);
     expect(isStale(null, NOW)).toBe(false);
+  });
+
+  it("uses three missed heartbeats when the device reports its heartbeat", () => {
+    expect(offlineAfterS(30)).toBe(90);
+    expect(offlineAfterS(10)).toBe(60);
+    expect(offlineAfterS(null)).toBe(180);
+    expect(isStale(NOW - 89 * S, NOW, 30)).toBe(false);
+    expect(isStale(NOW - 90 * S, NOW, 30)).toBe(true);
   });
 });

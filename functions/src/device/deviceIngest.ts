@@ -1,9 +1,9 @@
 import { onRequest } from "firebase-functions/https";
 import { DEVICE_ID_PATTERN, FLOW_LOG_SAMPLE_S, FLOW_LOG_TTL_DAYS } from "../config";
 import { effectiveCutoffs } from "../lib/cutoffs";
-import { appendVoltage, batteryPercent, chargingTrend } from "../lib/battery";
+import { appendVoltage, batteryPercent, chargingTrend, smoothedVoltage } from "../lib/battery";
 import { C, db, ms, ts } from "../lib/db";
-import { nextAbnormalSince, sampleDue, shouldWriteDevices } from "../lib/decisions";
+import { nextAbnormalSince, sampleDue, shouldWriteDevices, uploadPace } from "../lib/decisions";
 import { bearerToken, header, sendError, sendOk } from "../lib/http";
 import { logError } from "../lib/logError";
 import { parseIngestPayload, type FlowStatus, type IngestPayload } from "../lib/payload";
@@ -63,6 +63,7 @@ export async function ingest(deviceId: string, p: IngestPayload, nowMs: number) 
       lastSeen: now,
       batteryFault: p.batteryFault,
       lowVoltageSleep: p.lowVoltageSleep,
+      heartbeatS: p.heartbeatS,
       ...(p.firmware ? { firmware: p.firmware } : {}),
       ...(p.rssi !== null ? { rssi: p.rssi } : {}),
       ...(p.resetReason ? { resetReason: p.resetReason, resetAt: now } : {}),
@@ -75,7 +76,7 @@ export async function ingest(deviceId: string, p: IngestPayload, nowMs: number) 
       );
       Object.assign(healthUpdate, {
         batteryVoltage: p.batteryVoltage,
-        batteryPercent: batteryPercent(p.batteryVoltage),
+        batteryPercent: batteryPercent(smoothedVoltage(recent)),
         chargingStatus: chargingTrend(recent),
         recentVoltages: recent,
       });
@@ -150,6 +151,7 @@ export const deviceIngest = onRequest({ invoker: "public" }, async (req, res) =>
     return sendOk(res, {
       lowFlowCutoff: out.lowFlowCutoff,
       normalFlowCutoff: out.normalFlowCutoff,
+      ...uploadPace(),
     });
   } catch (e) {
     await logError({ source, code: "INTERNAL", message: String(e), deviceId });

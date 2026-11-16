@@ -1,7 +1,11 @@
 import {
+  DEVICE_HEARTBEAT_S,
+  DEVICE_RATE_MIN_INTERVAL_S,
   DEVICES_WRITE_MAX_AGE_S,
   DEVICES_WRITE_MIN_INTERVAL_S,
+  OFFLINE_AFTER_MIN_S,
   OFFLINE_AFTER_S,
+  OFFLINE_MISSED_HEARTBEATS,
   RATE_WRITE_DELTA_PCT,
   RATE_WRITE_MIN_ABS,
 } from "../config";
@@ -55,7 +59,26 @@ export function sampleDue(lastAtMs: number | null, nowMs: number, intervalS: num
   return lastAtMs === null || nowMs - lastAtMs >= intervalS * S;
 }
 
-/** A device is stale (should flip offline) after OFFLINE_AFTER_S of silence. */
-export function isStale(lastSeenMs: number | null, nowMs: number): boolean {
-  return lastSeenMs !== null && nowMs - lastSeenMs >= OFFLINE_AFTER_S * S;
+/**
+ * Silence before a device counts as offline: three missed heartbeats when it
+ * reports its heartbeat (firmware 0.3.0+), else the 0.2.0 value of 180 s.
+ */
+export function offlineAfterS(heartbeatS: number | null): number {
+  if (heartbeatS === null) return OFFLINE_AFTER_S;
+  return Math.max(OFFLINE_AFTER_MIN_S, OFFLINE_MISSED_HEARTBEATS * heartbeatS);
 }
+
+/** A device is stale (should flip offline) after offlineAfterS of silence. */
+export function isStale(
+  lastSeenMs: number | null,
+  nowMs: number,
+  heartbeatS: number | null = null,
+): boolean {
+  return lastSeenMs !== null && nowMs - lastSeenMs >= offlineAfterS(heartbeatS) * S;
+}
+
+/** Upload pace in every device reply; firmware 0.2.0 ignores unknown fields. */
+export const uploadPace = () => ({
+  heartbeatS: DEVICE_HEARTBEAT_S,
+  rateMinIntervalS: DEVICE_RATE_MIN_INTERVAL_S,
+});

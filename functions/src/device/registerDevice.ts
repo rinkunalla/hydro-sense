@@ -6,6 +6,7 @@ import {
   STARTER_NORMAL_FLOW_CUTOFF,
 } from "../config";
 import { effectiveCutoffs } from "../lib/cutoffs";
+import { uploadPace } from "../lib/decisions";
 import { C, db, ts } from "../lib/db";
 import { newDeviceDoc, newHealthDoc } from "../lib/deviceDocs";
 import { header, sendError, sendOk } from "../lib/http";
@@ -105,6 +106,7 @@ export const registerDevice = onRequest(
             token: out.token,
             lowFlowCutoff: out.lowFlowCutoff,
             normalFlowCutoff: out.normalFlowCutoff,
+            ...uploadPace(),
           });
         case "not_allowed":
           return sendError(res, "DEVICE_NOT_ALLOWED", "This device ID is not on the allowlist.");

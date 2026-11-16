@@ -129,11 +129,11 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 LiveCue(view: v, now: now),
-                if (h?.lastSeen != null)
+                // Only when offline: "Live" (or "Late · 2 min ago") already
+                // says how fresh the reading is.
+                if (offline && h?.lastSeen != null)
                   Text(
-                    offline
-                        ? 'Last seen ${clockTime(h!.lastSeen!, now)}'
-                        : 'Updated ${relativeAge(h!.lastSeen!, now)}',
+                    'Last seen ${clockTime(h!.lastSeen!, now)}',
                     style: AppText.note,
                   ),
               ],

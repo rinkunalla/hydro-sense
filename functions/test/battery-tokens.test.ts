@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { appendVoltage, batteryPercent, chargingTrend } from "../src/lib/battery";
+import { appendVoltage, batteryPercent, chargingTrend, smoothedVoltage } from "../src/lib/battery";
 import { generateToken, safeEqual, sha256Hex } from "../src/lib/tokens";
+
+describe("smoothedVoltage", () => {
+  it("averages the newest five readings so noise does not move the percent", () => {
+    const noisy = [7.0, 8.07, 8.1, 8.05, 8.09, 8.06];
+    expect(smoothedVoltage(noisy)).toBeCloseTo(8.074, 3);
+    expect(batteryPercent(smoothedVoltage(noisy))).toBe(82);
+    expect(smoothedVoltage([8.2])).toBe(8.2);
+  });
+});
 
 describe("batteryPercent", () => {
   it("maps 2S 6.6 V to 0 % and 8.4 V to 100 %, clamped", () => {

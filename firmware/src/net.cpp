@@ -87,6 +87,11 @@ static void logUpload(const Reading& r, int code) {
 }
 
 static void applyCutoffs(const String& response) {
+  Pace pace;
+  if (parsePace(response.c_str(), response.length(), pace)) {
+    Locked l;
+    app.pace = pace;
+  }
   Cutoffs c;
   if (!parseCutoffs(response.c_str(), response.length(), c)) return;
   storage::saveCutoffsIfChanged(c);

@@ -125,34 +125,52 @@ static void test_status_uploads_are_10_s_apart() {
   TEST_ASSERT_EQUAL(Trigger::StatusChange, r.at(10, Status::Low, 1));
 }
 
-static void test_rate_change_needs_15_pct_and_0_3_lpm_and_30_s() {
+static void test_rate_change_needs_15_pct_and_0_3_lpm_and_10_s() {
   Run r;
   r.at(0, Status::Normal, 10);
-  TEST_ASSERT_EQUAL(Trigger::None, r.at(10, Status::Normal, 12));  // 20 % but < 30 s
-  TEST_ASSERT_EQUAL(Trigger::RateChange, r.at(30, Status::Normal, 12));
-  TEST_ASSERT_EQUAL(Trigger::None, r.at(61, Status::Normal, 13));  // 8 % only (heartbeat not due)
+  TEST_ASSERT_EQUAL(Trigger::None, r.at(9, Status::Normal, 12));  // 20 % but < 10 s
+  TEST_ASSERT_EQUAL(Trigger::RateChange, r.at(10, Status::Normal, 12));
+  TEST_ASSERT_EQUAL(Trigger::None, r.at(20, Status::Normal, 13));  // 8 % only (heartbeat not due)
 
   Run low;
   low.at(0, Status::Low, 0.5f);
-  TEST_ASSERT_EQUAL(Trigger::None, low.at(40, Status::Low, 0.7f));  // 40 % but 0.2 L/min
+  TEST_ASSERT_EQUAL(Trigger::None, low.at(20, Status::Low, 0.7f));  // 40 % but 0.2 L/min
 }
 
 static void test_rate_change_waits_while_a_status_is_pending() {
   Run r;
   r.at(0, Status::Normal, 10);
-  TEST_ASSERT_EQUAL(Trigger::None, r.at(40, Status::Low, 1.2f));  // big drop, status pending
-  TEST_ASSERT_EQUAL(Trigger::None, r.at(41, Status::Low, 1.2f));
-  TEST_ASSERT_EQUAL(Trigger::None, r.at(42, Status::Low, 1.2f));
-  TEST_ASSERT_EQUAL(Trigger::StatusChange, r.at(43, Status::Low, 1.2f));
+  TEST_ASSERT_EQUAL(Trigger::None, r.at(20, Status::Low, 1.2f));  // big drop, status pending
+  TEST_ASSERT_EQUAL(Trigger::None, r.at(21, Status::Low, 1.2f));
+  TEST_ASSERT_EQUAL(Trigger::None, r.at(22, Status::Low, 1.2f));
+  TEST_ASSERT_EQUAL(Trigger::StatusChange, r.at(23, Status::Low, 1.2f));
 }
 
-static void test_heartbeat_every_60_s_when_quiet() {
+static void test_heartbeat_every_30_s_when_quiet() {
   Run r;
   r.at(0, Status::Normal, 10);
-  TEST_ASSERT_EQUAL(Trigger::None, r.at(59, Status::Normal, 10));
+  TEST_ASSERT_EQUAL(Trigger::None, r.at(29, Status::Normal, 10));
+  TEST_ASSERT_EQUAL(Trigger::Heartbeat, r.at(30, Status::Normal, 10));
+  TEST_ASSERT_EQUAL(Trigger::None, r.at(31, Status::Normal, 10));
   TEST_ASSERT_EQUAL(Trigger::Heartbeat, r.at(60, Status::Normal, 10));
-  TEST_ASSERT_EQUAL(Trigger::None, r.at(61, Status::Normal, 10));
-  TEST_ASSERT_EQUAL(Trigger::Heartbeat, r.at(120, Status::Normal, 10));
+}
+
+static void test_server_pace_is_clamped() {
+  Run r;
+  r.s.setPace(1, 1000);  // a bad reply can neither make it spam nor go quiet
+  TEST_ASSERT_EQUAL_UINT32(HEARTBEAT_MIN_S, r.s.heartbeatS());
+  r.at(0, Status::Normal, 10);
+  TEST_ASSERT_EQUAL(Trigger::None, r.at(HEARTBEAT_MIN_S - 1, Status::Normal, 10));
+  TEST_ASSERT_EQUAL(Trigger::Heartbeat, r.at(HEARTBEAT_MIN_S, Status::Normal, 10));
+  r.s.setPace(500, 10);
+  TEST_ASSERT_EQUAL_UINT32(HEARTBEAT_MAX_S, r.s.heartbeatS());
+
+  Pace p;
+  const char ok[] = "{\"ok\":true,\"heartbeatS\":30,\"rateMinIntervalS\":10}";
+  TEST_ASSERT_TRUE(parsePace(ok, strlen(ok), p));
+  TEST_ASSERT_EQUAL_UINT32(30, p.heartbeatS);
+  const char old[] = "{\"ok\":true,\"lowFlowCutoff\":0.2}";
+  TEST_ASSERT_FALSE(parsePace(old, strlen(old), p));
 }
 
 static void test_reconnect_uploads_current_state() {
@@ -352,9 +370,9 @@ static void test_ingest_body_uses_protocol_field_names() {
   char buf[512];
   TEST_ASSERT_TRUE(buildIngestBody(r, buf, sizeof buf) > 0);
   TEST_ASSERT_EQUAL_STRING(
-      "{\"flowStatus\":\"Normal Flow\",\"flowRate\":4.2,\"pulseHz\":31.5,\"batteryVoltage\":7.92,"
+      "{\"flowStatus\":\"Normal Flow\",\"flowRate\":4.2,\"batteryVoltage\":7.92,"
       "\"batteryFault\":false,\"lat\":16.04,\"lng\":120.33,\"gpsValid\":true,\"rssi\":-61,"
-      "\"firmware\":\"1.0.0\",\"resetReason\":null,\"trigger\":\"status_change\"}",
+      "\"firmware\":\"1.0.0\",\"resetReason\":null,\"trigger\":\"status_change\",\"heartbeatS\":30}",
       buf);
 }
 
@@ -411,9 +429,10 @@ int main() {
   RUN_TEST(test_status_change_needs_3_s_confirmation);
   RUN_TEST(test_a_blip_shorter_than_confirmation_sends_nothing);
   RUN_TEST(test_status_uploads_are_10_s_apart);
-  RUN_TEST(test_rate_change_needs_15_pct_and_0_3_lpm_and_30_s);
+  RUN_TEST(test_rate_change_needs_15_pct_and_0_3_lpm_and_10_s);
   RUN_TEST(test_rate_change_waits_while_a_status_is_pending);
-  RUN_TEST(test_heartbeat_every_60_s_when_quiet);
+  RUN_TEST(test_heartbeat_every_30_s_when_quiet);
+  RUN_TEST(test_server_pace_is_clamped);
   RUN_TEST(test_reconnect_uploads_current_state);
   RUN_TEST(test_battery_percent_2s_and_1s);
   RUN_TEST(test_divider_and_battery_fault);

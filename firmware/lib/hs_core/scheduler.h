@@ -29,6 +29,10 @@ class UploadScheduler {
 
   Status confirmed() const { return confirmed_; }
 
+  /** Upload pace from the server reply; values are clamped to config.h ranges. */
+  void setPace(uint32_t heartbeatS, uint32_t rateMinIntervalS);
+  uint32_t heartbeatS() const { return heartbeatS_; }
+
  private:
   UploadDecision send(uint32_t nowS, Trigger t, float rate);
 
@@ -42,6 +46,8 @@ class UploadScheduler {
   uint32_t lastStatusUpload_ = 0;
   uint32_t lastRateUpload_ = 0;
   float lastSentRate_ = 0;
+  uint32_t heartbeatS_ = HEARTBEAT_S;
+  uint32_t rateMinIntervalS_ = RATE_REPORT_MIN_INTERVAL_S;
 };
 
 }  // namespace hs

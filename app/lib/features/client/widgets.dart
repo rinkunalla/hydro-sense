@@ -122,8 +122,12 @@ class _LiveCueState extends State<LiveCue> with SingleTickerProviderStateMixin {
             live ? 'Live' : 'Late',
             style: AppText.strong.copyWith(fontSize: 13),
           ),
-          const SizedBox(width: 6),
-          Text(age, style: AppText.note),
+          // Calm while live: a seconds counter that resets at every heartbeat
+          // looked like constant flicker. The age only matters once it's late.
+          if (!live) ...[
+            const SizedBox(width: 6),
+            Text(age, style: AppText.note),
+          ],
         ],
       ),
     );
@@ -217,20 +221,29 @@ class BatteryGauge extends StatelessWidget {
       );
     }
     final pct = h.batteryPercent!;
-    final low = view.lowBattery;
+    // Offline: the reading is the last one sent, so it is greyed and says so,
+    // with no charging or trend claim about a device that is not reporting.
+    final stale = view.status == StatusKind.offline;
+    final low = !stale && view.lowBattery;
     final charging =
-        h.chargingStatus == 'Charging' || h.chargingStatus == 'Full';
-    final color = low
+        !stale &&
+        (h.chargingStatus == 'Charging' || h.chargingStatus == 'Full');
+    final color = stale
+        ? AppColors.steel
+        : low
         ? StatusStyle.of(StatusKind.lowBattery).strong
         : AppColors.deepCyan;
-    final words = low
+    final words = stale
+        ? '$pct% when last seen'
+        : low
         ? '$pct% low'
         : charging
         ? '$pct% charging'
         : '$pct%';
+    final withTrend = showTrend && !stale;
     return Semantics(
       label:
-          'Battery $words${showTrend ? ', ${trendWord(h.chargingStatus)}' : ''}',
+          'Battery $words${withTrend ? ', ${trendWord(h.chargingStatus)}' : ''}',
       excludeSemantics: true,
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -266,8 +279,10 @@ class BatteryGauge extends StatelessWidget {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              showTrend ? '$words · ${trendWord(h.chargingStatus)}' : words,
-              style: AppText.note.copyWith(color: AppColors.ink),
+              withTrend ? '$words · ${trendWord(h.chargingStatus)}' : words,
+              style: AppText.note.copyWith(
+                color: stale ? AppColors.steel : AppColors.ink,
+              ),
             ),
           ),
         ],

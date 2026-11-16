@@ -47,7 +47,7 @@ abstract final class AppConfig {
   static const int adminDevicesRefreshS = 60; // ADMIN_DEVICES_REFRESH_S
   static const int skeletonCards = 3;
   static const int toastS = 4; // TOAST_S
-  static const int liveLateAfterS = 90; // LIVE_LATE_AFTER_S (D35)
+  static const int liveLateAfterS = 45; // LIVE_LATE_AFTER_S (D35): 1.5 heartbeats
   static const int flowChartHours = 24; // FLOW_CHART_HOURS
   static const int flowLogChartLimit =
       400; // ~288 samples + status changes per day

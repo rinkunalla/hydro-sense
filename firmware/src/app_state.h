@@ -24,6 +24,7 @@ struct AppState {
 
   // Network task -> sampling task
   Cutoffs cutoffs;
+  Pace pace;  // upload pace from the last server reply
   bool reconnected = false;  // upload the current state at once
   uint32_t networkAliveMs = 0;
 

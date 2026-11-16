@@ -7,7 +7,17 @@ export const MAX_INSTANCES = 2;
 export const TIME_ZONE = "Asia/Manila";
 
 // Device health and offline detection
+// Upload pace the server hands to firmware 0.3.0+ in every reply, so it can be
+// tuned without a reflash. Firmware clamps both to its own safe range.
+export const DEVICE_HEARTBEAT_S = 30;
+export const DEVICE_RATE_MIN_INTERVAL_S = 10;
+/** A device that reports its heartbeat goes offline after this many missed. */
+export const OFFLINE_MISSED_HEARTBEATS = 3;
+export const OFFLINE_AFTER_MIN_S = 60;
+/** For firmware that does not report its heartbeat (0.2.0, 60 s heartbeats). */
 export const OFFLINE_AFTER_S = 180;
+export const HEARTBEAT_REPORTED_MIN_S = 10;
+export const HEARTBEAT_REPORTED_MAX_S = 120;
 export const OFFLINE_ALERT_AFTER_S = 900;
 export const RECENT_VOLTAGES_CAP = 20;
 export const BATTERY_SERIES_CELLS = 2;
@@ -16,6 +26,9 @@ export const BATTERY_CELL_SPAN_V = 0.9;
 export const LOW_BATTERY_PERCENT = 20;
 export const BATTERY_REARM_PERCENT = 30;
 export const CHARGING_TREND_SAMPLES = 5;
+/** batteryPercent is shown from the mean of the newest readings, so ADC noise
+ * of a few mV (1 % is 18 mV on 2S) does not make it jump 81 → 83 → 82. */
+export const BATTERY_SMOOTH_SAMPLES = 5;
 export const CHARGING_RISE_PER_CELL_V = 0.02;
 export const CHARGING_FULL_PER_CELL_V = 4.15;
 
@@ -39,7 +52,7 @@ export const ALERT_SEND_LEASE_S = 120;
 export const SMS_MAX_CHARS = 160;
 
 // Write throttles and logs
-export const DEVICES_WRITE_MIN_INTERVAL_S = 30;
+export const DEVICES_WRITE_MIN_INTERVAL_S = 10;
 export const DEVICES_WRITE_MAX_AGE_S = 300;
 export const RATE_WRITE_DELTA_PCT = 15;
 export const RATE_WRITE_MIN_ABS = 0.3;

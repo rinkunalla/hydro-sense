@@ -109,11 +109,11 @@ void main() {
       },
     );
 
-    test('Live within 90 s, then Late, Offline only from the server (D35)', () {
+    test('Live within 45 s, then Late, Offline only from the server (D35)', () {
       DeviceView at(int s) =>
           view('1', lastSeen: testNow.subtract(Duration(seconds: s)));
-      expect(at(90).freshnessAt(testNow), Freshness.live);
-      expect(at(91).freshnessAt(testNow), Freshness.late);
+      expect(at(45).freshnessAt(testNow), Freshness.live);
+      expect(at(46).freshnessAt(testNow), Freshness.late);
       expect(
         at(-30).freshnessAt(testNow),
         Freshness.live,

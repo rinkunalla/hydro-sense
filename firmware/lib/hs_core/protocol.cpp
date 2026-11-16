@@ -15,7 +15,6 @@ size_t buildIngestBody(const Reading& r, char* out, size_t cap) {
   JsonDocument doc;
   doc["flowStatus"] = statusName(r.status);
   doc["flowRate"] = round2(r.flowRate);
-  doc["pulseHz"] = round2(r.pulseHz);
   if (!r.batteryFault) doc["batteryVoltage"] = round2(r.batteryVoltage);
   doc["batteryFault"] = r.batteryFault;
   if (r.gpsValid) {
@@ -32,6 +31,7 @@ size_t buildIngestBody(const Reading& r, char* out, size_t cap) {
   }
   doc["trigger"] = triggerName(r.trigger);
   if (r.lowVoltageSleep) doc["lowVoltageSleep"] = true;
+  doc["heartbeatS"] = r.heartbeatS;
   const size_t n = measureJson(doc);
   if (n + 1 > cap) return 0;
   return serializeJson(doc, out, cap);
@@ -56,6 +56,17 @@ bool parseCutoffs(const char* json, size_t len, Cutoffs& out) {
   if (!(l > 0 && l < n && n <= FLOW_RATE_MAX)) return false;
   out.low = l;
   out.normal = n;
+  return true;
+}
+
+bool parsePace(const char* json, size_t len, Pace& out) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json, len)) return false;
+  JsonVariant hb = doc["heartbeatS"];
+  JsonVariant rate = doc["rateMinIntervalS"];
+  if (!hb.is<uint32_t>() || !rate.is<uint32_t>()) return false;
+  out.heartbeatS = hb.as<uint32_t>();
+  out.rateMinIntervalS = rate.as<uint32_t>();
   return true;
 }
 

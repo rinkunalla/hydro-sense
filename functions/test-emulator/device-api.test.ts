@@ -181,7 +181,14 @@ describe("deviceIngest", () => {
   it("applies a status change immediately and returns the cutoffs", async () => {
     const token = await registered();
     const r = await ingest(token, { trigger: "status_change" });
-    expect(r.body).toEqual({ ok: true, lowFlowCutoff: 0.2, normalFlowCutoff: 2.0 });
+    // The reply also sets the upload pace (D47); firmware 0.2.0 ignores it.
+    expect(r.body).toEqual({
+      ok: true,
+      lowFlowCutoff: 0.2,
+      normalFlowCutoff: 2.0,
+      heartbeatS: 30,
+      rateMinIntervalS: 10,
+    });
 
     const d = await get(dev());
     expect(d).toMatchObject({ flowStatus: "Normal Flow", flowRate: 10, gpsLat: 16.04 });

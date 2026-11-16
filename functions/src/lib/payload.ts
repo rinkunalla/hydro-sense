@@ -1,4 +1,9 @@
-import { DEVICE_ID_PATTERN, FLOW_RATE_MAX } from "../config";
+import {
+  DEVICE_ID_PATTERN,
+  FLOW_RATE_MAX,
+  HEARTBEAT_REPORTED_MAX_S,
+  HEARTBEAT_REPORTED_MIN_S,
+} from "../config";
 
 export const FLOW_STATUSES = ["Normal Flow", "Low Flow", "No Flow"] as const;
 export type FlowStatus = (typeof FLOW_STATUSES)[number];
@@ -21,6 +26,8 @@ export interface IngestPayload {
   resetReason: string | null;
   trigger: Trigger;
   lowVoltageSleep: boolean;
+  /** The heartbeat the device runs at (firmware 0.3.0+), for its offline threshold. */
+  heartbeatS: number | null;
 }
 
 export interface RegisterBody {
@@ -68,6 +75,9 @@ function oneOf<T extends string>(v: unknown, allowed: readonly T[], field: strin
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+const reportedHeartbeat = (v: number | null) =>
+  v === null ? null : Math.round(clamp(v, HEARTBEAT_REPORTED_MIN_S, HEARTBEAT_REPORTED_MAX_S));
 
 function wrap<T>(fn: () => T): Parsed<T> {
   try {
@@ -124,6 +134,7 @@ export function parseIngestPayload(body: unknown): Parsed<IngestPayload> {
       resetReason: optionalString(body.resetReason, "resetReason", RESET_REASON_MAX),
       trigger,
       lowVoltageSleep: optionalBool(body.lowVoltageSleep, "lowVoltageSleep"),
+      heartbeatS: reportedHeartbeat(optionalFinite(body.heartbeatS, "heartbeatS")),
     };
   });
 }

@@ -1,6 +1,6 @@
 import { onSchedule } from "firebase-functions/scheduler";
 import { runAlertPass, type AlertPassResult } from "../alerts/alertPass";
-import { OFFLINE_AFTER_S, TIME_ZONE } from "../config";
+import { OFFLINE_AFTER_MIN_S, TIME_ZONE } from "../config";
 import { C, db, ms, ts } from "../lib/db";
 import { isStale } from "../lib/decisions";
 import { logError } from "../lib/logError";
@@ -16,7 +16,11 @@ export async function flipOfflineIfStale(deviceId: string, nowMs: number): Promi
   const ref = db.collection(C.deviceHealth).doc(deviceId);
   return db.runTransaction(async (tx) => {
     const health = await tx.get(ref);
-    if (health.get("online") !== true || !isStale(ms(health.get("lastSeen")), nowMs)) return false;
+    const hb = health.get("heartbeatS");
+    const heartbeatS = typeof hb === "number" ? hb : null;
+    if (health.get("online") !== true || !isStale(ms(health.get("lastSeen")), nowMs, heartbeatS)) {
+      return false;
+    }
     tx.update(ref, { online: false });
     return true;
   });
@@ -29,7 +33,8 @@ export async function runMonitorPass(
   const candidates = await db
     .collection(C.deviceHealth)
     .where("online", "==", true)
-    .where("lastSeen", "<=", ts(nowMs - OFFLINE_AFTER_S * 1000))
+    // The shortest possible threshold; each device's own is checked in the flip.
+    .where("lastSeen", "<=", ts(nowMs - OFFLINE_AFTER_MIN_S * 1000))
     .get();
 
   const flipped: string[] = [];

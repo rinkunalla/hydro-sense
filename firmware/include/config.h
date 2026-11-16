@@ -6,7 +6,7 @@
 
 namespace hs {
 
-constexpr const char* FIRMWARE_VERSION = "0.2.0";
+constexpr const char* FIRMWARE_VERSION = "0.3.0";
 
 // Pins (docs/hardware/NOTES.md, Pinout). The board prints them as D27, D34, D25, D26 and D2
 // (same numbers); GPIO 0 is the BOOT button. Not the pins printed RX2/TX2 (GPIO 16/17).
@@ -29,10 +29,16 @@ constexpr float FLOW_HYSTERESIS = 0.1f;
 // Upload rules A/B/C
 constexpr uint32_t STATUS_CONFIRM_S = 3;
 constexpr uint32_t STATUS_MIN_INTERVAL_S = 10;
-constexpr uint32_t HEARTBEAT_S = 60;
+// Defaults until the first server reply; every ingest/register reply may set
+// heartbeatS and rateMinIntervalS, clamped to the ranges below (not saved in NVS).
+constexpr uint32_t HEARTBEAT_S = 30;
+constexpr uint32_t HEARTBEAT_MIN_S = 15;
+constexpr uint32_t HEARTBEAT_MAX_S = 85;
 constexpr float RATE_REPORT_DELTA_PCT = 15.0f;
 constexpr float RATE_REPORT_MIN_ABS = 0.3f;
-constexpr uint32_t RATE_REPORT_MIN_INTERVAL_S = 30;
+constexpr uint32_t RATE_REPORT_MIN_INTERVAL_S = 10;
+constexpr uint32_t RATE_INTERVAL_MIN_S = 5;
+constexpr uint32_t RATE_INTERVAL_MAX_S = 60;
 
 // Network, retries and registration
 constexpr uint32_t HTTP_TIMEOUT_S = 15;
@@ -80,7 +86,10 @@ constexpr uint32_t NETWORK_STALL_RESTART_S = 120;  // software watchdog for the 
 constexpr uint32_t WIFI_LOST_RESTART_S = 300;      // Wi-Fi down this long (outside the portal)
 constexpr uint32_t NO_RESPONSE_RESTART_S = 900;    // registered and online, but no HTTP reply
 
-static_assert(HEARTBEAT_S < 90, "Heartbeat must stay under 90 s so the 3 min offline limit holds");
+static_assert(HEARTBEAT_MAX_S < 90, "Heartbeat must stay under 90 s so the offline limit holds");
+static_assert(HEARTBEAT_MIN_S <= HEARTBEAT_S && HEARTBEAT_S <= HEARTBEAT_MAX_S, "Heartbeat default out of range");
+static_assert(RATE_INTERVAL_MIN_S <= RATE_REPORT_MIN_INTERVAL_S && RATE_REPORT_MIN_INTERVAL_S <= RATE_INTERVAL_MAX_S,
+              "Rate interval default out of range");
 static_assert(TLS_HANDSHAKE_TIMEOUT_S + HTTP_TIMEOUT_S < NETWORK_STALL_RESTART_S,
               "A slow upload must not trip the stall restart");
 static_assert(NO_RESPONSE_RESTART_S >= 2 * BACKOFF_MAX_S, "Allow several retries before restarting");

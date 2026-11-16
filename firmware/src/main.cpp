@@ -116,11 +116,13 @@ static void samplingTask(void*) {
     bootHeldS = digitalRead(PIN_WIFI_RESET) == LOW ? bootHeldS + 1 : 0;
 
     Cutoffs cut;
+    Pace pace;
     bool reconnected;
     uint32_t aliveMs;
     {
       Locked l;
       cut = app.cutoffs;
+      pace = app.pace;
       reconnected = app.reconnected;
       app.reconnected = false;
       aliveMs = app.networkAliveMs;
@@ -131,6 +133,7 @@ static void samplingTask(void*) {
       ESP.restart();
     }
     if (reconnected) scheduler.requestImmediate();
+    scheduler.setPace(pace.heartbeatS, pace.rateMinIntervalS);
 
     const float rate = window.rateLpm();
     const Status classified = classify(rate, scheduler.confirmed(), cut.low, cut.normal);
@@ -154,6 +157,7 @@ static void samplingTask(void*) {
     r.resetReason = app.resetReason[0] ? app.resetReason : nullptr;
     r.trigger = d.trigger;
     r.lowVoltageSleep = false;
+    r.heartbeatS = scheduler.heartbeatS();
     app.outboxFull = true;
     app.outboxSeq++;
   }

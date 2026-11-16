@@ -42,8 +42,13 @@ final uidProvider = Provider<String?>(
 );
 
 /// The `role` custom claim of the signed-in user.
+///
+/// Keyed by the uid, not the token: a password change or the hourly refresh
+/// issues a new token, and reloading the role then would send the router
+/// through /loading and close whatever dialog is open.
 final roleProvider = FutureProvider<String?>((ref) async {
-  final user = ref.watch(userProvider).valueOrNull;
+  if (ref.watch(uidProvider) == null) return null;
+  final user = ref.read(userProvider).valueOrNull;
   if (user == null) return null;
   final saved = (await user.getIdTokenResult()).claims?['role'] as String?;
   if (!needsFreshRole(saved)) return saved;
@@ -57,15 +62,15 @@ final roleProvider = FutureProvider<String?>((ref) async {
 bool needsFreshRole(String? role) => role != 'user' && role != 'admin';
 
 final profileProvider = StreamProvider<UserProfile?>((ref) {
-  final user = ref.watch(userProvider).valueOrNull;
-  if (user == null) return Stream.value(null);
-  return ref.watch(repositoryProvider).profile(user.uid);
+  final uid = ref.watch(uidProvider);
+  if (uid == null) return Stream.value(null);
+  return ref.watch(repositoryProvider).profile(uid);
 });
 
 final fleetProvider = StreamProvider<Fleet>((ref) {
-  final user = ref.watch(userProvider).valueOrNull;
-  if (user == null) return const Stream.empty();
-  return ref.watch(repositoryProvider).fleet(user.uid);
+  final uid = ref.watch(uidProvider);
+  if (uid == null) return const Stream.empty();
+  return ref.watch(repositoryProvider).fleet(uid);
 });
 
 final pipelineProvider = StreamProvider<Pipeline?>((ref) {

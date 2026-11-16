@@ -280,6 +280,23 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
 }
 
 /// Shared error line for the account dialogs.
+/// A dialog button's text, with a small spinner and "Saving…" while a call
+/// runs: a cold Cloud Function can take a few seconds to answer.
+Widget _buttonLabel(String label, bool busy) => busy
+    ? const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 8),
+          Text('Saving…'),
+        ],
+      )
+    : Text(label);
+
 Widget _errorLine(String? error) => error == null
     ? const SizedBox.shrink()
     : Padding(
@@ -363,7 +380,10 @@ class _NameDialogState extends ConsumerState<_NameDialog> {
         onPressed: _busy ? null : () => Navigator.pop(context),
         child: const Text('Cancel'),
       ),
-      FilledButton(onPressed: _busy ? null : _save, child: const Text('Save')),
+      FilledButton(
+        onPressed: _busy ? null : _save,
+        child: _buttonLabel('Save', _busy),
+      ),
     ],
   );
 }
@@ -458,7 +478,7 @@ class _EmailDialogState extends ConsumerState<_EmailDialog> {
         ),
         FilledButton(
           onPressed: _busy ? null : _send,
-          child: const Text('Send verification link'),
+          child: _buttonLabel('Send verification link', _busy),
         ),
       ],
     );
@@ -549,7 +569,10 @@ class _ChangePasswordState extends ConsumerState<ChangePasswordDialog> {
         onPressed: _busy ? null : () => Navigator.pop(context),
         child: const Text('Cancel'),
       ),
-      FilledButton(onPressed: _busy ? null : _save, child: const Text('Save')),
+      FilledButton(
+        onPressed: _busy ? null : _save,
+        child: _buttonLabel('Save', _busy),
+      ),
     ],
   );
 }
