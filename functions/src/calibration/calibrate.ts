@@ -49,7 +49,7 @@ export async function calibrateDevice(deviceId: string, nowMs: number): Promise<
   return "updated";
 }
 
-/** Every assigned device that is not removed (CLAUDE.md section 6). */
+/** Every assigned device that is not removed. */
 export async function calibrateAll(nowMs = Date.now()) {
   const devices = await db.collection(C.devices).where("ownerUid", "!=", null).get();
   const results: { deviceId: string; result: CalibrationResult }[] = [];
@@ -73,7 +73,7 @@ export async function calibrateAll(nowMs = Date.now()) {
 export const calibrateFlowThresholdsWeekly = onSchedule(
   { schedule: CALIBRATE_SCHEDULE, timeZone: TIME_ZONE },
   async () => {
-    // Purge first (D42), so a purged device is never calibrated.
+    // Purge first, so a purged device is never calibrated.
     await purgeExpired();
     await calibrateAll();
   },

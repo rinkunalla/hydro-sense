@@ -90,7 +90,7 @@ void main() {
       ),
     );
     expect(find.text('STEP 1 OF 3'), findsOneWidget);
-    expect(find.text('Your email'), findsOneWidget); // email first (D59)
+    expect(find.text('Your email'), findsOneWidget); // email first
     await t.tap(find.text('Use my mobile number instead'));
     await t.pump();
     await t.enterText(find.byType(TextField), '0917 12');
@@ -146,7 +146,7 @@ void main() {
   });
 
   testWidgets(
-    'reset by email code: masked address, then the same 3 steps (D59)',
+    'reset by email code: masked address, then the same 3 steps',
     (t) async {
       await phone(t);
       final account = FakeAccount();

@@ -24,7 +24,7 @@ Widget clampTextScale(BuildContext context, Widget? child) {
 }
 
 /// An expired or revoked session: the router returns to Login, and this adds
-/// "Please sign in again." (docs/UI_UX_SPEC.md section 4.2).
+/// "Please sign in again."
 void watchSession(WidgetRef ref) {
   ref.listen<AsyncValue<User?>>(userProvider, (prev, next) {
     if (prev?.valueOrNull == null || next.valueOrNull != null) return;
@@ -38,8 +38,8 @@ void watchSession(WidgetRef ref) {
   });
 }
 
-/// Phone app only: registers for push once a user is signed in (D27), and opens
-/// the screen a tapped notification points to (D37).
+/// Phone app only: registers for push once a user is signed in, and opens
+/// the screen a tapped notification points to.
 final pushTapsProvider = StreamProvider<Map<String, dynamic>>(
   (ref) => ref.watch(pushServiceProvider).taps(),
 );
@@ -64,7 +64,7 @@ void watchPush(WidgetRef ref) {
     ref.read(routerProvider).go(routeForPush(data, hasPipeline: hasPipeline));
   });
   // An alert while the app is open: Android shows nothing, so show it here,
-  // with Open going where a tapped notification would (D37).
+  // with Open going where a tapped notification would.
   ref.listen<AsyncValue<ForegroundAlert>>(pushForegroundProvider, (_, next) {
     final a = next.valueOrNull;
     if (a == null) return;

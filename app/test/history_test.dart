@@ -1,4 +1,4 @@
-// History (D49), the Devices filters, the website filters and the map tile
+// History, the Devices filters, the website filters and the map tile
 // cache rules: pure logic, plus the History screen with fake data.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -226,7 +226,7 @@ void main() {
     );
   });
 
-  group('Offline on the server clock (D51)', () {
+  group('Offline on the server clock', () {
     test('two missed heartbeats, at least 60 s; 180 s without a heartbeat', () {
       expect(offlineAfterS(30), 60);
       expect(offlineAfterS(15), 40);
@@ -244,7 +244,7 @@ void main() {
     });
   });
 
-  group('Activity date dropdowns (D53)', () {
+  group('Activity date dropdowns', () {
     test('a year, a month or a single day', () {
       expect(calendarWindow(2026, null, null), (
         from: DateTime(2026),
@@ -263,7 +263,7 @@ void main() {
     });
   });
 
-  test('the rotor spins faster with more flow and stops without it (D57)', () {
+  test('the rotor spins faster with more flow and stops without it', () {
     expect(rotorTurnsPerSecond(null), 0);
     expect(rotorTurnsPerSecond(0), 0);
     expect(rotorTurnsPerSecond(0.5), 0.4); // slowest visible spin
@@ -271,7 +271,7 @@ void main() {
     expect(rotorTurnsPerSecond(40), 3.0); // capped
   });
 
-  group('card chart (D61)', () {
+  group('card chart', () {
     test('the left scale uses round steps', () {
       expect(niceStep(4.8), 5); // 0, 5, 10, 15, 20
       expect(niceStep(2.1), 2.5);
@@ -417,7 +417,7 @@ void main() {
       expect(find.textContaining('(52 min)'), findsOneWidget);
       expect(find.text('2 problems · 52 min without water'), findsOneWidget);
       expect(find.text('Flow · Garden Line'), findsOneWidget);
-      // The date dropdowns show today (D53).
+      // The date dropdowns show today.
       expect(
         find.text(DateFormat('MMMM', 'en_US').format(now)),
         findsOneWidget,

@@ -46,7 +46,7 @@ void main() {
     });
 
     test(
-      'a device assigned before it ever registered is Not set up yet (D41)',
+      'a device assigned before it ever registered is Not set up yet',
       () {
         expect(view('1', registered: false).status, StatusKind.notSetUp);
         expect(
@@ -93,7 +93,7 @@ void main() {
     });
 
     test(
-      'since line: abnormalSince for problems, lastSeen when Offline (D34)',
+      'since line: abnormalSince for problems, lastSeen when Offline',
       () {
         final start = testNow.subtract(const Duration(minutes: 42));
         expect(
@@ -110,7 +110,7 @@ void main() {
     );
 
     test(
-      'Live while online, no Late stage (D53); Offline from the online flag',
+      'Live while online, no Late stage; Offline from the online flag',
       () {
         DeviceView at(int s) =>
             view('1', lastSeen: testNow.subtract(Duration(seconds: s)));
@@ -134,7 +134,7 @@ void main() {
       expect(needsFreshRole(null), isTrue);
     });
 
-    test('a tapped push opens Details, the Map, or Devices (D37)', () {
+    test('a tapped push opens Details, the Map, or Devices', () {
       expect(
         routeForPush({'deviceId': 'A1B2C3D4E5F6'}, hasPipeline: true),
         '/devices/A1B2C3D4E5F6',
@@ -250,7 +250,7 @@ void main() {
       expect(go('/devices/ABC'), isNull);
     });
 
-    test('a screen asked for while signed out opens after sign-in (D45)', () {
+    test('a screen asked for while signed out opens after sign-in', () {
       // A tapped alert after the app signed out on start.
       expect(
         go('/devices/ABC', signedIn: false),

@@ -47,7 +47,7 @@ describe("admin input", () => {
     expect(defaultNickname("A1B2C3D4E5F6")).toBe("Device E5F6");
   });
 
-  it("typed confirmation ignores case and spacing only (D42)", () => {
+  it("typed confirmation ignores case and spacing only", () => {
     expect(confirmMatches(" juan  dela cruz", "Juan Dela Cruz")).toBe(true);
     expect(confirmMatches("Juan Dela", "Juan Dela Cruz")).toBe(false);
     expect(confirmMatches("Juan Dela Cruz.", "Juan Dela Cruz")).toBe(false);

@@ -17,10 +17,10 @@ import 'features/client/edit_pipeline_screen.dart';
 import 'features/client/map_screen.dart';
 
 /// Where the person should be, given auth state (pure, unit-tested).
-/// Android is user-only and the web build admin-only (CLAUDE.md D21):
+/// Android is user-only and the web build admin-only:
 /// any other role goes back to Login with `refused` set. The phone signs out
-/// on every fresh start (D45), so a screen asked for while signed out (a
-/// tapped alert, D37) rides along as `next` and opens after the sign-in.
+/// on every fresh start, so a screen asked for while signed out (a
+/// tapped alert) rides along as `next` and opens after the sign-in.
 String? redirectFor({
   required String location,
   required bool signedIn,
@@ -32,7 +32,7 @@ String? redirectFor({
 }) {
   final uri = Uri.parse(location);
   final path = uri.path;
-  // /setup is the admin website's first-time setup (D23); the phone app has
+  // /setup is the admin website's first-time setup; the phone app has
   // no such route.
   final onAuthPage =
       path == '/login' || path == '/reset' || path.startsWith('/setup');

@@ -18,7 +18,7 @@ double distanceM(double lat1, double lng1, double lat2, double lng2) {
   return 2 * r * math.asin(math.min(1, math.sqrt(a)));
 }
 
-/// Default branch order (D26): devices with a location by distance from the
+/// Default branch order: devices with a location by distance from the
 /// source, nearest first; devices without one are listed after them (not placed).
 List<DeviceView> defaultOrder(PipePoint source, Iterable<DeviceView> views) {
   double d(DeviceView v) =>
@@ -38,7 +38,7 @@ List<DeviceView> defaultOrder(PipePoint source, Iterable<DeviceView> views) {
 }
 
 /// The branch's devices in their saved order; IDs no longer on the account are
-/// skipped (a device can be reassigned away, D20).
+/// skipped (a device can be reassigned away).
 List<DeviceView> inBranch(Branch b, Iterable<DeviceView> views) {
   final byId = {for (final v in views) v.id: v};
   return [for (final id in b.deviceIds) ?byId[id]];
@@ -56,7 +56,7 @@ String ordinal(int n) {
   };
 }
 
-/// Where water stops along one branch (D33).
+/// Where water stops along one branch.
 class WaterStop {
   const WaterStop({required this.fromIndex, required this.toIndex});
 
@@ -68,7 +68,7 @@ class WaterStop {
   final int toIndex;
 }
 
-/// Finds where water stops along an ordered branch (D33, KICKOFF.md 5a):
+/// Finds where water stops along an ordered branch:
 /// the last Normal device before the first Low or No Flow device (or the
 /// source), skipping Offline devices. Null when the branch has no problem.
 WaterStop? waterStops(List<DeviceView> ordered) {
@@ -88,7 +88,7 @@ WaterStop? waterStops(List<DeviceView> ordered) {
 }
 
 /// "Problem on the Home branch · Water stops between North tank and Home line"
-/// (docs/UI_UX_SPEC.md 4.4); the source wording when water stops right after it.
+/// or the source wording when water stops right after it.
 String? mapBanner(Branch b, List<DeviceView> ordered) {
   final stop = waterStops(ordered);
   if (stop == null) return null;

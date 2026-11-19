@@ -53,13 +53,13 @@ export interface AlertPrefs {
   email: boolean;
 }
 
-/** Defaults (D27): push on, SMS on, email off. */
+/** Defaults: push on, SMS on, email off. */
 export function prefsOf(user: FirebaseFirestore.DocumentSnapshot): AlertPrefs {
   const p = (user.get("alertPrefs") ?? {}) as Partial<AlertPrefs>;
   return { push: p.push !== false, sms: p.sms !== false, email: p.email === true };
 }
 
-/** What each channel carries (D27): push and email everything, SMS only No Flow. */
+/** What each channel carries: push and email everything, SMS only No Flow. */
 export function itemsFor(channel: Channel, items: readonly AlertItem[]): AlertItem[] {
   return channel === "sms" ? items.filter((i) => i.type === "flow_none") : [...items];
 }
@@ -151,7 +151,7 @@ const projectDayRef = (nowMs: number) => db.collection(C.alertDaily).doc(manilaD
 
 /**
  * Counts one message against the user's per-channel cap for today and, for SMS,
- * the project-wide ceiling (CLAUDE.md section 7 rule 8, D30). One transaction.
+ * the project-wide ceiling. One transaction.
  */
 async function claimCap(channel: Channel, uid: string, nowMs: number): Promise<CapClaim> {
   const userRef = userDayRef(uid, nowMs);
@@ -308,7 +308,7 @@ async function evaluateDevice(
 /**
  * Evaluates every assigned device and sends what is due as one SMS and one email
  * per owner. Unassigned and removed devices and suspended users send nothing.
- * Reads the live nodes the monitor already has (D48); Firestore is read only for
+ * Reads the live nodes the monitor already has; Firestore is read only for
  * owners and the nicknames of devices with something due.
  */
 export async function runAlertPass(

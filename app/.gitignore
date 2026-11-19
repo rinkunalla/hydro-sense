@@ -44,5 +44,5 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Build-time keys (CLAUDE.md working rule 4): never committed.
+# Build-time keys: never committed.
 dart_defines.local.json

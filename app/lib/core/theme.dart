@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Arctic Hologram tokens (D39, docs/UI_UX_SPEC.md section 2). Explicit values
+/// Arctic Hologram tokens. Explicit values
 /// so they do not drift; test/contrast_test.dart checks every pair.
 abstract final class AppColors {
   // Palette
@@ -27,7 +27,7 @@ abstract final class AppColors {
   /// Primary button gradient stops.
   static const buttonStops = [deepCyan, royal, indigo];
 
-  // Older names still used by the admin website until stage 6 restyles it.
+  // Older names still used by the admin website.
   static const background = glacier;
   static const surface = solidGlass;
   static const surfaceAlt = tint;

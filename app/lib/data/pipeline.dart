@@ -1,6 +1,5 @@
-/// `pipelines/{uid}` (CLAUDE.md section 4, D26): a source and its branches. Each
+/// `pipelines/{uid}`: a source and its branches. Each
 /// branch is the ordered list of devices from the source to its end point.
-/// Stage 5a edits one branch; stage 5b adds more.
 class PipePoint {
   const PipePoint(this.name, this.lat, this.lng);
 

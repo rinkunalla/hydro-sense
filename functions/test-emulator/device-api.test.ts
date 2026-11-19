@@ -38,7 +38,7 @@ const register = (deviceId = ID, key = KEY ?? "") =>
 const reading = (over: Json = {}): Json => ({
   flowStatus: "Normal Flow",
   flowRate: 10,
-  pulseHz: 75, // still sent by firmware 0.2.0; ignored by the server (D29)
+  pulseHz: 75, // still sent by firmware 0.2.0; ignored by the server
   batteryVoltage: 7.9,
   batteryFault: false,
   gpsValid: true,
@@ -67,7 +67,7 @@ const problems = (id = ID) => db.collection(C.problems).where("deviceId", "==", 
 const setLastSeen = (secondsAgo: number, id = ID) =>
   liveRef(id).update({ lastSeen: Date.now() - secondsAgo * S });
 
-/** Waits for the devices trigger to mirror a change to /state (D48). */
+/** Waits for the devices trigger to mirror a change to /state. */
 async function mirrored(check: (st: Json) => boolean) {
   for (let i = 0; i < 50; i++) {
     if (check(await state())) return;
@@ -132,7 +132,7 @@ describe("registerDevice", () => {
     expect((await get(db.collection(C.deviceSecrets).doc(ID))).tokenHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("keeps the owner and nickname of a device assigned before it registered (D41)", async () => {
+  it("keeps the owner and nickname of a device assigned before it registered", async () => {
     await allow();
     await setOwner(ID, "userA");
     expect(await get(health())).toMatchObject({ ownerUid: "userA", registeredAt: null });
@@ -171,7 +171,7 @@ describe("registerDevice", () => {
 });
 
 describe("deviceIngest", () => {
-  it("returns the owner's own Low flow limit while it is set (D43)", async () => {
+  it("returns the owner's own Low flow limit while it is set", async () => {
     const token = await registered();
     await dev().update({ normalFlowCutoff: 4, lowFlowCutoff: 1.2 });
     await mirrored((st) => st.normalFlowCutoff === 4);
@@ -198,7 +198,7 @@ describe("deviceIngest", () => {
   it("writes the live node and returns the cutoffs and pace", async () => {
     const token = await registered();
     const r = await ingest(token, { trigger: "status_change", heartbeatS: 30 });
-    // The reply also sets the upload pace (D47); firmware 0.2.0 ignores it.
+    // The reply also sets the upload pace; firmware 0.2.0 ignores it.
     expect(r.body).toEqual({
       ok: true,
       lowFlowCutoff: 0.2,
@@ -219,7 +219,7 @@ describe("deviceIngest", () => {
     expect((await state()).recentVoltages).toEqual([7.9]);
   });
 
-  it("a steady heartbeat writes nothing to Firestore (D48)", async () => {
+  it("a steady heartbeat writes nothing to Firestore", async () => {
     const token = await registered();
     await ingest(token, { trigger: "status_change" }); // first sample of the day
     const before = await get(dev());
@@ -241,7 +241,7 @@ describe("deviceIngest", () => {
     expect(await count(dev().collection(C.flowLogs))).toBe(2);
   });
 
-  it("writes this minute's flow into today's live series (D60)", async () => {
+  it("writes this minute's flow into today's live series", async () => {
     const token = await registered();
     await ingest(token, { flowRate: 19.6 });
     const days = ((await rtdb.ref(`series/${ID}`).get()).val() ?? {}) as Record<
@@ -265,7 +265,7 @@ describe("deviceIngest", () => {
     expect(((await rtdb.ref(`series/${ID}/2020-01-01`).get()).val())).toBeNull();
   });
 
-  it("keeps each 15-minute sample in the owner's day record, kept a year (D53)", async () => {
+  it("keeps each 15-minute sample in the owner's day record, kept a year", async () => {
     const token = await registered();
     await ingest(token); // unassigned: no day record
     expect(await count(db.collection(C.readings))).toBe(0);
@@ -278,12 +278,12 @@ describe("deviceIngest", () => {
     expect(day).toMatchObject({ ownerUid: "userA", deviceId: ID });
     expect(Object.values(day.rates as Record<string, number>)).toEqual([6.5]);
     expect((day.expireAt as Timestamp).toMillis()).toBeGreaterThan(Date.now() + 360 * 86_400_000);
-    // Reassigning deletes it with the rest of the history (D20).
+    // Reassigning deletes it with the rest of the history.
     await setOwner(ID, "userB");
     expect(await count(db.collection(C.readings))).toBe(0);
   });
 
-  it("opens and closes problem records on status changes, owner only (D49)", async () => {
+  it("opens and closes problem records on status changes, owner only", async () => {
     const token = await registered();
     await ingest(token, { trigger: "status_change" });
     await ingest(token, { flowStatus: "No Flow", flowRate: 0, trigger: "status_change" });
@@ -353,7 +353,7 @@ describe("deviceIngest", () => {
     expect((await get(dev())).gpsLat).toBe(16.05);
   });
 
-  it("accepts any pulseHz from old firmware, even a negative one (D29)", async () => {
+  it("accepts any pulseHz from old firmware, even a negative one", async () => {
     const token = await registered();
     expect((await ingest(token, { pulseHz: -5 })).status).toBe(200);
     expect((await ingest(token, { pulseHz: "fast" })).status).toBe(200);
@@ -380,7 +380,7 @@ describe("deviceIngest", () => {
   });
 });
 
-describe("alerts at the upload (D62)", () => {
+describe("alerts at the upload", () => {
   it("only when a flow problem is confirmed or the battery is low", async () => {
     const { alertMayBeDue } = await import("../src/device/deviceIngest");
     const now = Date.now();
@@ -455,7 +455,7 @@ describe("removeDevice", () => {
   const admin = <T>(data: T) =>
     ({ auth: { uid: "admin1", token: { role: "admin" } }, data }) as unknown as CallableRequest<T>;
 
-  it("a removed device gets 403 and keeps its data; restoring lets it back in (D42)", async () => {
+  it("a removed device gets 403 and keeps its data; restoring lets it back in", async () => {
     await allow();
     const token = await registered();
     expect((await ingest(token)).status).toBe(200);

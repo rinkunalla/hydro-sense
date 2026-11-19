@@ -2,7 +2,7 @@ import 'package:intl/intl.dart';
 
 import 'admin_repository.dart';
 
-/// The only statuses the admin sees (D24): no flow, GPS or battery.
+/// The only statuses the admin sees: no flow, GPS or battery.
 enum AdminState { online, offline, notSetUp, removed }
 
 AdminState stateOf(AdminDevice d) {
@@ -61,7 +61,7 @@ bool deviceMatches(AdminDevice d, String query) {
       _has(d.ownerName?.replaceAll(' ', ''), q);
 }
 
-/// Activity log groups (D42): the log itself is never edited or deleted.
+/// Activity log groups: the log itself is never edited or deleted.
 enum AuditGroup { all, users, devices, admins, requests }
 
 bool auditMatches(AuditEntry e, AuditGroup g, String? adminEmail) {
@@ -143,7 +143,7 @@ String auditCsv(List<AuditEntry> entries) {
   return '${rows.join('\r\n')}\r\n';
 }
 
-/// The Activity date dropdowns (D53): a year, optionally a month (1 to 12),
+/// The Activity date dropdowns: a year, optionally a month (1 to 12),
 /// optionally a day of that month. Returns [from, to) in local time.
 ({DateTime from, DateTime to}) calendarWindow(int year, int? month, int? day) {
   if (month == null) return (from: DateTime(year), to: DateTime(year + 1));

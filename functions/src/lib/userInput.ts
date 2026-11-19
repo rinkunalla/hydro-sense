@@ -1,4 +1,4 @@
-// Pure validation of admin input (CLAUDE.md sections 4 and 6). Each parser throws
+// Pure validation of admin input. Each parser throws
 // an HttpsError with a stable code the website maps to its own wording.
 import { HttpsError } from "firebase-functions/https";
 import { LABEL_MAX, PH_MOBILE_PATTERN, USER_NAME_MAX } from "../config";
@@ -66,7 +66,7 @@ export function parseUid(v: unknown): string {
 }
 
 /**
- * Typed confirmation for destructive actions (D42): case and surrounding spaces
+ * Typed confirmation for destructive actions: case and surrounding spaces
  * do not matter, every other character does.
  */
 export function confirmMatches(typed: unknown, expected: string): boolean {

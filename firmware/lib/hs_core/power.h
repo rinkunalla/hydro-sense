@@ -1,4 +1,4 @@
-// Battery math and low-voltage protection (CLAUDE.md D2, section 5 rules 4 and 8). Pure logic.
+// Battery math and low-voltage protection (D2, section 5 rules 4 and 8). Pure logic.
 #pragma once
 
 #include <stdint.h>

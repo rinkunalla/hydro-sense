@@ -11,7 +11,7 @@ import '../../core/theme.dart';
 import '../../data/places.dart';
 
 /// "Search a place or building": suggestions appear while typing, after a
-/// short pause (Google Places through placeSuggest, D46). Shown only over a
+/// short pause (Google Places through placeSuggest). Shown only over a
 /// Google map, as Google's terms require.
 class PlaceSearchBar extends ConsumerStatefulWidget {
   const PlaceSearchBar({super.key, required this.onPick, this.near});

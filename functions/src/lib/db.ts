@@ -7,13 +7,13 @@ if (getApps().length === 0) initializeApp();
 
 export const db = getFirestore();
 
-/** Realtime Database: the live channel (D48). The emulator is used when
+/** Realtime Database: the live channel. The emulator is used when
  * FIREBASE_DATABASE_EMULATOR_HOST is set. */
 export const rtdb = getDatabaseWithUrl(DATABASE_URL);
 export const liveRef = (id: string) => rtdb.ref(`live/${id}`);
 export const stateRef = (id: string) => rtdb.ref(`state/${id}`);
 
-// Collection names (CLAUDE.md section 4).
+// Collection names.
 export const C = {
   users: "users",
   admins: "admins",

@@ -13,7 +13,7 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import '../auth/password_rules.dart';
 
-/// Account (docs/UI_UX_SPEC.md 4.6, D27, D31, D42).
+/// Account.
 class AccountScreen extends ConsumerStatefulWidget {
   const AccountScreen({super.key});
 

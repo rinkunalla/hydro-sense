@@ -1,6 +1,6 @@
-// Mirrors a device's owner, removal and cutoffs to the live channel (D48) when
+// Mirrors a device's owner, removal and cutoffs to the live channel when
 // devices/{id} changes. Server paths call mirrorDevice themselves; this catches
-// the owner's own writes (userNormalCutoff, D43), which reach the device in its
+// the owner's own writes (userNormalCutoff), which reach the device in its
 // next upload reply.
 import { onDocumentWritten } from "firebase-functions/firestore";
 import { mirrorDevice } from "../lib/liveStore";

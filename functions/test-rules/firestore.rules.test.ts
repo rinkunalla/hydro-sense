@@ -1,4 +1,4 @@
-// Firestore rules tests (KICKOFF.md stage 2). Run with `npm run test:rules` from
+// Firestore rules tests. Run with `npm run test:rules` from
 // the repo root, which starts the Firestore emulator first.
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -189,7 +189,7 @@ describe("user writes", () => {
     }
   });
 
-  it("sets and clears the manual pin, both values or neither (D25)", async () => {
+  it("sets and clears the manual pin, both values or neither", async () => {
     const pin = doc(userA, "devices/DEVA");
     await assertSucceeds(updateDoc(pin, { manualLat: 16.1, manualLng: 120.4 }));
     await assertSucceeds(updateDoc(pin, { manualLat: null, manualLng: null }));
@@ -200,7 +200,7 @@ describe("user writes", () => {
     await assertFails(updateDoc(pin, { manualLat: "16", manualLng: "120" }));
   });
 
-  it("sets its own Low flow limit (1 to 30 L/min) or goes back to automatic (D43)", async () => {
+  it("sets its own Low flow limit (1 to 30 L/min) or goes back to automatic", async () => {
     const d = doc(userA, "devices/DEVA");
     await assertSucceeds(updateDoc(d, { userNormalCutoff: 5 }));
     await assertSucceeds(updateDoc(d, { userNormalCutoff: 1.0 }));
@@ -238,7 +238,7 @@ describe("user writes", () => {
     await assertFails(updateDoc(doc(userA, "users/userB"), { alertPrefs: prefs }));
   });
 
-  it("deletes own push registration but never writes one (claimPushToken does, D45)", async () => {
+  it("deletes own push registration but never writes one (claimPushToken does)", async () => {
     await assertSucceeds(deleteDoc(doc(userA, "users/userA/push_tokens/tokA")));
     await assertFails(
       setDoc(doc(userA, "users/userA/push_tokens/tokNew"), {
@@ -249,7 +249,7 @@ describe("user writes", () => {
     await assertFails(deleteDoc(doc(userB, "users/userA/push_tokens/tokA")));
   });
 
-  it("writes own pipeline within the size and shape limits (D26)", async () => {
+  it("writes own pipeline within the size and shape limits", async () => {
     const p = doc(userA, "pipelines/userA");
     await assertSucceeds(setDoc(p, pipeline()));
     const ten = Array.from({ length: 10 }, (_, i) => branch(`b${i}`));
@@ -278,7 +278,7 @@ describe("user writes", () => {
   });
 });
 
-describe("admin (D24)", () => {
+describe("admin", () => {
   it("reads users, admins, the audit log and the allowlist", async () => {
     await assertSucceeds(getDocs(collection(admin, "users")));
     await assertSucceeds(getDoc(doc(admin, "users/userA")));
@@ -306,7 +306,7 @@ describe("admin (D24)", () => {
   });
 });
 
-describe("an admin claim without an active record (D40)", () => {
+describe("an admin claim without an active record", () => {
   it("reads nothing: invited, removed or unknown admins", async () => {
     await env.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(db(ctx), "admins/admin2"), { status: "invited" });
@@ -322,7 +322,7 @@ describe("an admin claim without an active record (D40)", () => {
   });
 });
 
-describe("the audit log is immutable (D42)", () => {
+describe("the audit log is immutable", () => {
   it("nobody creates, changes or deletes an entry", async () => {
     for (const s of [admin, userA, noRole, anon]) {
       await assertFails(setDoc(doc(s, "admin_audit/a2"), { action: "user_restored" }));

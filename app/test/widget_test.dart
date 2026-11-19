@@ -1,4 +1,4 @@
-// User app screens (KICKOFF.md stage 4) with fake data: 1, 3 and 10 devices,
+// User app screens with fake data: 1, 3 and 10 devices,
 // Not set up yet, Offline, Live/Late, the since line, the empty state, loading,
 // error, no internet, reduce motion and solid glass, and 1.5x text at 360 dp.
 import 'dart:async';
@@ -155,7 +155,7 @@ void main() {
     expect(find.byType(AppBanner), findsNothing);
   });
 
-  testWidgets('the card charts the last hour, rising to now (D61)', (t) async {
+  testWidgets('the card charts the last hour, rising to now', (t) async {
     await phone(t);
     // testNow is 3:12 PM, minute 912 of the day: readings from 2:50 PM on.
     await t.pumpWidget(
@@ -198,7 +198,7 @@ void main() {
     );
   });
 
-  testWidgets('Live while online, Offline replaces it, no Late (D53)', (
+  testWidgets('Live while online, Offline replaces it, no Late', (
     t,
   ) async {
     await phone(t);
@@ -277,7 +277,7 @@ void main() {
   });
 
   testWidgets(
-    'Not set up yet: Wi-Fi steps in the card, How? opens details (D41)',
+    'Not set up yet: Wi-Fi steps in the card, How? opens details',
     (t) async {
       await phone(t);
       await t.pumpWidget(

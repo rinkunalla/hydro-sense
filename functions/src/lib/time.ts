@@ -15,13 +15,13 @@ const dateKey = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
-/** "Nov 2, 3:12 PM" in Asia/Manila (docs/UI_UX_SPEC.md section 6). */
+/** "Nov 2, 3:12 PM" in Asia/Manila. */
 export const formatManila = (ms: number) => display.format(ms);
 
 /** "2026-11-03" in Asia/Manila, the daily alert cap key. */
 export const manilaDateKey = (ms: number) => dateKey.format(ms);
 
-/** The minute of the Manila day (0 to 1439), for today's live series (D60). */
+/** The minute of the Manila day (0 to 1439), for today's live series. */
 export const manilaMinute = (ms: number) => {
   const local = ms + MANILA_UTC_OFFSET_MIN * 60_000;
   return Math.floor((((local % 86_400_000) + 86_400_000) % 86_400_000) / 60_000);

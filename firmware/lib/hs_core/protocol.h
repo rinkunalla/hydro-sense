@@ -1,4 +1,4 @@
-// Device protocol bodies (CLAUDE.md section 6, Device protocol). Do not rename fields.
+// Device protocol bodies. Do not rename fields.
 #pragma once
 
 #include <stddef.h>

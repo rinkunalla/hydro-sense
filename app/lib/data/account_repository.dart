@@ -4,12 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/config.dart';
 
-/// Sign-in codes and account changes (CLAUDE.md D22, D31, D42). Every call that
+/// Sign-in codes and account changes. Every call that
 /// can fail throws FirebaseFunctionsException or FirebaseAuthException; screens map
 /// the codes to the spec wording. Widget tests replace this with a fake.
 abstract class AccountRepository {
   /// Reset step 1. Returns the resend gap; throws COOLDOWN / DAILY_LIMIT / PHONE_INVALID.
-  /// A reset code to [address]: an email (the main way, D59) or, with
+  /// A reset code to [address]: an email (the main way) or, with
   /// [byEmail] false, a mobile number.
   Future<int> requestResetCode(String address, {bool byEmail = false});
 
@@ -23,7 +23,7 @@ abstract class AccountRepository {
   /// Reset step 3. Sets the password, then signs in with it.
   Future<void> setPasswordAndSignIn(String resetToken, String newPassword);
 
-  /// Re-enters the current password (recent sign-in for a change, D31).
+  /// Re-enters the current password (recent sign-in for a change).
   Future<void> reauthenticate(String currentPassword);
 
   Future<void> updateMyName(String name);

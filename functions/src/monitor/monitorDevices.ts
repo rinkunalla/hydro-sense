@@ -13,7 +13,7 @@ const SOURCE = "monitorDevices";
 
 /**
  * Flips one device offline only if the transaction still sees it stale, so an
- * upload landing at the same moment wins (D18). Returns its last-seen time.
+ * upload landing at the same moment wins. Returns its last-seen time.
  */
 export async function flipOfflineIfStale(deviceId: string, nowMs: number): Promise<number | null> {
   let lastSeen: number | null = null;
@@ -28,7 +28,7 @@ export async function flipOfflineIfStale(deviceId: string, nowMs: number): Promi
   return r.committed && lastSeen !== null ? lastSeen : null;
 }
 
-/** Opens the Offline problem from the moment the device went silent (D49). */
+/** Opens the Offline problem from the moment the device went silent. */
 async function openOfflineProblem(deviceId: string, sinceMs: number) {
   const state = await readState(deviceId);
   if (state.open.offline) return;
@@ -38,7 +38,7 @@ async function openOfflineProblem(deviceId: string, sinceMs: number) {
   await stateRef(deviceId).child("open").set(open);
 }
 
-/** One monitor pass: offline flips, then alerts. Reads /live once (D48). */
+/** One monitor pass: offline flips, then alerts. Reads /live once. */
 export async function runMonitorPass(
   nowMs = Date.now(),
 ): Promise<{ flipped: string[]; alerts: AlertPassResult | null }> {

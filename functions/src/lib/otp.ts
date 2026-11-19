@@ -1,4 +1,4 @@
-// Pure helpers for sign-in codes and one-time tokens (CLAUDE.md D22, D23, D31).
+// Pure helpers for sign-in codes and one-time tokens.
 // Only hashes are ever stored; the code or token itself leaves the server once.
 import { randomInt } from "node:crypto";
 import {
@@ -32,13 +32,13 @@ export function uidOfToken(token: unknown): string | null {
   return dot > 0 ? token.slice(0, dot) : null;
 }
 
-/** "0917 ••• 4567" from 639171234567 (docs/UI_UX_SPEC.md 5.2). */
+/** "0917 ••• 4567" from 639171234567. */
 export function maskPhone(phone: string): string {
   const local = phone.startsWith("63") ? `0${phone.slice(2)}` : phone;
   return `${local.slice(0, 4)} ••• ${local.slice(-4)}`;
 }
 
-/** The emailed reset code (D59): no link, so nothing to click or forward. */
+/** The emailed reset code: no link, so nothing to click or forward. */
 export const codeEmail = (code: string) => ({
   subject: `Your Hydro Sense code is ${code}`,
   text:
@@ -98,7 +98,7 @@ export type CodeVerdict =
   | { kind: "locked" };
 
 /**
- * The answer to one typed code (docs/UI_UX_SPEC.md 5.2): right, wrong with the
+ * The answer to one typed code: right, wrong with the
  * tries left, expired, or locked after RESET_MAX_ATTEMPTS wrong tries.
  * The caller adds 1 to attempts only on an "invalid" verdict.
  */

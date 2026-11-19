@@ -11,7 +11,7 @@ import {
 
 export type ChargingStatus = "Charging" | "Full" | "Discharging" | "Steady";
 
-/** Percent = (Vpack − 3.3·N) / (0.9·N), clamped 0 to 100 (CLAUDE.md D2). */
+/** Percent = (Vpack − 3.3·N) / (0.9·N), clamped 0 to 100. */
 export function batteryPercent(packVoltage: number, cells = BATTERY_SERIES_CELLS): number {
   const pct =
     ((packVoltage - BATTERY_CELL_EMPTY_V * cells) / (BATTERY_CELL_SPAN_V * cells)) * 100;
@@ -22,7 +22,7 @@ export function appendVoltage(list: readonly number[], v: number, cap = RECENT_V
   return [...list, v].slice(-cap);
 }
 
-/** The middle value: one dipped or spiked reading cannot move it (D56). */
+/** The middle value: one dipped or spiked reading cannot move it. */
 export function median(xs: readonly number[]): number {
   const s = [...xs].sort((a, b) => a - b);
   const m = Math.floor(s.length / 2);
@@ -40,7 +40,7 @@ export function smoothedVoltage(
 /**
  * Newest vs oldest CHARGING_TREND_SAMPLES medians of recentVoltages (about
  * 7.5 min each, up to 30 min apart). Medians, so a single dip leaving the
- * window no longer looks like the voltage rising (D56).
+ * window no longer looks like the voltage rising.
  */
 export function chargingTrend(
   recent: readonly number[],

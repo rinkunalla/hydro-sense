@@ -1,5 +1,4 @@
-// Every firmware tunable lives here (CLAUDE.md working rule 5). Values come
-// from CLAUDE.md section 5 and docs/ERROR_HANDLING.md sections 5 and 6.
+// Every firmware tunable lives here.
 #pragma once
 
 #include <stdint.h>
@@ -8,7 +7,7 @@ namespace hs {
 
 constexpr const char* FIRMWARE_VERSION = "0.3.0";
 
-// Pins (docs/hardware/NOTES.md, Pinout). The board prints them as D27, D34, D25, D26 and D2
+// Pins (Pinout). The board prints them as D27, D34, D25, D26 and D2
 // (same numbers); GPIO 0 is the BOOT button. Not the pins printed RX2/TX2 (GPIO 16/17).
 constexpr uint8_t PIN_FLOW = 27;
 constexpr uint8_t PIN_BATTERY_ADC = 34;
@@ -71,7 +70,7 @@ constexpr float CELL_SPAN_V = 0.9f;
 constexpr float CELL_PLAUSIBLE_MIN_V = 2.5f;
 constexpr float CELL_PLAUSIBLE_MAX_V = 4.35f;
 
-// Low-voltage protection (CLAUDE.md section 5 rule 8)
+// Low-voltage protection
 constexpr float LOW_VOLTAGE_SLEEP_CELL_V = 3.4f;
 constexpr float LOW_VOLTAGE_RESUME_CELL_V = 3.6f;
 constexpr uint8_t LOW_VOLTAGE_CONFIRM_READINGS = 3;

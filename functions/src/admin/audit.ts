@@ -1,4 +1,4 @@
-// Admin audit log and notices to the other admins (CLAUDE.md D42). Entries are
+// Admin audit log and notices to the other admins. Entries are
 // written only here and are never updated or deleted by a person (rules deny it);
 // the TTL policy removes them after AUDIT_TTL_DAYS.
 import { onCall } from "firebase-functions/https";
@@ -20,7 +20,7 @@ export type AuditAction =
   | "admin_removed"
   | "deletion_requested";
 
-/** "{actor} {words} {target}" (docs/UI_UX_SPEC.md section 7, admin notice). */
+/** "{actor} {words} {target}" (admin notice). */
 const WORDS: Record<AuditAction, string> = {
   user_deleted: "deleted the user",
   user_restored: "restored the user",
@@ -105,7 +105,7 @@ export async function audit(input: AuditInput): Promise<void> {
 }
 
 /**
- * The Activity page (D53): newest first, a page at a time. Optional:
+ * The Activity page: newest first, a page at a time. Optional:
  * `beforeMs` (the next page starts after the last entry shown), `limit` (up to
  * AUDIT_PAGE_MAX) and `targetId` (one user's or device's own activity).
  */

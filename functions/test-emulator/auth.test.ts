@@ -1,4 +1,4 @@
-// Stage 3 acceptance tests (KICKOFF.md): SMS codes, user self-service and admin
+// Acceptance tests: SMS codes, user self-service and admin
 // accounts. In-process against the Auth and Firestore emulators, with fake SMS,
 // OTP and email providers. Run WITHOUT the Functions emulator (test:inprocess).
 import { getAuth } from "firebase-admin/auth";
@@ -109,7 +109,7 @@ beforeEach(async () => {
 
 afterAll(() => setProviders(null));
 
-describe("reset by SMS code (D22)", () => {
+describe("reset by SMS code", () => {
   it("replies the same for a known and an unknown number, and stores only a hash", async () => {
     const uid = await newUser();
     const known = await requestResetCode.run(call({ mobile: MOBILE }));
@@ -256,7 +256,7 @@ describe("reset by SMS code (D22)", () => {
   });
 });
 
-describe("reset by email code (D59)", () => {
+describe("reset by email code", () => {
   const mailedCode = () => /code is (\d{6})/.exec(fake.mail.at(-1)!.subject)![1]!;
 
   it("emails a 6-digit code, no link, and replies the same for an unknown email", async () => {
@@ -303,7 +303,7 @@ describe("reset by email code (D59)", () => {
   });
 });
 
-describe("user self-service (D31, D42)", () => {
+describe("user self-service", () => {
   it("changes the mobile: code only to the new number, then alerts go there", async () => {
     const uid = await newUser();
     await newUser("0918 000 0001", "other@example.com");
@@ -407,7 +407,7 @@ describe("user self-service (D31, D42)", () => {
   });
 });
 
-describe("admin user list (D24)", () => {
+describe("admin user list", () => {
   it("lists users with only the table's fields; admins only", async () => {
     const uid = await newUser();
     const out = (await adminListUsers.run(asAdmin({}))) as { users: Record<string, unknown>[] };
@@ -436,7 +436,7 @@ describe("admin user list (D24)", () => {
   });
 });
 
-describe("admin accounts (D23, D40)", () => {
+describe("admin accounts", () => {
   const tokenFrom = (text: string) => decodeURIComponent(/setup\?token=(\S+)/.exec(text)![1]!);
 
   it("invites an admin who sets a password once, then becomes active on sign-in", async () => {
@@ -559,7 +559,7 @@ describe("admin accounts (D23, D40)", () => {
     expect(Date.parse(after!) / 1000).toBeGreaterThanOrEqual(startS);
   });
 
-  it("admins still see devices only through the D24 list", async () => {
+  it("admins still see devices only through the admin list", async () => {
     expect(await listDevicesForAdmin()).toEqual([]);
   });
 });

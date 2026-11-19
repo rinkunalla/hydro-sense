@@ -2,8 +2,7 @@ import '../core/config.dart';
 import '../core/theme.dart';
 import 'models.dart';
 
-/// No Flow, Low Flow, Offline, then everything else; ties by nickname
-/// (docs/UI_UX_SPEC.md section 4.2).
+/// No Flow, Low Flow, Offline, then everything else; ties by nickname.
 List<DeviceView> sortForHome(Iterable<DeviceView> views) {
   int rank(StatusKind s) => switch (s) {
     StatusKind.noFlow => 0,
@@ -28,7 +27,7 @@ class BannerInfo {
   final String text;
 }
 
-/// The home banner appears only for a live problem (docs/UI_UX_SPEC.md 4.1):
+/// The home banner appears only for a live problem:
 /// it names the worst one, how long ago it started, and "+k more". Null when
 /// nothing is wrong.
 BannerInfo? problemBanner(List<DeviceView> views, DateTime now) {
@@ -103,7 +102,7 @@ int offlineAfterS(int? heartbeatS) {
 
 /// True when the device has been silent past [offlineAfterS], measured on the
 /// server's clock ([serverNow] is phone time plus the database's offset), so a
-/// wrong phone clock cannot mark it Offline (D9, D51).
+/// wrong phone clock cannot mark it Offline.
 bool silentTooLong(DateTime? lastSeen, int? heartbeatS, DateTime serverNow) =>
     lastSeen != null &&
     serverNow.difference(lastSeen).inSeconds >= offlineAfterS(heartbeatS);

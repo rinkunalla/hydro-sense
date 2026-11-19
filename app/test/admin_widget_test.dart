@@ -1,4 +1,4 @@
-// Admin website (KICKOFF.md stage 6) with a fake AdminRepository.
+// Admin website with a fake AdminRepository.
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -417,7 +417,7 @@ void main() {
       expect(find.text('Admin since Nov 2, 2026'), findsOneWidget);
       expect(find.text('You'), findsOneWidget);
       expect(find.text('Invite expired'), findsOneWidget);
-      // Activity has its own page now (D53).
+      // Activity has its own page now.
       expect(find.textContaining('deleted the user'), findsNothing);
 
       await t.tap(find.text('Resend'));
@@ -428,7 +428,7 @@ void main() {
       expect(fake.calls, ['resend a2', 'invite z@x.ph']);
     });
 
-    testWidgets('Activity page: search, groups, dates and Restore (D53)', (
+    testWidgets('Activity page: search, groups, dates and Restore', (
       t,
     ) async {
       final now = DateTime.now();

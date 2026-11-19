@@ -1,4 +1,4 @@
-// Upload rules A/B/C (CLAUDE.md section 5 rule 3). Pure logic, driven once per second.
+// Upload rules A/B/C. Pure logic, driven once per second.
 #pragma once
 
 #include <stdint.h>

@@ -10,7 +10,7 @@ import '../../core/theme.dart';
 import '../../data/account_repository.dart';
 import '../../data/providers.dart';
 
-/// Sign in with email + password; no sign-up (docs/UI_UX_SPEC.md 5.1 and 5.3).
+/// Sign in with email + password; no sign-up (5.3).
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, this.refused, this.admin = false});
 
@@ -174,11 +174,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           onPressed: _busy
                               ? null
                               : () => context.push('/reset'),
-                          // New users set their first password here too (D22).
+                          // New users set their first password here too.
                           child: const Text('Forgot password?'),
                         ),
                         // Invited admins open the setup link from their invite
-                        // email; an expired one is re-sent from Admins (D23, D53).
+                        // email; an expired one is re-sent from Admins.
                         if (!widget.admin)
                           Text(
                             'No account yet? Ask your Hydro Sense provider to create one.',

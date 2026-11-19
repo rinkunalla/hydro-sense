@@ -7,7 +7,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/config.dart';
 
-/// A picked place: the suggestion's name and its location (D46).
+/// A picked place: the suggestion's name and its location.
 class Place {
   const Place(this.name, this.lat, this.lng);
 

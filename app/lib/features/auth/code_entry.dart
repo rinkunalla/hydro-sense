@@ -13,7 +13,7 @@ String mmss(int seconds) {
   return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 }
 
-/// The wording for a failed code check (docs/UI_UX_SPEC.md 5.2).
+/// The wording for a failed code check.
 String codeErrorText(String? code, int? triesLeft) => switch (code) {
   'RESET_CODE_INVALID' =>
     'That code is not right. ${triesLeft ?? 0} ${triesLeft == 1 ? 'try' : 'tries'} left.',

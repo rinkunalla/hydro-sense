@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Arctic Hologram (D39): the window colour behind the app in light and dark mode,
+    <!-- Arctic Hologram: the window colour behind the app in light and dark mode,
          so a gap before Flutter draws is never a black screen. -->
     <color name="hydro_frost">#F2F6FA</color>
     <!-- App icon: deep cyan to indigo tile with a white drop. -->

@@ -88,7 +88,7 @@ function wrap<T>(fn: () => T): Parsed<T> {
   }
 }
 
-/** Validates and clamps a deviceIngest body (CLAUDE.md section 6, Device protocol). */
+/** Validates and clamps a deviceIngest body. */
 export function parseIngestPayload(body: unknown): Parsed<IngestPayload> {
   return wrap(() => {
     if (!isObject(body)) throw new Invalid("body must be a JSON object");

@@ -3,7 +3,7 @@ import { effectiveCutoffs } from "../src/lib/cutoffs";
 
 const of = (d: Record<string, unknown>) => effectiveCutoffs((f) => d[f]);
 
-describe("effective cutoffs (D43)", () => {
+describe("effective cutoffs", () => {
   it("uses the automatic values when the owner set none", () => {
     expect(of({ lowFlowCutoff: 1.5, normalFlowCutoff: 5 })).toEqual({
       lowFlowCutoff: 1.5,

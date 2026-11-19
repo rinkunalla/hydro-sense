@@ -17,7 +17,7 @@ import 'admin_widgets.dart';
 /// Date range choices on the Activity page.
 enum _Range { week, month, all, calendar }
 
-/// Activity (D42, D53): every admin action and each deletion request, newest
+/// Activity: every admin action and each deletion request, newest
 /// first, on its own page. Search, filters by group, admin and dates, Restore
 /// where it still applies, more on request, and Download CSV. Nobody can edit
 /// or delete an entry.
@@ -259,7 +259,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
           ],
         ),
         const SizedBox(height: AppSpace.s),
-        // Or a year, month and day straight from dropdowns (D53).
+        // Or a year, month and day straight from dropdowns.
         Wrap(
           spacing: AppSpace.m,
           runSpacing: AppSpace.s,
@@ -378,7 +378,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   }
 }
 
-/// A user's or device's own recent activity, inside its side panel (D53).
+/// A user's or device's own recent activity, inside its side panel.
 class TargetActivity extends ConsumerWidget {
   const TargetActivity({super.key, required this.targetId});
 

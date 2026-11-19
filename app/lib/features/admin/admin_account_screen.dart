@@ -15,7 +15,7 @@ import '../../data/providers.dart';
 import '../client/account_screen.dart' show ChangePasswordDialog;
 import 'admin_widgets.dart';
 
-/// Account (docs/UI_UX_SPEC.md 6.3, D40, D42): my profile and security on the
+/// Account: my profile and security on the
 /// left, the admins on the right, the activity log under both.
 class AdminAccountScreen extends ConsumerWidget {
   const AdminAccountScreen({super.key});

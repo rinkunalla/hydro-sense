@@ -1,4 +1,4 @@
-// Pure alert gate (CLAUDE.md section 7). One state per device per family:
+// Pure alert gate. One state per device per family:
 // flow (flow_low and flow_none share it), battery_low, offline.
 import {
   ABNORMAL_CONFIRM_S,

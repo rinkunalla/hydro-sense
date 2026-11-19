@@ -1,5 +1,5 @@
 // Set or reset a user's password with a 6-digit code sent by email (the main
-// way, D59) or by SMS (CLAUDE.md D22, section 6). These callables need no
+// way) or by SMS. These callables need no
 // sign-in, so every reply is the same whether or not the address belongs to an
 // account.
 import { getAuth } from "firebase-admin/auth";

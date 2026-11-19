@@ -12,7 +12,7 @@ import '../../core/config.dart';
 import 'tile_cache.dart';
 import '../../core/theme.dart';
 
-// Map tiles (CLAUDE.md section 9, D26, D46). With a Google Map Tiles key
+// Map tiles. With a Google Map Tiles key
 // (--dart-define=GOOGLE_MAP_TILES_KEY=...) both views are Google: road map and
 // satellite. Place search (Google Places) may only be shown on a Google map,
 // so it appears only while Google tiles are on screen. Without a key (tests,
@@ -23,7 +23,7 @@ enum MapView { map, satellite }
 
 const _viewKey = 'map_view';
 
-/// The Map | Satellite choice, remembered on the phone (docs/UI_UX_SPEC.md 4.4).
+/// The Map | Satellite choice, remembered on the phone.
 class MapViewNotifier extends StateNotifier<MapView> {
   MapViewNotifier() : super(MapView.map) {
     _load();

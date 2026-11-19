@@ -51,7 +51,7 @@ String problemTimeText(Problem p, DateTime now) {
       '(${durationText(p.endedAt!.difference(p.startedAt))})';
 }
 
-/// History (D49): one calendar for the whole account, with filters, the day's
+/// History: one calendar for the whole account, with filters, the day's
 /// problems, notes and delete. Opened from Devices, or from a device's
 /// Details already filtered to that device.
 class HistoryScreen extends ConsumerStatefulWidget {
@@ -205,7 +205,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             icon: const Icon(Icons.chevron_left_rounded),
                             onPressed: () => _moveMonth(-1),
                           ),
-                          // Pick a month, day and year straight from dropdowns (D53).
+                          // Pick a month, day and year straight from dropdowns.
                           Expanded(
                             child: Wrap(
                               alignment: WrapAlignment.center,
@@ -344,7 +344,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ),
                   ],
                 ),
-                // The day's flow, one small graph per shown device (D53).
+                // The day's flow, one small graph per shown device.
                 for (final v in views)
                   if (_filter.deviceIds.isEmpty ||
                       _filter.deviceIds.contains(v.id))
@@ -914,7 +914,7 @@ class _DayGraphCard extends ConsumerWidget {
             ),
             error: (_, _) => Text(Messages.generic, style: AppText.note),
             data: (r) {
-              // Today: the per-minute series too, like the device card (D60).
+              // Today: the per-minute series too, like the device card.
               final today = day == dayKey(DateTime.now());
               if (!today) {
                 return DayGraph(rates: r, lowBelow: view.device.limits.normal);

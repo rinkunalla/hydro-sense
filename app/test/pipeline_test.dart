@@ -1,4 +1,4 @@
-// Pipeline logic (KICKOFF.md stage 5a acceptance, D25, D26, D33).
+// Pipeline logic (acceptance).
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hydro_sense/data/models.dart';
 import 'package:hydro_sense/data/pipeline.dart';
@@ -55,7 +55,7 @@ void main() {
     ]);
   });
 
-  group('where water stops (D33)', () {
+  group('where water stops', () {
     WaterStop? stops(List<String> statuses) => waterStops([
       for (final (i, s) in statuses.indexed)
         s == 'Offline'
@@ -132,7 +132,7 @@ void main() {
     expect(back.source.name, 'Main water tank');
   });
 
-  test('effective location: a manual pin wins over GPS (D25)', () {
+  test('effective location: a manual pin wins over GPS', () {
     const d = Device(
       id: 'x',
       nickname: 'X',

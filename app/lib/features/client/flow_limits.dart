@@ -9,7 +9,7 @@ import '../../data/providers.dart';
 
 String _lpm(double v) => '${v.toStringAsFixed(1)} L/min';
 
-/// "Flow limits" on Details (D43): what counts as Normal, Low and No flow for
+/// "Flow limits" on Details: what counts as Normal, Low and No flow for
 /// this device, where the limits come from, and a way to set your own.
 class FlowLimitsCard extends StatelessWidget {
   const FlowLimitsCard({super.key, required this.device, required this.now});

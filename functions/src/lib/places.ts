@@ -1,4 +1,4 @@
-// Pure helpers for Google Places API (New) autocomplete and place location (D46).
+// Pure helpers for Google Places API (New) autocomplete and place location.
 import { PLACES_INPUT_MAX, PLACES_INPUT_MIN } from "../config";
 
 export interface Suggestion {

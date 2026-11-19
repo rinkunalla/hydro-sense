@@ -22,7 +22,7 @@ export interface FlowStats {
 
 /**
  * One average per bucket. Uploads are event-driven, so averaging per bucket stops
- * bursts of status changes from outweighing steady periods (CLAUDE.md section 6).
+ * bursts of status changes from outweighing steady periods.
  */
 export function bucketAverages(
   rows: readonly { tsMs: number; flowRate: number }[],
@@ -72,7 +72,7 @@ export function validCutoffs(c: Cutoffs, mean: number): boolean {
   );
 }
 
-/** The weekly cutoffs (D28): a fixed formula, always valid when mean >= CALIBRATE_MIN_MEAN. */
+/** The weekly cutoffs: a fixed formula, always valid when mean >= CALIBRATE_MIN_MEAN. */
 export function fallbackCutoffs(mean: number): Cutoffs {
   return {
     lowFlowCutoff: round2(Math.max(CALIBRATE_LOW_MIN, CALIBRATE_FALLBACK_LOW_OF_MEAN * mean)),

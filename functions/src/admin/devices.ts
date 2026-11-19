@@ -1,6 +1,6 @@
-// Admin device management (CLAUDE.md section 6, D12, D20, D24, D32, D41, D42).
+// Admin device management.
 // Admins never read devices or device_health directly; adminListDevices returns
-// only the fields D24 allows.
+// only the fields an admin may see.
 import { FieldValue, type DocumentSnapshot } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/https";
 import { RESTORE_WINDOW_DAYS } from "../config";
@@ -45,7 +45,7 @@ async function unremove(deviceId: string, device: DocumentSnapshot, nowMs: numbe
   return label;
 }
 
-/** Adds an ID to the allowlist (D12, D41). Re-adding a removed ID restores it (D42). */
+/** Adds an ID to the allowlist. Re-adding a removed ID restores it. */
 export const addAllowedDevice = onCall({ secrets: MAIL_SECRETS }, async (request) => {
   const adminUid = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
@@ -116,7 +116,7 @@ export const assignDevice = onCall({ secrets: MAIL_SECRETS }, async (request) =>
   };
 });
 
-/** Takes the ID off the allowlist and keeps its data for the restore window (D42). */
+/** Takes the ID off the allowlist and keeps its data for the restore window. */
 export const removeDevice = onCall({ secrets: MAIL_SECRETS }, async (request) => {
   const adminUid = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;
@@ -190,7 +190,7 @@ export interface AdminDeviceRow {
 
 /**
  * Every allowlisted ID plus every removed device still inside its restore window.
- * Only the D24 fields leave the server; removed rows add the dates needed to restore.
+ * Only the admin fields leave the server; removed rows add the dates needed to restore.
  */
 export async function listDevicesForAdmin(): Promise<AdminDeviceRow[]> {
   const [allowed, removed] = await Promise.all([
@@ -199,7 +199,7 @@ export async function listDevicesForAdmin(): Promise<AdminDeviceRow[]> {
   ]);
   const ids = [...new Set([...allowed.docs.map((d) => d.id), ...removed.docs.map((d) => d.id)])];
   if (ids.length === 0) return [];
-  // online and lastSeen come from the live channel (D48); never flow or battery (D24).
+  // online and lastSeen come from the live channel; never flow or battery.
   const [devices, health, live] = await Promise.all([
     db.getAll(...ids.map((id) => db.collection(C.devices).doc(id))),
     db.getAll(...ids.map((id) => db.collection(C.deviceHealth).doc(id))),

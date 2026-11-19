@@ -8,7 +8,7 @@ import { C, db } from "./db";
 const denied = (code: "NOT_ADMIN" | "NOT_USER", message: string) =>
   new HttpsError("permission-denied", message, { code });
 
-/** Signed-in admin with an active admins/{uid} record (D23, D40). Returns the uid. */
+/** Signed-in admin with an active admins/{uid} record. Returns the uid. */
 export async function requireAdmin(request: CallableRequest): Promise<string> {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in first.", { code: "NOT_ADMIN" });
@@ -29,7 +29,7 @@ export async function requireAdminClaim(request: CallableRequest): Promise<strin
   return auth.uid;
 }
 
-/** Signed-in user whose account is active (not suspended, D42). Returns the uid. */
+/** Signed-in user whose account is active (not suspended). Returns the uid. */
 export async function requireUser(request: CallableRequest): Promise<string> {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in first.", { code: "NOT_USER" });

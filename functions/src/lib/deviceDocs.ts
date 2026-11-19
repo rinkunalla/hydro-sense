@@ -1,5 +1,5 @@
-// The starting shape of a device's two docs (CLAUDE.md section 4). Shared by
-// registerDevice (first registration) and assignDevice (assigned before it, D41).
+// The starting shape of a device's two docs. Shared by
+// registerDevice (first registration) and assignDevice (assigned before it).
 import type { Timestamp } from "firebase-admin/firestore";
 import { STARTER_LOW_FLOW_CUTOFF, STARTER_NORMAL_FLOW_CUTOFF } from "../config";
 import { defaultNickname } from "./userInput";
@@ -24,7 +24,7 @@ export function newDeviceDoc(deviceId: string, ownerUid: string | null, now: Tim
   };
 }
 
-/** registeredAt null means "Not set up yet" until the device first registers (D41). */
+/** registeredAt null means "Not set up yet" until the device first registers. */
 export function newHealthDoc(
   ownerUid: string | null,
   registeredAt: Timestamp | null,
@@ -48,7 +48,7 @@ export function newHealthDoc(
   };
 }
 
-/** What a new owner gets: everything the old owner set or caused is reset (D20). */
+/** What a new owner gets: everything the old owner set or caused is reset. */
 export function ownerResetFields(deviceId: string) {
   return {
     nickname: defaultNickname(deviceId),

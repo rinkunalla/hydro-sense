@@ -1,4 +1,4 @@
-// Weekly purge after the restore window (CLAUDE.md D42), run by the weekly job
+// Weekly purge after the restore window, run by the weekly job
 // before calibration. Each item is wrapped so one failure never stops the rest.
 import { getAuth } from "firebase-admin/auth";
 import { C, db, ts } from "../lib/db";

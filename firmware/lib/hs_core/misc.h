@@ -6,7 +6,7 @@
 
 namespace hs {
 
-/** "aa:bb:cc:dd:ee:ff" -> "AABBCCDDEEFF" (CLAUDE.md section 4). False if not a MAC. */
+/** "aa:bb:cc:dd:ee:ff" -> "AABBCCDDEEFF". False if not a MAC. */
 bool deviceIdFromMac(const char* mac, char out[13]);
 
 /** Great-circle distance in metres. */
@@ -21,7 +21,7 @@ size_t buildUbxBackupRequest(uint32_t durationMs, uint8_t out[16]);
 
 enum class LedMode : uint8_t { Off, Connected, Connecting, Hotspot, Rejecting };
 
-/** docs/ERROR_HANDLING.md section 5: solid, 1 Hz, 4 Hz, two quick blinks every 3 s. */
+/**: solid, 1 Hz, 4 Hz, two quick blinks every 3 s. */
 bool ledOn(LedMode mode, uint32_t ms);
 
 }  // namespace hs

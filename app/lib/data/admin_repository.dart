@@ -2,7 +2,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 
 import '../core/config.dart';
 
-// Admin privacy (CLAUDE.md D24): the admin site reads nothing from Firestore
+// Admin privacy: the admin site reads nothing from Firestore
 // directly; every admin call goes through a callable that returns only the
 // allowed fields. admin_privacy_test enforces this.
 
@@ -35,7 +35,7 @@ class AdminDevice {
 
   bool get removed => removedAt != null;
 
-  /// What the typed confirmation must match (D42).
+  /// What the typed confirmation must match.
   String get confirmText => label ?? id;
 
   /// The label, else the ID: how the admin site names a device.
@@ -54,7 +54,7 @@ class AdminDevice {
   );
 }
 
-/// One row of adminListUsers (D24: profile and status only).
+/// One row of adminListUsers (profile and status only).
 class AdminUser {
   const AdminUser({
     required this.uid,
@@ -135,7 +135,7 @@ class AdminInfo {
   );
 }
 
-/// One entry of the admin activity log (D42).
+/// One entry of the admin activity log.
 class AuditEntry {
   const AuditEntry({
     required this.id,
@@ -163,7 +163,7 @@ class AuditEntry {
   );
 }
 
-/// Every admin action, each one a callable (CLAUDE.md section 6). Errors are
+/// Every admin action, each one a callable. Errors are
 /// FirebaseFunctionsException with a details.code (EMAIL_IN_USE, PHONE_IN_USE,
 /// CONFIRM_MISMATCH, LAST_ADMIN, ...).
 abstract class AdminRepository {
@@ -171,7 +171,7 @@ abstract class AdminRepository {
   Future<void> addAllowedDevice(String deviceId, {String? label});
   Future<void> updateDeviceLabel(String deviceId, String? label);
 
-  /// uid null unassigns. Moving a device deletes its history (D20).
+  /// uid null unassigns. Moving a device deletes its history.
   Future<void> assignDevice(String deviceId, String? uid);
   Future<void> removeDevice(String deviceId, {required String confirmLabel});
   Future<void> restoreDevice(String deviceId);
@@ -201,19 +201,19 @@ abstract class AdminRepository {
   Future<void> updateMyAdminName(String name);
 
   /// After every admin sign-in: marks an invited admin active and copies a
-  /// verified new email into the record (D40).
+  /// verified new email into the record.
   Future<void> syncMyAdmin();
   Future<void> signOutEverywhere();
 
   /// Activity, newest first: a page of [limit] before [before], or only the
-  /// entries about [targetId] (a user or device), D53.
+  /// entries about [targetId] (a user or device).
   Future<List<AuditEntry>> audit({
     int limit = 100,
     DateTime? before,
     String? targetId,
   });
 
-  /// Unauthenticated (D23): always "ok", whether or not the email was invited.
+  /// Unauthenticated: always "ok", whether or not the email was invited.
   Future<void> requestAdminSetup(String email);
 
   /// Returns the admin's email, to sign in with right after.

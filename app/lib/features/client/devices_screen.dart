@@ -14,7 +14,7 @@ import 'live_trend.dart';
 import 'history_providers.dart';
 import 'widgets.dart';
 
-/// Devices (home): is water flowing to every area? (docs/UI_UX_SPEC.md 4.1)
+/// Devices (home): is water flowing to every area?
 class DevicesScreen extends ConsumerWidget {
   const DevicesScreen({super.key});
 
@@ -118,7 +118,7 @@ class _FleetBodyState extends ConsumerState<_FleetBody> {
                 ),
               ),
             ),
-            // History for the whole account (D49): labelled, not a bare icon.
+            // History for the whole account: labelled, not a bare icon.
             SecondaryButton(
               label: 'History',
               icon: Icons.history_rounded,
@@ -201,7 +201,7 @@ class _FleetBodyState extends ConsumerState<_FleetBody> {
   }
 }
 
-/// One device on the home list (docs/UI_UX_SPEC.md section 3, Device card).
+/// One device on the home list (Device card).
 class DeviceCard extends StatelessWidget {
   const DeviceCard({super.key, required this.view, required this.now});
 
@@ -235,7 +235,7 @@ class DeviceCard extends StatelessWidget {
                 children: [
                   DeviceIllustration(
                     ring: s.strong,
-                    // Spins while water flows; still when offline or dry (D57).
+                    // Spins while water flows; still when offline or dry.
                     turnsPerSecond: offline ? 0 : rotorTurnsPerSecond(rate),
                   ),
                   const SizedBox(width: AppSpace.m),
@@ -321,8 +321,8 @@ class DeviceCard extends StatelessWidget {
   }
 }
 
-/// A device assigned before delivery that has never connected (D41): the Wi-Fi
-/// steps live in its own card (docs/UI_UX_SPEC.md 4.1 and 4.3).
+/// A device assigned before delivery that has never connected: the Wi-Fi
+/// steps live in its own card (4.3).
 class NotSetUpCard extends StatelessWidget {
   const NotSetUpCard({super.key, required this.view});
 
@@ -466,7 +466,7 @@ class _WifiStepsState extends State<WifiSteps> {
   }
 }
 
-/// Shown only when no device is assigned to the user (docs/UI_UX_SPEC.md 4.3).
+/// Shown only when no device is assigned to the user.
 class NoDevicesYet extends StatelessWidget {
   const NoDevicesYet({super.key});
 
@@ -548,7 +548,7 @@ class _ErrorCard extends StatelessWidget {
   );
 }
 
-/// The card's live chart (D61): the last 30 minutes, minute by minute.
+/// The card's live chart: the last 30 minutes, minute by minute.
 class _TodaySoFar extends ConsumerWidget {
   const _TodaySoFar({required this.view, required this.now});
 
@@ -557,8 +557,8 @@ class _TodaySoFar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // The live chart (D61): 1 h, 2 h or 24 h from the per-minute series
-    // (D60); the 24 h view also needs yesterday's minutes.
+    // The live chart: 1 h, 2 h or 24 h from the per-minute series;
+    // the 24 h view also needs yesterday's minutes.
     final range = ref.watch(trendRangeProvider);
     final today =
         ref.watch(todaySeriesProvider((view.id, dayKey(now)))).valueOrNull ??

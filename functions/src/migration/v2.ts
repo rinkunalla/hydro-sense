@@ -1,4 +1,4 @@
-// One-off v1 -> v2 data migration (KICKOFF.md stage 2). Not deployed: run by
+// One-off v1 -> v2 data migration. Not deployed: run by
 // tools/migrate-v2.ts (dry run by default) and by the emulator tests. Safe to run
 // twice: every step checks the current shape first.
 import { getAuth, type UserRecord } from "firebase-admin/auth";
@@ -57,7 +57,7 @@ export async function migrateV2(opts: {
   for (const u of await allAuthUsers()) {
     const role = u.customClaims?.role;
 
-    // Admins: keep the claim, add the admins/{uid} record (D23, D40).
+    // Admins: keep the claim, add the admins/{uid} record.
     if (role === "admin") {
       const ref = db.collection(C.admins).doc(u.uid);
       if (!(await ref.get()).exists) {
@@ -77,7 +77,7 @@ export async function migrateV2(opts: {
       continue;
     }
 
-    // Users: role "client" (v1) becomes "user" (D21).
+    // Users: role "client" (v1) becomes "user".
     if (role !== "client" && role !== "user") continue;
     if (role === "client") {
       step(`auth/${u.uid}`, 'claim role "client" -> "user"');
@@ -127,7 +127,7 @@ export async function migrateV2(opts: {
     }
   }
 
-  // Devices: GPS fields renamed (section 6), manual pin added (D25), pause removed (D29).
+  // Devices: GPS fields renamed, manual pin added, pause removed.
   for (const dev of (await db.collection(C.devices).get()).docs) {
     const d = dev.data();
     const update: Record<string, unknown> = {};
@@ -155,7 +155,7 @@ export async function migrateV2(opts: {
     }
   }
 
-  // The single-client record (D10) has no v2 reader.
+  // The single-client record has no v2 reader.
   const system = db.collection("config").doc("system");
   if ((await system.get()).exists) {
     step("config/system", "delete");

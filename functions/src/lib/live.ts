@@ -1,4 +1,4 @@
-// What one upload changes (D48, D49), as pure logic: the next /live node, the
+// What one upload changes, as pure logic: the next /live node, the
 // /state patch, which problem records to open or close, and whether Firestore
 // needs a flow sample or a GPS update. deviceIngest applies the result.
 import { ABNORMAL_CONFIRM_S, BATTERY_REARM_PERCENT, FLOW_LOG_SAMPLE_S, LOW_BATTERY_PERCENT } from "../config";
@@ -38,7 +38,7 @@ export interface State {
   gpsLat: number | null;
   gpsLng: number | null;
   firmware: string | null;
-  /** The Manila day of today's live series (D60); a new day drops older ones. */
+  /** The Manila day of today's live series; a new day drops older ones. */
   seriesDay: string | null;
   /** The live series minute last written ("yyyy-mm-dd/minute") and its peak. */
   seriesMinute: string | null;

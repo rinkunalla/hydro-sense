@@ -1,4 +1,4 @@
-// Live place search (Google Places, D46) and My location, with fakes.
+// Live place search (Google Places) and My location, with fakes.
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

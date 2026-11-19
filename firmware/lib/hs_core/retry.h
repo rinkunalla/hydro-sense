@@ -1,4 +1,4 @@
-// Reactions to server responses (docs/ERROR_HANDLING.md section 5). Pure logic.
+// Reactions to server responses. Pure logic.
 #pragma once
 
 #include <stdint.h>

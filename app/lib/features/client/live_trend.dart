@@ -8,7 +8,7 @@ import '../../core/glass.dart';
 import '../../core/theme.dart';
 import 'readout.dart';
 
-/// The ranges a device card's chart can show (D61).
+/// The ranges a device card's chart can show.
 enum TrendRange {
   hour(60, '1 h'),
   twoHours(120, '2 h'),
@@ -34,7 +34,7 @@ double niceStep(double raw) {
   return 10 * p;
 }
 
-/// Which way the flow is going at "Now" (D61).
+/// Which way the flow is going at "Now".
 enum Trend { rising, falling, steady }
 
 /// Less change than this over the last few points counts as steady.
@@ -100,7 +100,7 @@ List<(int, double, bool)> trendPoints(
   return out;
 }
 
-/// The device card's live chart (D61), drawn like a stability or battery
+/// The device card's live chart, drawn like a stability or battery
 /// usage graph: a grid, two axes, one thick line from a hollow start circle to
 /// an arrowhead at "Now". The arrow points up while the flow rises, down
 /// while it falls and flat while it is steady, and glides to each new reading;
@@ -238,7 +238,7 @@ class _LiveTrendState extends State<LiveTrend> with TickerProviderStateMixin {
       excludeSemantics: true,
       child: SizedBox(
         height: widget.height,
-        // Tap or slide to read a time (D61).
+        // Tap or slide to read a time.
         child: TouchReadout(
           builder: (_, touchX) => AnimatedBuilder(
             animation: _glide,

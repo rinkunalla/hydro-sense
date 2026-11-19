@@ -134,7 +134,7 @@ async function seedDevice(id: string, o: DeviceSeed = {}) {
       firmware: "1.0.0",
       rssi: -60,
     });
-  // What the monitor and alerts read (D48).
+  // What the monitor and alerts read.
   await liveRef(id).set({
     ownerUid: o.owner === undefined ? "u1" : o.owner,
     online: o.online ?? true,
@@ -253,7 +253,7 @@ describe("alerts", () => {
     await runAlertPass(T0 + 2 * MIN);
     await setFlow("D1", "No Flow", T0 - 2 * MIN);
     await runAlertPass(T0 + 3 * MIN);
-    // Low flow by email only; the one escalation to No Flow also by SMS (D27).
+    // Low flow by email only; the one escalation to No Flow also by SMS.
     expect(fake.emailSent.map((m) => m.subject)).toEqual([
       "Hydro Sense alert: Garden Line - Low flow",
       "Hydro Sense alert: Garden Line - No flow",
@@ -303,7 +303,7 @@ describe("alerts", () => {
     expect(cap.size).toBe(1);
   });
 
-  it("shows Offline at 3 min (no heartbeat reported) and alerts in the same pass (D58)", async () => {
+  it("shows Offline at 3 min (no heartbeat reported) and alerts in the same pass", async () => {
     await seedUser();
     await seedDevice("D1", { nickname: "Garden Line", online: true, lastSeenMs: T0 - 181_000 });
     // The alert pass in the same monitor run finds it already past 2 min.
@@ -429,7 +429,7 @@ describe("calibration", () => {
     expect(await calibrateDevice("D1", T0)).toBe("kept_recent_alert");
   });
 
-  it("sets the weekly formula's cutoffs and calibratedAt (D28)", async () => {
+  it("sets the weekly formula's cutoffs and calibratedAt", async () => {
     await seedDevice("D1");
     await seedLogs("D1", 40, 10);
     expect(await calibrateDevice("D1", T0)).toBe("updated");
@@ -440,7 +440,7 @@ describe("calibration", () => {
   });
 });
 
-describe("alert channels (D27)", () => {
+describe("alert channels", () => {
   const prefs = (p: { push: boolean; sms: boolean; email: boolean }) =>
     db.collection(C.users).doc("u1").update({ alertPrefs: p });
   const token = (fid: string) =>
@@ -589,7 +589,7 @@ describe("alerts with several users", () => {
     expect(r.users.u2!.sms).toBe("sent");
   });
 
-  it("stops alert SMS at the project ceiling of 50 per day (D30)", async () => {
+  it("stops alert SMS at the project ceiling of 50 per day", async () => {
     await seedUser("u1");
     await db.collection(C.alertDaily).doc(manilaDateKey(T0)).set({ smsCount: 50 });
     await seedDevice("D1", { flowStatus: "No Flow", abnormalSinceMs: T0 - 2 * MIN });
@@ -637,7 +637,7 @@ async function seedAdmins() {
     .set({ name: "B", email: "admin2@example.com", status: "active" });
 }
 
-describe("user management (D20, D22, D42)", () => {
+describe("user management", () => {
   it("creates a user with no password, the user role, defaults and a phone index entry", async () => {
     const { uid } = await newUser();
     const auth = await getAuth().getUser(uid);
@@ -764,7 +764,7 @@ describe("user management (D20, D22, D42)", () => {
   });
 });
 
-describe("device admin (D20, D24, D32, D41, D42)", () => {
+describe("device admin", () => {
   const listed = async (id: string, label?: string) =>
     db
       .collection(C.allowedDevices)
@@ -812,14 +812,14 @@ describe("device admin (D20, D24, D32, D41, D42)", () => {
     expect((await db.collection(C.deviceHealth).doc("D1").get()).get("ownerUid")).toBe("u2");
     expect((await d1.collection(C.flowLogs).get()).size).toBe(0);
     expect((await db.collection(C.alertState).doc("D1__flow").get()).exists).toBe(false);
-    // Problems go with the history (D49); the live node follows the new owner (D48).
+    // Problems go with the history; the live node follows the new owner.
     expect((await db.collection(C.problems).where("deviceId", "==", "D1").get()).size).toBe(0);
     expect((await liveRef("D1").child("ownerUid").get()).val()).toBe("u2");
     const branches = (await db.collection(C.pipelines).doc("u1").get()).get("branches");
     expect(branches[0].deviceIds).toEqual(["D0", "D2"]);
   });
 
-  it("assigning an unregistered ID creates its records with the owner set (D41)", async () => {
+  it("assigning an unregistered ID creates its records with the owner set", async () => {
     await seedUser("u1");
     await listed("A1B2C3D4E5F6");
     const r = await assignDevice.run(asAdmin({ deviceId: "A1B2C3D4E5F6", uid: "u1" }));
@@ -922,7 +922,7 @@ describe("device admin (D20, D24, D32, D41, D42)", () => {
     });
   });
 
-  it("adminListDevices returns only the D24 fields", async () => {
+  it("adminListDevices returns only the admin fields", async () => {
     await seedUser("u1");
     await listed("A1B2C3D4E5F6", "Unit 1");
     await listed("B1B2C3D4E5F6");
@@ -1057,7 +1057,7 @@ describe("v1 -> v2 migration", () => {
       abnormalSince: T0 - 2 * MIN,
     });
     const r = await runAlertPass(T0);
-    // The migrated account gets the defaults (D27): email starts off.
+    // The migrated account gets the defaults: email starts off.
     expect(r.users.c1).toMatchObject({ sms: "sent", email: "off" });
   });
 });
@@ -1090,7 +1090,7 @@ describe("deviceCount (TODO(human) in admin/ownership.ts)", () => {
   });
 });
 
-describe("place search (Google Places, D46)", () => {
+describe("place search (Google Places)", () => {
   const sent: { url: string; headers: Record<string, string>; body?: unknown }[] = [];
   let failNext = false;
   const SESSION = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
@@ -1210,7 +1210,7 @@ describe("place search (Google Places, D46)", () => {
   });
 });
 
-describe("push registration moves with the person who signs in (D45)", () => {
+describe("push registration moves with the person who signs in", () => {
   it("a phone's FID belongs to one account at a time", async () => {
     const tokens = (uid: string) => db.collection(C.users).doc(uid).collection(C.pushTokens);
     expect(await claimPushTokenFor("ana", "fid_phone_1", 1000)).toEqual({ removed: 0 });

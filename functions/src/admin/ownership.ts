@@ -1,4 +1,4 @@
-// Device ownership changes and full deletion (CLAUDE.md D20, D41, D42). Used by
+// Device ownership changes and full deletion. Used by
 // assignDevice, the weekly purge and the migration tests.
 import { FieldValue } from "firebase-admin/firestore";
 import { FAMILIES } from "../lib/alertLogic";
@@ -12,7 +12,7 @@ export type OwnerChange =
   | { kind: "unchanged" }
   | { kind: "changed"; from: string | null; to: string | null; created: boolean };
 
-/** Removes one device ID from every branch of a user's pipeline (transaction, D18). */
+/** Removes one device ID from every branch of a user's pipeline (transaction). */
 export async function removeFromPipeline(uid: string, deviceId: string): Promise<void> {
   const ref = db.collection(C.pipelines).doc(uid);
   await db.runTransaction(async (tx) => {
@@ -49,7 +49,7 @@ async function wipeHistory(deviceId: string): Promise<void> {
  */
 export async function updateDeviceCounts(uids: (string | null)[]): Promise<void> {
   // Recount instead of +1/-1, so a missed path can never leave a wrong count for good.
-  // A removed device still counts: it stays assigned until restored or purged (D42).
+  // A removed device still counts: it stays assigned until restored or purged.
   const NOT_FOUND = 5; // user doc already gone during a purge
   for (const uid of new Set(uids)) {
     if (!uid) continue;
@@ -68,7 +68,7 @@ export async function updateDeviceCounts(uids: (string | null)[]): Promise<void>
  * Sets a device's owner. When the owner changes, the device is first detached
  * (ownerUid null: nobody can read it), its history is wiped, and only then is it
  * attached to the new owner, so the new owner can never read the old history.
- * An allowlisted ID that never registered gets its records here (D41).
+ * An allowlisted ID that never registered gets its records here.
  */
 export async function setOwner(
   deviceId: string,
@@ -119,7 +119,7 @@ export async function setOwner(
   return { kind: "changed", from: first.from, to, created: false };
 }
 
-/** Deletes every trace of a device (purge after the restore window, D42). */
+/** Deletes every trace of a device (purge after the restore window). */
 export async function deleteDeviceData(deviceId: string): Promise<void> {
   const device = await db.collection(C.devices).doc(deviceId).get();
   const owner = (device.get("ownerUid") as string | null | undefined) ?? null;

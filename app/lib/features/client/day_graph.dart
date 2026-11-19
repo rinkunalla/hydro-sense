@@ -6,7 +6,7 @@ import '../../core/glass.dart';
 import '../../core/theme.dart';
 import 'readout.dart';
 
-/// A small line graph of one day's flow (D53, D60): a point per [slots] of the
+/// A small line graph of one day's flow: a point per [slots] of the
 /// day (96 for 15-minute readings, 1440 for today's per-minute series), a gap
 /// where the device sent nothing, a dashed "Low below" line, a tick for every
 /// hour with labels at 12 AM, 6 AM, 12 PM and 6 PM, and (on today's graph) the
@@ -89,7 +89,7 @@ class DayGraph extends StatelessWidget {
   }
 }
 
-/// The graph's motion (D57, D60): the line draws itself in from 12 AM when it
+/// The graph's motion: the line draws itself in from 12 AM when it
 /// first appears, the live dot breathes, and it glides to each new reading.
 /// Still under reduce motion.
 class _AnimatedDay extends StatefulWidget {
@@ -181,7 +181,7 @@ class _AnimatedDayState extends State<_AnimatedDay>
     super.dispose();
   }
 
-  // Tap or slide to read a time (D61).
+  // Tap or slide to read a time.
   @override
   Widget build(BuildContext context) => TouchReadout(
     builder: (_, touchX) => AnimatedBuilder(

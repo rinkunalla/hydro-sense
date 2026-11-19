@@ -1,4 +1,4 @@
-// Users manage their own profile (CLAUDE.md D31, D42). Email and password change
+// Users manage their own profile. Email and password change
 // in the app through Firebase Auth; these callables keep users/{uid} in step.
 import { getAuth } from "firebase-admin/auth";
 import { HttpsError, onCall } from "firebase-functions/https";
@@ -109,7 +109,7 @@ export const confirmPhoneChange = onCall({ secrets: MAIL_SECRETS }, async (reque
 
 /**
  * After a password sign-in in the app. A user can set a password with
- * Firebase's emailed reset link (D22), which the server never sees, so the
+ * Firebase's emailed reset link, which the server never sees, so the
  * profile learns "Password set" here. Only a session that was opened with a
  * password counts, so a custom-token session from the SMS flow proves nothing.
  */
@@ -124,7 +124,7 @@ export const syncPasswordSet = onCall(async (request) => {
   return { passwordSet: true, changed: true };
 });
 
-/** After the user opens Firebase's verify-before-update link (D31). */
+/** After the user opens Firebase's verify-before-update link. */
 export const syncMyEmail = onCall(async (request) => {
   const uid = await requireUser(request);
   const authEmail = (await getAuth().getUser(uid)).email?.toLowerCase() ?? null;
@@ -135,7 +135,7 @@ export const syncMyEmail = onCall(async (request) => {
   return { email: authEmail };
 });
 
-/** Notifies the admins; the account stays active until an admin deletes it (D42). */
+/** Notifies the admins; the account stays active until an admin deletes it. */
 export const requestAccountDeletion = onCall({ secrets: MAIL_SECRETS }, async (request) => {
   const uid = await requireUser(request);
   const ref = db.collection(C.users).doc(uid);

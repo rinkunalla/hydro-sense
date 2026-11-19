@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
 
-/// Touch to read a graph (D61): tap or slide a finger across it to show the
+/// Touch to read a graph: tap or slide a finger across it to show the
 /// reading at that time; it hides 2 seconds after the finger lifts.
 class TouchReadout extends StatefulWidget {
   const TouchReadout({super.key, required this.builder});

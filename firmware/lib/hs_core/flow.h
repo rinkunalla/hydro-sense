@@ -1,4 +1,4 @@
-// Flow sensing and classification (CLAUDE.md section 5 rule 2, D16). Pure logic.
+// Flow sensing and classification. Pure logic.
 #pragma once
 
 #include <stdint.h>

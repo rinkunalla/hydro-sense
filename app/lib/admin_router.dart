@@ -21,7 +21,7 @@ class _AuthRefresh extends ChangeNotifier {
   }
 }
 
-/// The web build: admin only (CLAUDE.md section 9).
+/// The web build: admin only.
 final adminRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _AuthRefresh(ref);
   ref.onDispose(refresh.dispose);

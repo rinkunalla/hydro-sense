@@ -1,5 +1,5 @@
-// Six-digit codes for password reset (by email or SMS) and mobile change (SMS)
-// (CLAUDE.md D22, D31, D59). Limits are counted per address (phone number or
+// Six-digit codes for password reset (by email or SMS) and mobile change (SMS).
+// Limits are counted per address (phone number or
 // email), also for addresses with no account, so the replies and their timing
 // never tell a caller whether an address has an account.
 import { HttpsError } from "firebase-functions/https";

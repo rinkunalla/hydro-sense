@@ -1,4 +1,4 @@
-// Native unit tests for the pure firmware logic (KICKOFF.md Phase 4).
+// Native unit tests for the pure firmware logic (Phase 4).
 // Run: npm run fw:test   (or: pio test -e native, with a host g++ on PATH)
 #include <string.h>
 #include <unity.h>

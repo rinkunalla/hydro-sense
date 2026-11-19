@@ -1,4 +1,4 @@
-# Secrets (never commit; see CLAUDE.md working rule 4)
+# Secrets (never commit)
 firmware/include/secrets.h
 .env
 .env.*
@@ -64,15 +64,5 @@ app/android/app/release/
 Thumbs.db
 desktop.ini
 
-# Capstone documents and screenshots (kept out of git)
-docs/capstone/
+# Documents (kept out of git)
 *.docx
-
-# Kept on the developers' computers only (planning notes, specs, tools)
-CLAUDE.md
-KICKOFF.md
-.claude/
-docs/
-tools/
-scripts/
-/package.json

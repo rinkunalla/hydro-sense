@@ -16,8 +16,8 @@ import '../../data/providers.dart';
 import 'map_tiles.dart';
 import 'place_search.dart';
 
-/// Edit pipeline (docs/UI_UX_SPEC.md 4.5, D25, D26). Everything is a local draft
-/// until Save; leaving with changes asks first. Stage 5a edits one branch.
+/// Edit pipeline. Everything is a local draft
+/// until Save; leaving with changes asks first.
 class EditPipelineScreen extends ConsumerStatefulWidget {
   const EditPipelineScreen({super.key});
 
@@ -60,7 +60,7 @@ class _EditPipelineState extends ConsumerState<EditPipelineScreen> {
     final known =
         b?.deviceIds.where((id) => views.any((v) => v.id == id)) ?? [];
     final rest = views.where((v) => !known.contains(v.id));
-    // Devices not in the saved branch yet join it in distance order (D26).
+    // Devices not in the saved branch yet join it in distance order.
     final restOrdered = _source == null
         ? rest.toList()
         : defaultOrder(
@@ -406,7 +406,7 @@ class _EditPipelineState extends ConsumerState<EditPipelineScreen> {
                                 device: v,
                               );
                               if (p == null) return;
-                              // Device GPS clears the manual pin (D25).
+                              // Device GPS clears the manual pin.
                               _changed(
                                 () => _pins[v.id] = (
                                   at: p.deviceGps ? null : p.at,
@@ -501,7 +501,7 @@ class _DeviceRow extends StatelessWidget {
 }
 
 /// What the picker chose: a point on the map (the pin, or the phone's
-/// position), or "follow the device's own GPS" (clears a manual pin, D25).
+/// position), or "follow the device's own GPS" (clears a manual pin).
 typedef PinResult = ({LatLng? at, bool deviceGps});
 
 /// Edit location: move the map under the fixed centre mark and confirm, or
@@ -605,7 +605,7 @@ class _PinPickerState extends ConsumerState<PinPicker> {
                 ),
               ),
             ),
-            // Google place results only over Google tiles (D46).
+            // Google place results only over Google tiles.
             if (google)
               Positioned(
                 left: AppSpace.l,

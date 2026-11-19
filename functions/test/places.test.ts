@@ -8,7 +8,7 @@ import {
   validSessionToken,
 } from "../src/lib/places";
 
-describe("Places helpers (D46)", () => {
+describe("Places helpers", () => {
   it("normalizes the typed text: 3 to 100 characters", () => {
     expect(normalizeInput("  SM   City ")).toBe("SM City");
     expect(normalizeInput("sm")).toBeNull();

@@ -1,5 +1,5 @@
-// Admin user management (CLAUDE.md section 6, D20, D22, D31, D42). Users are
-// created without a usable password; they set one by SMS code (stage 3).
+// Admin user management. Users are
+// created without a usable password; they set one with a reset code.
 import { getAuth } from "firebase-admin/auth";
 import { HttpsError, onCall } from "firebase-functions/https";
 import { RESTORE_WINDOW_DAYS } from "../config";
@@ -33,7 +33,7 @@ async function loadUser(uid: string) {
 }
 
 /**
- * The Users page (D24): only what the table and side panel show. The website
+ * The Users page: only what the table and side panel show. The website
  * reads no collection directly; everything comes through callables.
  */
 export const adminListUsers = onCall(async (request) => {
@@ -148,7 +148,7 @@ export const updateUser = onCall(async (request) => {
   return { uid };
 });
 
-/** Suspends the account (D42): sign-in refused, no alerts, data and devices kept. */
+/** Suspends the account: sign-in refused, no alerts, data and devices kept. */
 export const deleteUser = onCall({ secrets: MAIL_SECRETS }, async (request) => {
   const adminUid = await requireAdmin(request);
   const d = (request.data ?? {}) as Record<string, unknown>;

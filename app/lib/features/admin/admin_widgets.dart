@@ -5,8 +5,8 @@ import '../../core/glass.dart';
 import '../../core/theme.dart';
 import '../../data/admin_logic.dart';
 
-/// The admin site shows only connection states, never flow or battery colours
-/// (D24, docs/UI_UX_SPEC.md section 6). Icon + word, never colour alone.
+/// The admin site shows only connection states, never flow or battery colours.
+/// Icon + word, never colour alone.
 class StateBadge extends StatelessWidget {
   const StateBadge(this.state, {super.key, this.detail});
 
@@ -163,7 +163,7 @@ class Avatar extends StatelessWidget {
   );
 }
 
-/// Destructive confirmation (D42): the button turns on only once the admin
+/// Destructive confirmation: the button turns on only once the admin
 /// has typed [confirmWord] (the user's name or the device label).
 Future<bool> confirmByTyping(
   BuildContext context, {
@@ -377,7 +377,7 @@ class ErrorLine extends StatelessWidget {
         );
 }
 
-/// The admin wording for a failed admin call (docs/UI_UX_SPEC.md 6).
+/// The admin wording for a failed admin call.
 String adminErrorText(Object e) => switch (callableDetails(e).code) {
   'EMAIL_IN_USE' => 'Another account already uses this email.',
   'PHONE_IN_USE' => 'Another user already has this mobile number.',

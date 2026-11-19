@@ -1,6 +1,6 @@
-// Live place search for the map (D46, docs/UI_UX_SPEC.md 4.4). The app never
+// Live place search for the map. The app never
 // holds the Places key: these callables add it, keep a daily cap per user and
-// for the project (transaction, D18), and honour an off switch
+// for the project (transaction), and honour an off switch
 // (settings/places.enabled == false) that needs no app update.
 import { HttpsError, onCall } from "firebase-functions/https";
 import {

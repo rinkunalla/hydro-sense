@@ -9,7 +9,7 @@ const REAL = [
   7.78, 7.63, 7.96, 8.06, 8.04,
 ];
 
-describe("smoothedVoltage (median, D56)", () => {
+describe("smoothedVoltage (median)", () => {
   it("ignores a dip, so the percent does not jump", () => {
     expect(smoothedVoltage([8.05, 8.06, 7.63, 8.05, 8.04])).toBe(8.05);
     expect(smoothedVoltage([8.2])).toBe(8.2);
@@ -46,7 +46,7 @@ describe("chargingTrend", () => {
     expect(chargingTrend([7.6])).toBe("Steady");
   });
 
-  it("does not call dips leaving the window charging (D56)", () => {
+  it("does not call dips leaving the window charging", () => {
     expect(chargingTrend(REAL)).toBe("Steady");
     expect(chargingTrend([...REAL, 8.05, 8.06, 8.05, 8.04, 8.06])).toBe("Steady");
   });

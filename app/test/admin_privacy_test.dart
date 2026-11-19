@@ -1,4 +1,4 @@
-// Admin privacy (CLAUDE.md D24, KICKOFF.md stage 6): the admin code never queries
+// Admin privacy: the admin code never queries
 // devices, device_health, flow_logs or pipelines. Static: it never names them and
 // never imports Firestore (all admin data comes from callables). Runtime:
 // admin_widget_test renders the admin screens with the user repository replaced
@@ -47,7 +47,7 @@ void main() {
     }
   });
 
-  test('admin code never imports Firestore: callables only (D24)', () {
+  test('admin code never imports Firestore: callables only', () {
     for (final f in adminFiles) {
       expect(
         f.readAsStringSync().contains('package:cloud_firestore/'),

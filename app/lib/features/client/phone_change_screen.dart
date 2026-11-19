@@ -11,7 +11,7 @@ import '../../data/account_repository.dart';
 import '../auth/code_entry.dart';
 import 'account_screen.dart' show accountError;
 
-/// Change mobile number, 3 steps (D31, docs/UI_UX_SPEC.md 5.5): the code goes to
+/// Change mobile number, 3 steps: the code goes to
 /// the NEW number; the change applies once it is confirmed.
 class PhoneChangeScreen extends ConsumerStatefulWidget {
   const PhoneChangeScreen({super.key, this.now});

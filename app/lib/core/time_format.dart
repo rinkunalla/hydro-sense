@@ -1,7 +1,7 @@
 import 'package:intl/intl.dart';
 
 /// "12 s ago", "4 min ago", "2 h ago"; "just now" when the server clock is ahead
-/// of the phone (docs/UI_UX_SPEC.md section 6). The phone clock never decides Offline.
+/// of the phone. The phone clock never decides Offline.
 String relativeAge(DateTime then, DateTime now) {
   final d = now.difference(then);
   if (d.inSeconds < 5) return 'just now';
@@ -11,7 +11,7 @@ String relativeAge(DateTime then, DateTime now) {
   return '${d.inDays} d ago';
 }
 
-/// "12 s", "4 min", "2 h" for the Live cue on a card (D35).
+/// "12 s", "4 min", "2 h" for the Live cue on a card.
 String shortAge(DateTime then, DateTime now) {
   final d = now.difference(then);
   if (d.inSeconds < 5) return 'now';
@@ -28,7 +28,7 @@ String displayPhone(String? p) {
   return '${local.substring(0, 4)} ${local.substring(4, 7)} ${local.substring(7)}';
 }
 
-/// "0917 ••• 4567" (docs/UI_UX_SPEC.md 5.2).
+/// Masks a mobile number as "0917 ••• 4567".
 String maskedPhone(String? p) {
   final d = displayPhone(p);
   return d.length == 13 ? '${d.substring(0, 4)} ••• ${d.substring(9)}' : d;

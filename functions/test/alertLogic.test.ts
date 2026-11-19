@@ -44,7 +44,7 @@ function run(steps: [number, Condition][], start: AlertState = EMPTY_STATE) {
 }
 
 describe("conditions", () => {
-  it("flow needs 30 continuous seconds and an online device (D62)", () => {
+  it("flow needs 30 continuous seconds and an online device", () => {
     expect(
       flowCondition(view({ flowStatus: "No Flow", abnormalSinceMs: T - 29 * S }), T).kind,
     ).toBe("neutral");
@@ -68,7 +68,7 @@ describe("conditions", () => {
     );
   });
 
-  it("offline alerts after 40 s of silence (D58, D62)", () => {
+  it("offline alerts after 40 s of silence", () => {
     expect(offlineCondition(view({ online: false, lastSeenMs: T - 39_000 }), T).kind).toBe(
       "neutral",
     );

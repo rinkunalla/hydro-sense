@@ -24,7 +24,7 @@ String? validateNickname(String raw) {
   return null;
 }
 
-/// Device details (docs/UI_UX_SPEC.md 4.2).
+/// Device details.
 class DeviceDetailScreen extends ConsumerStatefulWidget {
   const DeviceDetailScreen({super.key, required this.deviceId});
 
@@ -220,7 +220,7 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
               ),
             ),
             const SizedBox(height: AppSpace.m),
-            // Most owners never change these: tucked away, one tap to open (D53).
+            // Most owners never change these: tucked away, one tap to open.
             Theme(
               data: Theme.of(
                 context,

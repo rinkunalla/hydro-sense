@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/config.dart';
 
-/// Where a tapped push should open (D37): a single device opens its Details; a
+/// Where a tapped push should open: a single device opens its Details; a
 /// batch opens the Map centred on the problem, or Devices when there is no
 /// pipeline yet.
 String routeForPush(Map<String, dynamic> data, {required bool hasPipeline}) {
@@ -18,7 +18,7 @@ String routeForPush(Map<String, dynamic> data, {required bool hasPipeline}) {
   return hasPipeline ? '/map?focus=problem' : '/devices';
 }
 
-/// Push registration (CLAUDE.md section 4 `users/{uid}/push_tokens`). firebase_messaging
+/// Push registration (`users/{uid}/push_tokens`). firebase_messaging
 /// 17 sends to the Firebase Installation ID (FID); getToken() is deprecated.
 abstract class PushService {
   /// Asks for notification permission (Android 13+), registers, and keeps the
@@ -64,7 +64,7 @@ class FcmPushService implements PushService {
       _messaging.onRegistered.listen((fid) async {
         _fid = fid;
         // Through the server, which first removes this phone from any other
-        // account (D45: the app signs out on every fresh start).
+        // account (the app signs out on every fresh start).
         try {
           await _functions.httpsCallable('claimPushToken').call<Object?>({
             'fid': fid,

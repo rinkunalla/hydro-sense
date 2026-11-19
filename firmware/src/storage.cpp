@@ -28,7 +28,7 @@ Cutoffs loadCutoffs() {
   // isKey first: reading a missing key makes the core log NOT_FOUND on every upload.
   if (prefs.isKey("low")) c.low = prefs.getFloat("low", STARTER_LOW_FLOW_CUTOFF);
   if (prefs.isKey("normal")) c.normal = prefs.getFloat("normal", STARTER_NORMAL_FLOW_CUTOFF);
-  // A corrupt NVS falls back to the starter cutoffs (docs/ERROR_HANDLING.md section 5).
+  // A corrupt NVS falls back to the starter cutoffs.
   if (!(c.low > 0 && c.low < c.normal && c.normal <= FLOW_RATE_MAX)) c = Cutoffs();
   return c;
 }

@@ -1,4 +1,4 @@
-// Map tab and Edit pipeline (KICKOFF.md stage 5a, docs/UI_UX_SPEC.md 4.4, 4.5).
+// Map tab and Edit pipeline (4.5).
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -227,7 +227,7 @@ void main() {
     expect(find.text('Placed on the map'), findsOneWidget);
   });
 
-  testWidgets('edit: no device GPS option while the module is off (D54)', (
+  testWidgets('edit: no device GPS option while the module is off', (
     t,
   ) async {
     await phone(t);

@@ -7,7 +7,7 @@ describe("config invariants", () => {
   });
 
   it("alerts offline no sooner than the device counts as Offline", () => {
-    // Firmware 0.3.0 is Offline after two missed heartbeats (D51); the alert
+    // Firmware 0.3.0 is Offline after two missed heartbeats; the alert
     // also needs online == false, so 0.2.0 devices (180 s) alert at the flip.
     expect(c.OFFLINE_ALERT_AFTER_S).toBeGreaterThanOrEqual(
       Math.max(c.OFFLINE_AFTER_MIN_S, c.OFFLINE_MISSED_HEARTBEATS * c.DEVICE_HEARTBEAT_S),

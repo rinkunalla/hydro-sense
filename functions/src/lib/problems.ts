@@ -1,4 +1,4 @@
-// Problem records for History (D49): one Firestore doc per problem, with a start
+// Problem records for History: one Firestore doc per problem, with a start
 // and an end. Only the functions create them; the owner may note or delete them.
 import { PROBLEM_TTL_DAYS } from "../config";
 import { C, db, ts } from "./db";
@@ -86,18 +86,18 @@ async function applyOpens(
   await batch.commit();
 }
 
-/** Deletes every problem record of a device (reassign, unassign, purge: D20). */
+/** Deletes every problem record of a device (reassign, unassign, purge). */
 export async function deleteDeviceProblems(deviceId: string): Promise<void> {
   await deleteQuery(problemsCol().where("deviceId", "==", deviceId));
 }
 
-/** Deletes every problem record of a user (purge after the restore window, D42). */
+/** Deletes every problem record of a user (purge after the restore window). */
 export async function deleteUserProblems(uid: string): Promise<void> {
   await deleteQuery(problemsCol().where("ownerUid", "==", uid));
   await deleteQuery(db.collection(C.readings).where("ownerUid", "==", uid));
 }
 
-/** Deletes a device's History graph days (reassign, unassign, purge: D20). */
+/** Deletes a device's History graph days (reassign, unassign, purge). */
 export async function deleteDeviceReadings(deviceId: string): Promise<void> {
   await deleteQuery(db.collection(C.readings).where("deviceId", "==", deviceId));
 }

@@ -104,7 +104,7 @@ describe("email", () => {
   });
 });
 
-describe("push (docs/UI_UX_SPEC.md section 7)", () => {
+describe("push", () => {
   it("uses the spec titles, the Still: prefix and the payload shape", async () => {
     const { buildPush } = await import("../src/lib/messages");
     const base = {

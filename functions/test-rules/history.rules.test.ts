@@ -1,4 +1,4 @@
-// Rules for History (D49) and the live channel (D48): problems in Firestore and
+// Rules for History and the live channel: problems in Firestore and
 // /live, /state in the Realtime Database. Run with `npm run test:rules`.
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -88,7 +88,7 @@ beforeEach(async () => {
   });
 });
 
-describe("problems (D49)", () => {
+describe("problems", () => {
   it("a user reads and lists only their own", async () => {
     await assertSucceeds(getDoc(doc(userA.fs, "problems/endedA")));
     await assertSucceeds(
@@ -96,7 +96,7 @@ describe("problems (D49)", () => {
     );
     await assertFails(getDoc(doc(userA.fs, "problems/endedB")));
     await assertFails(getDocs(collection(userA.fs, "problems")));
-    await assertFails(getDoc(doc(admin.fs, "problems/endedA"))); // admins see no history (D24)
+    await assertFails(getDoc(doc(admin.fs, "problems/endedA"))); // admins see no history
     await assertFails(getDoc(doc(anon.fs, "problems/endedA")));
   });
 
@@ -123,7 +123,7 @@ describe("problems (D49)", () => {
   });
 });
 
-describe("History graph readings (D53)", () => {
+describe("History graph readings", () => {
   it("only the owner reads a day; nobody writes", async () => {
     await assertSucceeds(getDoc(doc(userA.fs, "readings/DEVA_2026-11-16")));
     await assertFails(getDoc(doc(userB.fs, "readings/DEVA_2026-11-16")));
@@ -135,7 +135,7 @@ describe("History graph readings (D53)", () => {
   });
 });
 
-describe("live channel (D48)", () => {
+describe("live channel", () => {
   it("a user reads only their own device's live node", async () => {
     await assertSucceeds(get(ref(userA.rt, "live/DEVA")));
     await assertFails(get(ref(userA.rt, "live/DEVB")));
@@ -146,12 +146,12 @@ describe("live channel (D48)", () => {
     await assertFails(getDoc(doc(userB.fs, "problems/endedA")));
   });
 
-  it("admins and anonymous visitors read no live node (D24)", async () => {
+  it("admins and anonymous visitors read no live node", async () => {
     await assertFails(get(ref(admin.rt, "live/DEVA")));
     await assertFails(get(ref(anon.rt, "live/DEVA")));
   });
 
-  it("only the owner reads a device's live series (D60)", async () => {
+  it("only the owner reads a device's live series", async () => {
     await assertSucceeds(get(ref(userA.rt, "series/DEVA/2026-11-17")));
     await assertFails(get(ref(userB.rt, "series/DEVA/2026-11-17")));
     await assertFails(get(ref(admin.rt, "series/DEVA/2026-11-17")));

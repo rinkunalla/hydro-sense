@@ -19,7 +19,7 @@ const STATUS: Record<DeviceErrorCode, number> = {
   INTERNAL: 500,
 };
 
-/** Standard device-endpoint error shape (docs/ERROR_HANDLING.md section 2). */
+/** Standard device-endpoint error shape. */
 export function sendError(res: Response, code: DeviceErrorCode, message: string): void {
   res.status(STATUS[code]).json({ ok: false, code, message });
 }

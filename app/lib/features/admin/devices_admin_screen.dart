@@ -13,7 +13,7 @@ import 'admin_widgets.dart';
 
 enum _Filter { all, unassigned, offline, notSetUp, removed }
 
-/// Devices (docs/UI_UX_SPEC.md 6.2): connection status only (D24), from
+/// Devices: connection status only, from
 /// adminListDevices, refreshed every ADMIN_DEVICES_REFRESH_S.
 class DevicesAdminScreen extends ConsumerStatefulWidget {
   const DevicesAdminScreen({super.key});
@@ -403,7 +403,7 @@ class _DeviceRow extends StatelessWidget {
   }
 }
 
-/// Add device with the install checklist (D41).
+/// Add device with the install checklist.
 class AddDeviceDialog extends ConsumerStatefulWidget {
   const AddDeviceDialog({super.key});
 
@@ -518,8 +518,8 @@ class _AddDeviceDialogState extends ConsumerState<AddDeviceDialog> {
 }
 
 /// Assign (unassigned device) or Reassign (owned device). Moving a device
-/// from one user to another deletes its history (D20), so that is confirmed by
-/// typing the label (D42).
+/// from one user to another deletes its history, so that is confirmed by
+/// typing the label.
 class AssignDialog extends ConsumerStatefulWidget {
   const AssignDialog({super.key, required this.device});
 
@@ -674,7 +674,7 @@ class _AssignDialogState extends ConsumerState<AssignDialog> {
   }
 }
 
-/// An assigned device: label, owner, Reassign and Remove (D42).
+/// An assigned device: label, owner, Reassign and Remove.
 class DevicePanel extends ConsumerStatefulWidget {
   const DevicePanel({super.key, required this.device});
 

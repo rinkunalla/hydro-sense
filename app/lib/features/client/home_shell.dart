@@ -7,7 +7,7 @@ import '../../core/theme.dart';
 import 'map_screen.dart' show mapFullscreenProvider;
 
 /// The Arctic background behind every tab and a glass bottom bar with three
-/// tabs: Devices, Map, Account (docs/UI_UX_SPEC.md section 3).
+/// tabs: Devices, Map, Account.
 class HomeShell extends ConsumerWidget {
   const HomeShell({super.key, required this.shell});
 
@@ -21,7 +21,7 @@ class HomeShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // The full-screen map (D46) hides the bar, on the Map tab only.
+    // The full-screen map hides the bar, on the Map tab only.
     final hideBar = ref.watch(mapFullscreenProvider) && shell.currentIndex == 1;
     return AppBackground(
       child: Scaffold(

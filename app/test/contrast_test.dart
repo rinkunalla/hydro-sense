@@ -1,4 +1,4 @@
-// docs/UI_UX_SPEC.md section 2, "Automated check": every text colour at least
+// Automated check: every text colour at least
 // 4.5:1 and every icon 3:1 against glass at its thinnest (22 % white) and the chip
 // fill (85 % white) over each background stop, plus white on the button gradient.
 import 'package:flutter/material.dart';

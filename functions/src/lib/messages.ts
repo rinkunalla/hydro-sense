@@ -1,4 +1,4 @@
-// Alert wording, used exactly as docs/UI_UX_SPEC.md section 6 gives it.
+// Alert wording, used exactly as gives it.
 import { SMS_MAX_CHARS } from "../config";
 import { formatManila } from "./time";
 
@@ -75,7 +75,7 @@ export function byDevice(items: readonly AlertItem[]): AlertItem[] {
 
 /**
  * One SMS for everything due in a pass; never longer than SMS_MAX_CHARS. Alert SMS
- * carry only No Flow (D27), so a batch reads "No water at {n} areas: ..." (UI spec 7).
+ * carry only No Flow, so a batch reads "No water at {n} areas:...".
  */
 export function buildSms(items: readonly AlertItem[]): string {
   const list = byDevice(items);
@@ -97,7 +97,7 @@ export function buildSms(items: readonly AlertItem[]): string {
 export interface PushMessage {
   title: string;
   body: string;
-  /** Only what the app needs to open the right screen (D37, section 7 rule 14). */
+  /** Only what the app needs to open the right screen. */
   data: { deviceId: string } | { kind: "batch" };
 }
 
@@ -121,7 +121,7 @@ function singlePush(i: AlertItem): Omit<PushMessage, "data"> {
 /** Push names at most this many devices, then "+k more". */
 const PUSH_NAMES_MAX = 3;
 
-/** One push for everything due in a pass (docs/UI_UX_SPEC.md section 7). */
+/** One push for everything due in a pass. */
 export function buildPush(items: readonly AlertItem[]): PushMessage {
   const list = byDevice(items);
   if (list.length === 1) return { ...singlePush(list[0]!), data: { deviceId: list[0]!.deviceId } };

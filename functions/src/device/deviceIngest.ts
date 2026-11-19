@@ -39,7 +39,7 @@ export async function loadState(deviceId: string) {
 }
 
 /**
- * Applies one upload (D48). A heartbeat writes only the Realtime Database;
+ * Applies one upload. A heartbeat writes only the Realtime Database;
  * Firestore gets a problem record on a change, a flow sample every 15 min and
  * a GPS move. Uploads of one device arrive one at a time (the firmware waits
  * for each reply), and the monitor flips offline in a transaction on /live.
@@ -70,7 +70,7 @@ export async function ingest(
       expireAt: ts(nowMs + FLOW_LOG_TTL_DAYS * DAY_MS),
     });
     wrote.push("flow_logs");
-    // The History graph (D53): the same sample in the owner's day record.
+    // The History graph: the same sample in the owner's day record.
     if (state.ownerUid) {
       const day = manilaDateKey(nowMs);
       await db
@@ -97,7 +97,7 @@ export async function ingest(
   if (p.firmware) healthPatch.firmware = p.firmware;
   if (p.resetReason) Object.assign(healthPatch, { resetReason: p.resetReason, resetAt: ts(nowMs) });
 
-  // Today's live series (D60): the highest flow of this minute of the Manila
+  // Today's live series: the highest flow of this minute of the Manila
   // day, so the card's graph fills minute by minute and a short rise is kept.
   // A new day keeps yesterday (for the hours around midnight) and drops
   // anything older.
@@ -148,7 +148,7 @@ export async function ingest(
 }
 
 /**
- * True when this upload may make an alert due (D62): a flow problem confirmed
+ * True when this upload may make an alert due: a flow problem confirmed
  * for ABNORMAL_CONFIRM_S, or a low battery. Then the alert check runs at once
  * for this device, instead of at the next once-a-minute monitor pass.
  */
@@ -199,7 +199,7 @@ export const deviceIngest = onRequest(
       if (out.kind === "unknown_device") {
         return sendError(res, "DEVICE_AUTH_FAILED", "Device is not registered.");
       }
-      // Alerts at the upload itself (D62): the locks, reminders and caps in the
+      // Alerts at the upload itself: the locks, reminders and caps in the
       // alert pass still decide; a failure never fails the upload.
       const nowMs = Date.now();
       if (alertMayBeDue(out.live, nowMs)) {

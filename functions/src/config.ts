@@ -1,9 +1,8 @@
-// Every backend tunable lives here (CLAUDE.md working rule 5). Values come from
-// CLAUDE.md sections 4 to 8 and docs/ERROR_HANDLING.md section 6.
+// Every backend tunable lives here.
 
 // Deployment
 export const REGION = "asia-east1";
-// Realtime Database for the live channel (D48). Its location is fixed at creation;
+// Realtime Database for the live channel. Its location is fixed at creation;
 // asia-southeast1 (Singapore) is the nearest Realtime Database location.
 export const DATABASE_URL =
   "https://hydro-sense-dc836-default-rtdb.asia-southeast1.firebasedatabase.app";
@@ -13,8 +12,8 @@ export const TIME_ZONE = "Asia/Manila";
 // Device health and offline detection
 // Upload pace the server hands to firmware 0.3.0+ in every reply, so it can be
 // tuned without a reflash. Firmware clamps both to its own safe range.
-export const DEVICE_HEARTBEAT_S = 20; // D62: Offline 40 s after the last data
-export const DEVICE_RATE_MIN_INTERVAL_S = 5; // smoother live chart (D61); firmware floor is 5
+export const DEVICE_HEARTBEAT_S = 20; // Offline 40 s after the last data
+export const DEVICE_RATE_MIN_INTERVAL_S = 5; // smoother live chart; firmware floor is 5
 /** A device that reports its heartbeat goes offline after this many missed (60 s at 30 s). */
 export const OFFLINE_MISSED_HEARTBEATS = 2;
 export const OFFLINE_AFTER_MIN_S = 40;
@@ -23,9 +22,9 @@ export const OFFLINE_AFTER_S = 180;
 export const HEARTBEAT_REPORTED_MIN_S = 10;
 export const HEARTBEAT_REPORTED_MAX_S = 120;
 // The offline alert goes as soon as the device counts as Offline: 60 s with
-// nothing from it (D58). The once-a-minute monitor makes that 1 to 2 min.
+// nothing from it. The once-a-minute monitor makes that 1 to 2 min.
 export const OFFLINE_ALERT_AFTER_S = 40;
-// 30 min of readings at the 30 s heartbeat (D56).
+// 30 min of readings at the 30 s heartbeat.
 export const RECENT_VOLTAGES_CAP = 60;
 export const BATTERY_SERIES_CELLS = 2;
 export const BATTERY_CELL_EMPTY_V = 3.3;
@@ -33,7 +32,7 @@ export const BATTERY_CELL_SPAN_V = 0.9;
 export const LOW_BATTERY_PERCENT = 20;
 export const BATTERY_REARM_PERCENT = 30;
 export const CHARGING_TREND_SAMPLES = 15;
-/** batteryPercent is the MEDIAN of the newest readings (D56): the ESP32's
+/** batteryPercent is the MEDIAN of the newest readings: the ESP32's
  * battery reading dips now and then (7.63 V among 8.05 V readings, likely
  * taken while Wi-Fi transmits), and an average let one dip move the percent
  * and fake a "Charging" trend when it left the window. */
@@ -45,14 +44,14 @@ export const CHARGING_FULL_PER_CELL_V = 4.15;
 // Flow classification (starter cutoffs, L/min) and payload clamps
 export const STARTER_LOW_FLOW_CUTOFF = 0.2;
 export const STARTER_NORMAL_FLOW_CUTOFF = 2.0;
-// Owner's own "Low flow below X L/min" (D43). The YF-S201 reads about 1 to 30
-// L/min reliably (D7), so X stays inside that range. Mirrored in firestore.rules.
+// Owner's own "Low flow below X L/min". The YF-S201 reads about 1 to 30
+// L/min reliably, so X stays inside that range. Mirrored in firestore.rules.
 export const USER_NORMAL_CUTOFF_MIN = 1.0;
 export const USER_NORMAL_CUTOFF_MAX = 30;
 export const FLOW_RATE_MAX = 40;
 
 // Alerts
-// A flow problem alerts once it has lasted this long (D62: checked at each
+// A flow problem alerts once it has lasted this long (checked at each
 // upload, so about 30 to 40 s after the water stops).
 export const ABNORMAL_CONFIRM_S = 30;
 export const RECOVERY_CONFIRM_S = 600;
@@ -68,7 +67,7 @@ export const DEVICES_WRITE_MIN_INTERVAL_S = 10;
 export const DEVICES_WRITE_MAX_AGE_S = 300;
 export const RATE_WRITE_DELTA_PCT = 15;
 export const RATE_WRITE_MIN_ABS = 0.3;
-// One flow sample per 15 min, for the weekly calibration only (D48); the app
+// One flow sample per 15 min, for the weekly calibration only; the app
 // reads problems, not flow_logs.
 export const FLOW_LOG_SAMPLE_S = 900;
 export const FLOW_LOG_TTL_DAYS = 7;
@@ -80,7 +79,7 @@ export const ERROR_LOG_MESSAGE_MAX = 300;
 export const SEMAPHORE_URL = "https://api.semaphore.co/api/v4/messages";
 export const SEMAPHORE_OTP_URL = "https://api.semaphore.co/api/v4/otp"; // 2 credits per SMS
 export const PROVIDER_TIMEOUT_MS = 10000;
-/** Android notification channel with high importance, made by the app (D52). */
+/** Android notification channel with high importance, made by the app. */
 export const ALERT_CHANNEL_ID = "alerts";
 export const ALERT_EMAIL_FROM_NAME = "Hydro Sense";
 
@@ -102,26 +101,26 @@ export const REGISTER_MAX_PER_HOUR = 20;
 export const NICKNAME_MAX = 24;
 export const DEVICE_ID_PATTERN = /^[0-9A-F]{12}$/;
 
-// Users, devices and admin actions (CLAUDE.md sections 4 and 6, D20, D32, D42)
+// Users, devices and admin actions
 export const USER_NAME_MAX = 60;
 export const LABEL_MAX = 24;
 export const PH_MOBILE_PATTERN = /^(?:09|\+639|639)(\d{9})$/;
 export const RESTORE_WINDOW_DAYS = 30;
 export const AUDIT_TTL_DAYS = 365;
-// History (D49)
+// History
 export const PROBLEM_TTL_DAYS = 365;
 export const PROBLEM_NOTE_MAX = 100;
-// The History graph (D53): the 15-minute flow samples, one doc per device per
+// The History graph: the 15-minute flow samples, one doc per device per
 // Manila day (96 slots), kept a year. Asia/Manila has no daylight saving.
 export const READINGS_TTL_DAYS = 365;
 export const READING_SLOT_MIN = 15;
 export const MANILA_UTC_OFFSET_MIN = 480;
-export const AUDIT_LIST_LIMIT = 100; // one Activity page (D53)
+export const AUDIT_LIST_LIMIT = 100; // one Activity page
 export const AUDIT_PAGE_MAX = 200;
 export const PIPELINE_MAX_BRANCHES = 10;
 export const PIPELINE_MAX_DEVICES_PER_BRANCH = 50;
 
-// Sign-in codes and admin setup (CLAUDE.md sections 6 and 8, D22, D23, D30, D31)
+// Sign-in codes and admin setup
 export const RESET_CODE_LENGTH = 6;
 export const RESET_CODE_TTL_S = 300;
 export const RESET_MAX_ATTEMPTS = 5;
@@ -129,7 +128,7 @@ export const RESET_RESEND_S = 60;
 export const RESET_MAX_PER_PHONE_DAY = 5;
 export const RESET_TOKEN_TTL_S = 600;
 export const OTP_PROJECT_DAILY_CAP = 30;
-/** Reset codes by email for the whole project per day (D59); Gmail's own
+/** Reset codes by email for the whole project per day; Gmail's own
  * sending limit is far higher, this keeps a runaway caller cheap. */
 export const EMAIL_CODE_PROJECT_DAILY_CAP = 100;
 export const MIN_PASSWORD_LENGTH = 8;
@@ -138,7 +137,7 @@ export const ADMIN_SETUP_TOKEN_TTL_S = 3600;
 export const ADMIN_RECOMMENDED_MIN = 2;
 export const ADMIN_SITE_URL = "https://hydro-sense-dc836.web.app";
 
-// Place search on the map: Google Places API (New), live suggestions (D46).
+// Place search on the map: Google Places API (New), live suggestions.
 // Places results may only be shown on a Google map, so the app's Map view uses
 // Google road map tiles too. Free each month: 10,000 Autocomplete Requests and
 // 10,000 Place Details Essentials (only `location` is asked for; the name comes

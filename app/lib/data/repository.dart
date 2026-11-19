@@ -11,11 +11,11 @@ import 'pipeline.dart';
 /// Everything the client app reads and writes. Widget tests use a fake.
 abstract class ClientRepository {
   /// The client's devices (Firestore, filtered by ownerUid as the rules
-  /// require) joined with each device's live node (Realtime Database, D48).
+  /// require) joined with each device's live node (Realtime Database).
   Stream<Fleet> fleet(String uid);
   Stream<UserProfile?> profile(String uid);
 
-  /// The user's problems that overlap [from, to), newest first (History, D49).
+  /// The user's problems that overlap [from, to), newest first (History).
   Stream<List<Problem>> problems(String uid, DateTime from, DateTime to);
 
   /// One device's problems overlapping the time since [since], newest first
@@ -26,7 +26,7 @@ abstract class ClientRepository {
     DateTime since,
   );
 
-  /// One day of 15-minute flow samples for the History graph (D53): slot
+  /// One day of 15-minute flow samples for the History graph: slot
   /// (0 to 95) to L/min. Empty when the day has no record.
   Future<Map<int, double>> dayReadings(String deviceId, String day);
 
@@ -39,19 +39,19 @@ abstract class ClientRepository {
   /// Deletes every problem that ended before [before]; returns how many.
   Future<int> deleteProblemsBefore(String uid, DateTime before);
 
-  /// The three alert switches on the user's own doc (D27).
+  /// The three alert switches on the user's own doc.
   Future<void> setAlertPrefs(String uid, AlertPrefs prefs);
 
   Future<void> rename(String deviceId, String nickname);
 
-  /// Sets or (with nulls) clears the manual pin, which overrides GPS (D25).
+  /// Sets or (with nulls) clears the manual pin, which overrides GPS.
   Future<void> setManualPin(String deviceId, double? lat, double? lng);
 
-  /// Sets the owner's own Low flow limit, or (null) goes back to automatic
-  /// (D43). The device gets it in its next upload's reply, within about 30 s.
+  /// Sets the owner's own Low flow limit, or (null) goes back to automatic.
+  /// The device gets it in its next upload's reply, within about 30 s.
   Future<void> setFlowLimit(String deviceId, double? normalCutoff);
 
-  /// The user's own pipeline, or null before the first save (D26).
+  /// The user's own pipeline, or null before the first save.
   Stream<Pipeline?> pipeline(String uid);
 
   Future<void> savePipeline(String uid, Pipeline pipeline);
@@ -62,7 +62,7 @@ DateTime? _ms(Object? v) =>
     v is num ? DateTime.fromMillisecondsSinceEpoch(v.toInt()) : null;
 double? _num(Object? v) => v is num ? v.toDouble() : null;
 
-/// A GPS coordinate, or null while device GPS is switched off (D54).
+/// A GPS coordinate, or null while device GPS is switched off.
 double? _gps(Object? v) => AppConfig.deviceGpsEnabled ? _num(v) : null;
 
 AlertPrefs _prefs(Object? v) {
@@ -81,7 +81,7 @@ class FirestoreClientRepository implements ClientRepository {
 
   final FirebaseFirestore _db;
 
-  /// The live channel (D48); null only where nothing reads it.
+  /// The live channel; null only where nothing reads it.
   final FirebaseDatabase? _live;
 
   static Device _device(DocumentSnapshot<Map<String, dynamic>> d, _Raw live) {
@@ -91,8 +91,8 @@ class FirestoreClientRepository implements ClientRepository {
       nickname: (m['nickname'] as String?) ?? d.id,
       flowStatus: live['flowStatus'] as String?,
       flowRate: _num(live['flowRate']),
-      // Effective location (D25): the user's manual pin, else the GPS fix
-      // (only while device GPS is in use, D54).
+      // Effective location: the user's manual pin, else the GPS fix
+      // (only while device GPS is in use).
       lat: _num(m['manualLat']) ?? _gps(m['gpsLat']),
       lng: _num(m['manualLat']) == null
           ? _gps(m['gpsLng'])
@@ -111,7 +111,7 @@ class FirestoreClientRepository implements ClientRepository {
 
   /// Registration and firmware from Firestore; everything live from /live.
   /// Offline as soon as the device is silent past the server's limit, on the
-  /// server's clock, without waiting for the server's once-a-minute check (D51).
+  /// server's clock, without waiting for the server's once-a-minute check.
   static Health _health(
     String id,
     DocumentSnapshot<Map<String, dynamic>>? d,
@@ -155,7 +155,7 @@ class FirestoreClientRepository implements ClientRepository {
         .collection('devices')
         .where('ownerUid', isEqualTo: uid)
         .snapshots(includeMetadataChanges: true);
-    // Only registration and firmware are read here; they change rarely (D48).
+    // Only registration and firmware are read here; they change rarely.
     final health = _db
         .collection('device_health')
         .where('ownerUid', isEqualTo: uid)
@@ -168,7 +168,7 @@ class FirestoreClientRepository implements ClientRepository {
     final liveSubs = <String, StreamSubscription<DatabaseEvent>>{};
     final subs = <StreamSubscription<Object?>>[];
 
-    // Phone clock minus server clock, from the Realtime Database (D51).
+    // Phone clock minus server clock, from the Realtime Database.
     var offsetMs = 0;
     Timer? tick;
 
@@ -211,7 +211,7 @@ class FirestoreClientRepository implements ClientRepository {
             onError: (Object _) {
               // The rules refuse a node that does not exist yet (no owner on
               // it before the device's first upload) or whose new owner is
-              // still being mirrored (D48). Try again shortly, never give up
+              // still being mirrored. Try again shortly, never give up
               // while the device is still in the list.
               live[id] = const {};
               liveSubs.remove(id);

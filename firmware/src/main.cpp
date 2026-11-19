@@ -1,5 +1,5 @@
 // Hydro Sense firmware entry point. Sampling (core 1) never waits on the network
-// (core 0); the two tasks share only the latest reading through AppState (CLAUDE.md section 5).
+// (core 0); the two tasks share only the latest reading through AppState.
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_system.h>

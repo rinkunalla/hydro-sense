@@ -23,10 +23,10 @@ Future<void> main() async {
     // Admin website: the sign-in lasts only for this tab (a reload keeps it);
     // closing the tab or the browser signs the admin out, so a session is
     // never left open on a shared computer. Web only; the phone app keeps
-    // its session so alerts keep arriving (D44, docs/UI_UX_SPEC.md section 6).
+    // its session so alerts keep arriving.
     await FirebaseAuth.instance.setPersistence(Persistence.SESSION);
   }
-  // Phone app (D45): every fresh start asks for the password again. The
+  // Phone app: every fresh start asks for the password again. The
   // phone stays registered for alerts (signing out here doesn't remove it);
   // only Sign out on the Account tab stops them.
   if (!kIsWeb && FirebaseAuth.instance.currentUser != null) {
@@ -34,7 +34,7 @@ Future<void> main() async {
   }
   runApp(
     ProviderScope(
-      // Web = admin website, Android = client app (CLAUDE.md section 9).
+      // Web = admin website, Android = client app.
       child: kIsWeb ? const AdminApp() : const HydroSenseApp(),
     ),
   );

@@ -1,4 +1,4 @@
-// Pure logic for the Details status strip and the History calendar (D49).
+// Pure logic for the Details status strip and the History calendar.
 import 'models.dart';
 
 /// What a stretch of the status strip shows.
@@ -25,7 +25,7 @@ class StripSegment {
   String toString() => 'StripSegment($kind, $from, $to)';
 }
 
-/// Higher wins where problems overlap: Offline hides the flow state (D9).
+/// Higher wins where problems overlap: Offline hides the flow state.
 int _rank(StripKind k) => switch (k) {
   StripKind.offline => 4,
   StripKind.noFlow => 3,
@@ -92,7 +92,7 @@ List<StripSegment> statusStrip(
   return out;
 }
 
-/// What the History filters keep (D49). Empty sets mean "all".
+/// What the History filters keep. Empty sets mean "all".
 enum ProblemState { all, ongoing, resolved }
 
 class HistoryFilter {

@@ -47,7 +47,7 @@ const upload = (o: Partial<IngestPayload> = {}): IngestPayload => ({
   ...o,
 });
 
-describe("applyUpload (D48, D49)", () => {
+describe("applyUpload", () => {
   it("a steady heartbeat changes only the live node: no problem, sample or GPS write", () => {
     const r = applyUpload(live(), state(), upload(), NOW);
     expect(r.problems).toEqual([]);

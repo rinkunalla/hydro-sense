@@ -1,4 +1,4 @@
-// A phone registers for push through this callable, not a direct write (D45).
+// A phone registers for push through this callable, not a direct write.
 // The app signs out on every fresh start but keeps the phone registered, so
 // whoever signs in next on that phone takes its registration over: the same
 // FID under any other account is removed first, and a phone never gets two

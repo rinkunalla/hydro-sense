@@ -25,7 +25,7 @@ const _destinations = [
 ];
 
 /// Glass top bar on every admin page: logo + "Admin", the three tabs, and the
-/// admin's avatar (docs/UI_UX_SPEC.md section 6). Under 800 px the tabs move
+/// admin's avatar. Under 800 px the tabs move
 /// into a drawer. Content is at most 1200 px wide.
 class AdminShell extends ConsumerStatefulWidget {
   const AdminShell({super.key, required this.location, required this.child});
@@ -42,7 +42,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
   void initState() {
     super.initState();
     // Marks an invited admin active on the first sign-in and picks up a
-    // verified email change (D40); the lists reload once it is done.
+    // verified email change; the lists reload once it is done.
     ref
         .read(adminRepositoryProvider)
         .syncMyAdmin()

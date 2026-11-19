@@ -26,7 +26,7 @@ const HOUR_MS = 3_600_000;
 export async function register(deviceId: string, firmware: string | null, nowMs: number) {
   const token = generateToken();
   const hour = Math.floor(nowMs / HOUR_MS);
-  // online lives in the Realtime Database (D48); read before the transaction.
+  // online lives in the Realtime Database; read before the transaction.
   const online = (await readLive(deviceId)).online;
 
   const out = await db.runTransaction<Outcome>(async (tx) => {
@@ -53,7 +53,7 @@ export async function register(deviceId: string, firmware: string | null, nowMs:
 
     if (device.exists) {
       // Records made by assignDevice before the first registration keep their owner
-      // and nickname; only the registration time and firmware are filled in (D41).
+      // and nickname; only the registration time and firmware are filled in.
       tx.set(
         db.collection(C.deviceHealth).doc(deviceId),
         {
@@ -70,7 +70,7 @@ export async function register(deviceId: string, firmware: string | null, nowMs:
       };
     }
 
-    // A device never assigned registers unassigned; the admin assigns it (D10 superseded).
+    // A device never assigned registers unassigned; the admin assigns it (superseded).
     tx.create(db.collection(C.devices).doc(deviceId), newDeviceDoc(deviceId, null, now));
     tx.create(db.collection(C.deviceHealth).doc(deviceId), newHealthDoc(null, now, firmware));
     return {

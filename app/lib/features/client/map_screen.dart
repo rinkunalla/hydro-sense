@@ -16,17 +16,17 @@ import 'map_tiles.dart';
 import 'place_search.dart';
 import 'widgets.dart';
 
-/// Map (docs/UI_UX_SPEC.md 4.4, D26, D33, D37): the pipeline as a pipe line from
+/// Map: the pipeline as a pipe line from
 /// the source through its devices to the end point, pins in status colours,
 /// and the segment where water stops drawn as a red dashed break.
-/// Full-screen map (D46): the tab bar and the title hide, the map fills the
+/// Full-screen map: the tab bar and the title hide, the map fills the
 /// screen. Back or the button returns.
 final mapFullscreenProvider = StateProvider<bool>((ref) => false);
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key, this.focusProblem = false, this.focusDevice});
 
-  /// Opened from a batched push: centre on the problem segment (D37).
+  /// Opened from a batched push: centre on the problem segment.
   final bool focusProblem;
 
   /// Opened from a device's "Show on map": centre on it and ring its pin.
@@ -98,7 +98,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  /// Opens straight on the devices (or the problem segment, D37), so the map
+  /// Opens straight on the devices (or the problem segment), so the map
   /// never loads the whole country first and then jumps.
   MapOptions _options(List<LatLng> all, List<LatLng> problem, LatLng? device) {
     final target = device != null
@@ -236,7 +236,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     final problem = <LatLng>[];
     final lines = <Polyline>[];
-    // Segments with water in them: droplets glide along these (D57).
+    // Segments with water in them: droplets glide along these.
     final flowing = <(LatLng, LatLng)>[];
     for (var k = 1; k < path.length; k++) {
       final a = path[k - 1];
@@ -546,7 +546,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               ),
                             ],
                           ),
-                        // Google place results only over Google tiles (D46).
+                        // Google place results only over Google tiles.
                         if (google && loaded)
                           Positioned(
                             left: AppSpace.m,
@@ -622,7 +622,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 }
 
-/// Glass Map | Satellite toggle (docs/UI_UX_SPEC.md 4.4).
+/// Glass Map | Satellite toggle.
 class _ViewToggle extends StatelessWidget {
   const _ViewToggle({required this.value, required this.onChanged});
 
@@ -670,7 +670,7 @@ class _ViewToggle extends StatelessWidget {
   );
 }
 
-/// Water droplets gliding along every pipe section that has water (D57), in
+/// Water droplets gliding along every pipe section that has water, in
 /// their own layer, so only they redraw while they move. Hidden under reduce
 /// motion.
 class FlowDroplets extends StatefulWidget {
@@ -750,7 +750,7 @@ class _FlowDropletsState extends State<FlowDroplets>
 }
 
 /// A soft ring that blinks behind a map marker while its device has a flow
-/// problem (D57). Still under reduce motion.
+/// problem. Still under reduce motion.
 class BlinkRing extends StatefulWidget {
   const BlinkRing({
     super.key,

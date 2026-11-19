@@ -1,4 +1,4 @@
-// The limits a device classifies with (D43). The weekly calibration keeps
+// The limits a device classifies with. The weekly calibration keeps
 // writing its automatic values to lowFlowCutoff/normalFlowCutoff; an owner's
 // own limit (userNormalCutoff) wins while it is set, so "Use automatic" goes
 // straight back to the latest automatic values.

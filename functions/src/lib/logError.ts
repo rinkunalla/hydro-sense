@@ -17,7 +17,7 @@ export interface ErrorLogInput {
 }
 
 /**
- * The only writer of `error_logs` (docs/ERROR_HANDLING.md section 2). The doc ID is
+ * The only writer of `error_logs`. The doc ID is
  * device + code + dedupe window, and `create()` fails if it exists, so a repeat inside
  * the same window costs one rejected write and no extra read. Never throws.
  * Never pass flow values, GPS, nicknames, phone numbers or emails in `message`.

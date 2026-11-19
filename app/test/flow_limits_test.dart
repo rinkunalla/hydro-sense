@@ -1,4 +1,4 @@
-// Flow limits on Details: automatic or the owner's own (D43).
+// Flow limits on Details: automatic or the owner's own.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

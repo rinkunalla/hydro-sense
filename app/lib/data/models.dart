@@ -1,7 +1,7 @@
 import '../core/config.dart';
 import '../core/theme.dart';
 
-/// `devices/{id}` (CLAUDE.md section 4).
+/// `devices/{id}`.
 class Device {
   const Device({
     required this.id,
@@ -27,7 +27,7 @@ class Device {
   flowStatus; // "Normal Flow" | "Low Flow" | "No Flow" | null (no reading yet)
   final double? flowRate;
 
-  /// Effective location (D25): the manual pin, else the GPS fix, else null.
+  /// Effective location: the manual pin, else the GPS fix, else null.
   final double? lat;
   final double? lng;
 
@@ -40,7 +40,7 @@ class Device {
   final double lowFlowCutoff;
   final double normalFlowCutoff;
 
-  /// The owner's own "Low flow below X L/min" (D43); null = automatic.
+  /// The owner's own "Low flow below X L/min"; null = automatic.
   final double? userNormalCutoff;
   final DateTime? calibratedAt;
 
@@ -68,7 +68,7 @@ class Device {
 
   final DateTime? statusChangedAt;
 
-  /// Start of the current Low/No Flow stretch (kept across Low <-> No, D34).
+  /// Start of the current Low/No Flow stretch (kept across Low <-> No).
   final DateTime? abnormalSince;
 }
 
@@ -99,7 +99,7 @@ class Health {
   final int? rssi;
   final String? firmware;
 
-  /// Null until the device first registers (D41: assigned before delivery).
+  /// Null until the device first registers (assigned before delivery).
   final DateTime? registeredAt;
 
   bool get registered => registeredAt != null || lastSeen != null;
@@ -115,7 +115,7 @@ class DeviceView {
   String get id => device.id;
   String get nickname => device.nickname;
 
-  /// Offline replaces the stale flow status (D9); the phone clock never decides it.
+  /// Offline replaces the stale flow status; the phone clock never decides it.
   StatusKind get status {
     final h = health;
     if (h == null || !h.registered) return StatusKind.notSetUp;
@@ -147,7 +147,7 @@ class DeviceView {
 
   bool get hasGps => device.gpsLat != null && device.gpsLng != null;
 
-  /// When the current problem started (D34): abnormalSince for Low/No Flow,
+  /// When the current problem started: abnormalSince for Low/No Flow,
   /// the last upload for Offline, otherwise null.
   DateTime? get since => switch (status) {
     StatusKind.noFlow || StatusKind.lowFlow => device.abnormalSince,
@@ -155,9 +155,9 @@ class DeviceView {
     _ => null,
   };
 
-  /// The Live cue (D35). Live while online: with Offline at 60 s on the
-  /// server's clock (D51) a separate "Late" stage lasted only seconds and
-  /// confused owners, so it was removed (D53).
+  /// The Live cue. Live while online: with Offline at 60 s on the
+  /// server's clock a separate "Late" stage lasted only seconds and
+  /// confused owners, so it was removed.
   Freshness freshnessAt(DateTime now) {
     final h = health;
     if (h == null || !h.registered) return Freshness.none;
@@ -206,7 +206,7 @@ class UserProfile {
       (displayName ?? '').trim().split(RegExp(r'\s+')).first;
 }
 
-/// The kinds of problem History records (D49), in the order they matter.
+/// The kinds of problem History records, in the order they matter.
 enum ProblemType {
   noFlow('no_flow'),
   lowFlow('low_flow'),

@@ -26,7 +26,7 @@ import '../../data/models.dart';
   StripKind.unknown => (color: AppColors.glacier, word: 'Not set up yet'),
 };
 
-/// The last 24 hours as one bar (D49): calm green, and a colour only where a
+/// The last 24 hours as one bar: calm green, and a colour only where a
 /// problem happened. Built from problem records, so a quiet day reads nothing.
 class StatusStrip extends StatelessWidget {
   const StatusStrip({

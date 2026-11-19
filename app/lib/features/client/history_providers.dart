@@ -19,7 +19,7 @@ final deviceProblemsProvider = StreamProvider.autoDispose
       return ref.watch(repositoryProvider).deviceProblems(uid, deviceId, since);
     });
 
-/// The account's problems touching one month (History, D49). The key is the
+/// The account's problems touching one month (History). The key is the
 /// first day of the month.
 final monthProblemsProvider = StreamProvider.autoDispose
     .family<List<Problem>, DateTime>((ref, month) {
@@ -30,7 +30,7 @@ final monthProblemsProvider = StreamProvider.autoDispose
       return ref.watch(repositoryProvider).problems(uid, first, next);
     });
 
-/// One device's day of 15-minute flow samples for the History graph (D53).
+/// One device's day of 15-minute flow samples for the History graph.
 /// The key is (device ID, "yyyy-MM-dd"); one read per device and day.
 final dayReadingsProvider = FutureProvider.autoDispose
     .family<Map<int, double>, (String, String)>(
@@ -45,7 +45,7 @@ String dayKey(DateTime t) =>
 /// The 15-minute slot of the day (0 to 95) that [t] falls in.
 int daySlot(DateTime t) => (t.hour * 60 + t.minute) ~/ AppConfig.readingSlotMin;
 
-/// "Today so far" on a device card (D55): today's readings, read once and then
+/// "Today so far" on a device card: today's readings, read once and then
 /// every 15 minutes while the card is on screen; a new day starts at midnight.
 final todayReadingsProvider = StreamProvider.autoDispose
     .family<Map<int, double>, String>((ref, deviceId) async* {
@@ -61,7 +61,7 @@ final todayReadingsProvider = StreamProvider.autoDispose
 /// The minute of the day (0 to 1439) that [t] falls in.
 int dayMinute(DateTime t) => t.hour * 60 + t.minute;
 
-/// Today's per-minute flow for one device (D60), live from the Realtime
+/// Today's per-minute flow for one device, live from the Realtime
 /// Database: the server adds this minute's reading with every upload. The key
 /// is (device ID, "yyyy-MM-dd"); a refused read (owner still being mirrored)
 /// gives an empty day.
@@ -93,7 +93,7 @@ final todaySeriesProvider = StreamProvider.autoDispose
 
 const _trendKey = 'trend_range';
 
-/// The card chart's range, 1 h, 2 h or 24 h, remembered on the phone (D61).
+/// The card chart's range, 1 h, 2 h or 24 h, remembered on the phone.
 class TrendRangeNotifier extends StateNotifier<TrendRange> {
   TrendRangeNotifier() : super(TrendRange.hour) {
     _load();

@@ -12,7 +12,7 @@ import '../../data/admin_repository.dart';
 import 'activity_screen.dart' show TargetActivity;
 import 'admin_widgets.dart';
 
-/// Users (docs/UI_UX_SPEC.md 6.1): name, mobile, devices, status. A row opens
+/// Users: name, mobile, devices, status. A row opens
 /// the side panel; Create user uses the same panel, empty.
 class UsersScreen extends ConsumerStatefulWidget {
   const UsersScreen({super.key});

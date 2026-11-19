@@ -1,4 +1,4 @@
-// Admin accounts (CLAUDE.md D23, D40). Admins exist only through an invite (or
+// Admin accounts. Admins exist only through an invite (or
 // tools/seed-admins.ts) and set their password with a one-time setup link that
 // works once and expires in ADMIN_SETUP_TOKEN_TTL_S. Only the link's hash is stored.
 import { getAuth } from "firebase-admin/auth";
@@ -266,7 +266,7 @@ export const updateMyAdminName = onCall(async (request) => {
 
 /**
  * Called by the website after every admin sign-in: marks an invited admin active
- * on the first sign-in, and copies a verified new email into the record (D40).
+ * on the first sign-in, and copies a verified new email into the record.
  */
 export const syncMyAdmin = onCall(async (request) => {
   const uid = await requireAdminClaim(request);
@@ -287,7 +287,7 @@ export const syncMyAdmin = onCall(async (request) => {
   return { status: (update.status as string | undefined) ?? snap.get("status") };
 });
 
-/** Ends every session of the caller, including this one (D40). */
+/** Ends every session of the caller, including this one. */
 export const signOutEverywhere = onCall(async (request) => {
   const uid = await requireAdmin(request);
   await getAuth().revokeRefreshTokens(uid);

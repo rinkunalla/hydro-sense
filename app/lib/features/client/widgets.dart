@@ -9,7 +9,7 @@ import '../../core/time_format.dart';
 import '../../data/models.dart';
 
 /// Status is never colour alone: icon in its colour + ink word on a near-white
-/// pill (docs/UI_UX_SPEC.md sections 1 and 3).
+/// pill.
 class StatusChip extends StatelessWidget {
   const StatusChip(this.kind, {super.key, this.large = false});
 
@@ -47,7 +47,7 @@ class StatusChip extends StatelessWidget {
   }
 }
 
-/// "● Live 12 s" / "○ Late 4 min" (D35); nothing when Offline (the chip says it).
+/// "● Live 12 s" / "○ Late 4 min"; nothing when Offline (the chip says it).
 class LiveCue extends StatefulWidget {
   const LiveCue({super.key, required this.view, required this.now});
 
@@ -135,7 +135,7 @@ class _DotPainter extends CustomPainter {
   bool shouldRepaint(_DotPainter old) => old.t != t;
 }
 
-/// "Since 6:10 AM · 42 min" under the chip of a problem or Offline card (D34).
+/// "Since 6:10 AM · 42 min" under the chip of a problem or Offline card.
 class SinceLine extends StatelessWidget {
   const SinceLine({super.key, required this.view, required this.now});
 
@@ -172,7 +172,7 @@ class BatteryGauge extends StatelessWidget {
 
   final DeviceView view;
 
-  /// The card's top-right corner (D57): the icon and "77%" only; charging,
+  /// The card's top-right corner: the icon and "77%" only; charging,
   /// low and last-seen show as the icon and colour, and in the spoken label.
   final bool compact;
 
@@ -287,7 +287,7 @@ class BatteryGauge extends StatelessWidget {
   }
 }
 
-/// The glass pipe with flowing water (docs/UI_UX_SPEC.md section 3): full for
+/// The glass pipe with flowing water: full for
 /// Normal, thin for Low, empty with a red break for No flow, grey and still when
 /// Offline. Under reduce motion the water is a still stream of the same thickness.
 class PipeView extends StatefulWidget {
@@ -437,7 +437,7 @@ class PipePainter extends CustomPainter {
   bool shouldRepaint(PipePainter old) => old.kind != kind || old.phase != phase;
 }
 
-/// How fast the device's rotor turns for a flow rate (D57): faster flow, faster
+/// How fast the device's rotor turns for a flow rate: faster flow, faster
 /// spin, like the sensor's own water wheel. 0 when no water moves.
 double rotorTurnsPerSecond(double? lpm) {
   if (lpm == null || lpm <= 0) return 0;
@@ -446,7 +446,7 @@ double rotorTurnsPerSecond(double? lpm) {
 
 /// The device drawing with a status-coloured ring (cards and the empty state).
 /// Its rotor spins while water flows, at a speed that follows the flow, and
-/// stands still under reduce motion, with no flow, or offline (D57).
+/// stands still under reduce motion, with no flow, or offline.
 class DeviceIllustration extends StatefulWidget {
   const DeviceIllustration({
     super.key,
@@ -601,7 +601,7 @@ class _DevicePainter extends CustomPainter {
 
 /// Animates children to their new positions when the order changes ("FLIP"),
 /// so cards glide instead of jumping while the person is tapping; a removed
-/// child fades and collapses instead of vanishing (docs/UI_UX_SPEC.md 4.2).
+/// child fades and collapses instead of vanishing.
 class FlipColumn extends StatefulWidget {
   const FlipColumn({
     super.key,

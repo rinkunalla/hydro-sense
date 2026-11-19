@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'config.dart';
 import 'theme.dart';
 
-// Liquid glass components (D39, docs/UI_UX_SPEC.md sections 2 and 3).
+// Liquid glass components.
 
 /// The OS "Remove animations" setting (Android) / "Reduce motion" (iOS).
 bool reduceMotion(BuildContext context) =>

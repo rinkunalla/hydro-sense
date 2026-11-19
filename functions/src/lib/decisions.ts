@@ -17,7 +17,7 @@ export const isAbnormal = (s: FlowStatus | null) => s === "Low Flow" || s === "N
 
 /**
  * Set when entering Low/No Flow from Normal (or from no reading), kept while
- * moving between Low and No Flow, cleared on Normal (CLAUDE.md section 6).
+ * moving between Low and No Flow, cleared on Normal.
  */
 export function nextAbnormalSince(
   prevStatus: FlowStatus | null,
@@ -46,7 +46,7 @@ export interface DevicesWriteInput {
   nowMs: number;
 }
 
-/** deviceIngest writes `devices` only when this is true (CLAUDE.md section 6). */
+/** deviceIngest writes `devices` only when this is true. */
 export function shouldWriteDevices(i: DevicesWriteInput): boolean {
   if (i.statusChanged || i.locationChanged || i.updatedAtMs === null) return true;
   const ageMs = i.nowMs - i.updatedAtMs;

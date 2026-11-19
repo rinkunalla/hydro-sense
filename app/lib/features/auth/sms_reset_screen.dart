@@ -12,8 +12,7 @@ import '../../data/account_repository.dart';
 import 'code_entry.dart';
 import 'password_rules.dart';
 
-/// Set or reset the password with a 6-digit code, 3 steps (D22, D59,
-/// docs/UI_UX_SPEC.md 5.2): by email first, or by mobile number. No reset link:
+/// Set or reset the password with a 6-digit code in 3 steps: by email first, or by mobile number. No reset link:
 /// the code is typed here and the new password is set here. Step 1 always
 /// continues, so it never reveals whether an address has an account.
 class SmsResetScreen extends ConsumerStatefulWidget {
@@ -29,7 +28,7 @@ class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
   final _mobile = TextEditingController();
   final _email = TextEditingController();
   // Email first: it works before any SMS sender is approved, and the code
-  // never leaves the app as a clickable link (D59).
+  // never leaves the app as a clickable link.
   bool _byEmail = true;
   final _a = TextEditingController();
   final _b = TextEditingController();
@@ -240,7 +239,7 @@ class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
           const StepHeader(step: 2, title: 'Enter the code'),
           const SizedBox(height: AppSpace.s),
           // Same words for any number, so nobody can learn who has an
-          // account (enumeration-safe, CLAUDE.md section 6).
+          // account (enumeration-safe).
           Text(
             'If $_maskedAddress has an account, a 6-digit code is on '
             'its way. It can take a minute.',

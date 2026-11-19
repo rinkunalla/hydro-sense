@@ -51,7 +51,7 @@ class _Card extends StatelessWidget {
   );
 }
 
-/// "Set up an admin account" (D23): an invited admin asks for a one-time link.
+/// "Set up an admin account": an invited admin asks for a one-time link.
 /// The reply is the same for every email.
 class AdminSetupRequestScreen extends ConsumerStatefulWidget {
   const AdminSetupRequestScreen({super.key});
@@ -130,7 +130,7 @@ class _RequestState extends ConsumerState<AdminSetupRequestScreen> {
   );
 }
 
-/// The page the emailed link opens: choose a password, then sign in (D23).
+/// The page the emailed link opens: choose a password, then sign in.
 class AdminSetPasswordScreen extends ConsumerStatefulWidget {
   const AdminSetPasswordScreen({super.key, required this.token});
 

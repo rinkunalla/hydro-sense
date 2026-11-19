@@ -1,9 +1,9 @@
 rules_version = '2';
 
-// Access model: CLAUDE.md section 4. Cloud Functions use the Admin SDK and
+// Access model: Cloud Functions use the Admin SDK and
 // bypass these rules; every write below is the only write a person may make.
-// Firestore rules cannot hide fields (D5), so admins and users read separate
-// collections; admins get device status only through adminListDevices (D24).
+// Firestore rules cannot hide fields, so admins and users read separate
+// collections; admins get device status only through adminListDevices.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -47,13 +47,13 @@ service cloud.firestore {
       return v is number && v >= -180 && v <= 180;
     }
 
-    // Manual pin (D25): both null, or both valid numbers.
+    // Manual pin: both null, or both valid numbers.
     function validManualPin(d) {
       return (d.get('manualLat', null) == null && d.get('manualLng', null) == null)
         || (validLat(d.get('manualLat', null)) && validLng(d.get('manualLng', null)));
     }
 
-    // Owner's own "Low flow below X L/min" (D43); null = automatic.
+    // Owner's own "Low flow below X L/min"; null = automatic.
     // USER_NORMAL_CUTOFF_MIN/MAX in functions/src/config.ts.
     function validUserCutoff(v) {
       return v == null || (v is number && v >= 1.0 && v <= 30);
@@ -74,7 +74,7 @@ service cloud.firestore {
         && p.push is bool && p.sms is bool && p.email is bool;
     }
 
-    // Pipeline (D26): rules have no loops, so the 10 branches are checked one by one.
+    // Pipeline: rules have no loops, so the 10 branches are checked one by one.
     // A request may evaluate at most 1,000 expressions, so each branch check is kept
     // small: allowed keys, types and sizes (abuse limits). Every key is read, and
     // reading a missing key denies the write, so no hasAll() is needed. Coordinate ranges and the
@@ -110,7 +110,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['alertPrefs'])
         && validAlertPrefs(request.resource.data.alertPrefs);
 
-      // Registered only through claimPushToken (D45), which first removes the
+      // Registered only through claimPushToken, which first removes the
       // phone from any other account; the owner may delete it (Sign out).
       match /push_tokens/{token} {
         allow read, delete: if isSelf(uid);
@@ -121,7 +121,7 @@ service cloud.firestore {
       allow read: if isAdmin();
     }
 
-    // Immutable audit log (D42): no person may create, change or delete an entry.
+    // Immutable audit log: no person may create, change or delete an entry.
     match /admin_audit/{id} {
       allow read: if isAdmin();
     }
@@ -139,7 +139,7 @@ service cloud.firestore {
       allow read: if ownsDoc(resource.data);
     }
 
-    // History (D49): only the functions create problems. The owner may add or
+    // History: only the functions create problems. The owner may add or
     // clear a note (up to 100 characters) and delete a problem that has ended.
     match /problems/{id} {
       allow read: if ownsDoc(resource.data);
@@ -149,7 +149,7 @@ service cloud.firestore {
       allow delete: if ownsDoc(resource.data) && resource.data.endedAt != null;
     }
 
-    // The History graph (D53): one day of 15-minute flow samples per device.
+    // The History graph: one day of 15-minute flow samples per device.
     // Read by the owner; written only by the functions.
     match /readings/{id} {
       allow read: if ownsDoc(resource.data);
