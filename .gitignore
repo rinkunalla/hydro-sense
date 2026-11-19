@@ -63,3 +63,16 @@ app/android/app/release/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Capstone documents and screenshots (kept out of git)
+docs/capstone/
+*.docx
+
+# Kept on the developers' computers only (planning notes, specs, tools)
+CLAUDE.md
+KICKOFF.md
+.claude/
+docs/
+tools/
+scripts/
+/package.json
