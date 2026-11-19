@@ -47,8 +47,6 @@ class AdminAccountScreen extends ConsumerWidget {
             ],
           )
         else ...const [left, SizedBox(height: AppSpace.l), right],
-        const SizedBox(height: AppSpace.l),
-        const _Activity(),
       ],
     );
   }
@@ -506,115 +504,6 @@ class _AdminsState extends ConsumerState<_Admins> {
             ErrorLine(_error),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// The audit trail (D42): newest first; nobody can edit or delete it.
-class _Activity extends ConsumerWidget {
-  const _Activity();
-
-  static String sentence(AuditEntry e) {
-    final who = e.adminEmail ?? 'An admin';
-    final what = e.targetName ?? e.targetId ?? '';
-    return switch (e.action) {
-      'user_deleted' => '$who deleted the user $what',
-      'user_restored' => '$who restored the user $what',
-      'device_removed' => '$who removed $what',
-      'device_restored' => '$who restored $what',
-      'device_reassigned' => '$who reassigned $what',
-      'admin_removed' => '$who removed the admin $what',
-      'deletion_requested' => '$what asked to delete their account',
-      _ => '$who: ${e.action} $what',
-    };
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final log = ref.watch(adminAuditProvider);
-    final now = DateTime.now();
-    final repo = ref.read(adminRepositoryProvider);
-    Future<void> restore(AuditEntry e) async {
-      try {
-        if (e.action == 'user_deleted') {
-          await repo.restoreUser(e.targetId!);
-        } else {
-          await repo.restoreDevice(e.targetId!);
-        }
-        ref.invalidate(adminAuditProvider);
-        ref.invalidate(adminUsersProvider);
-        ref.invalidate(adminDevicesProvider);
-        if (context.mounted) showToast(context, 'Restored.');
-      } catch (err) {
-        if (context.mounted) showToast(context, adminErrorText(err));
-      }
-    }
-
-    return AdminCard(
-      title: 'Activity',
-      action: IconButton(
-        tooltip: 'Refresh',
-        icon: const Icon(Icons.refresh_rounded),
-        onPressed: () => ref.invalidate(adminAuditProvider),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            "Deletes, removals and reassignments by any admin. Entries can't "
-            'be changed.',
-            style: AppText.note,
-          ),
-          const SizedBox(height: AppSpace.s),
-          log.when(
-            loading: () => const LinearProgressIndicator(),
-            error: (e, _) => ErrorLine(adminErrorText(e)),
-            data: (entries) => entries.isEmpty
-                ? Text(
-                    'Nothing yet.',
-                    style: AppText.body.copyWith(fontSize: 14),
-                  )
-                : Column(
-                    children: [
-                      for (final e in entries)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text.rich(
-                                  TextSpan(
-                                    children: [
-                                      TextSpan(
-                                        text: sentence(e),
-                                        style: AppText.body.copyWith(
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      if (e.at != null)
-                                        TextSpan(
-                                          text: ' · ${clockTime(e.at!, now)}',
-                                          style: AppText.note,
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              if ((e.action == 'user_deleted' ||
-                                      e.action == 'device_removed') &&
-                                  e.targetId != null)
-                                TextButton(
-                                  onPressed: () => restore(e),
-                                  child: const Text('Restore'),
-                                ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-          ),
-        ],
       ),
     );
   }

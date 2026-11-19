@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models.dart';
 import 'pipeline.dart';
 import 'push.dart';
+import 'live_db.dart';
 import 'repository.dart';
 
 final authProvider = Provider<FirebaseAuth>((ref) => FirebaseAuth.instance);
@@ -27,7 +28,8 @@ Future<void> signOut(WidgetRef ref) async {
 }
 
 final repositoryProvider = Provider<ClientRepository>(
-  (ref) => FirestoreClientRepository(FirebaseFirestore.instance),
+  (ref) =>
+      FirestoreClientRepository(FirebaseFirestore.instance, liveDatabase()),
 );
 
 /// The signed-in user (null when signed out).
@@ -78,10 +80,6 @@ final pipelineProvider = StreamProvider<Pipeline?>((ref) {
   if (uid == null) return Stream.value(null);
   return ref.watch(repositoryProvider).pipeline(uid);
 });
-
-final statusChangesProvider = StreamProvider.family<List<StatusChange>, String>(
-  (ref, id) => ref.watch(repositoryProvider).statusChanges(id),
-);
 
 /// True when the phone has no network connection at all.
 final phoneOfflineProvider = StreamProvider<bool>((ref) async* {

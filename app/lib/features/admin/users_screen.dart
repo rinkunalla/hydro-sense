@@ -9,6 +9,7 @@ import '../../core/time_format.dart';
 import '../../data/admin_logic.dart';
 import '../../data/admin_providers.dart';
 import '../../data/admin_repository.dart';
+import 'activity_screen.dart' show TargetActivity;
 import 'admin_widgets.dart';
 
 /// Users (docs/UI_UX_SPEC.md 6.1): name, mobile, devices, status. A row opens
@@ -22,6 +23,13 @@ class UsersScreen extends ConsumerStatefulWidget {
 
 class _UsersScreenState extends ConsumerState<UsersScreen> {
   UserFilter _filter = UserFilter.all;
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   void _refresh() {
     ref.invalidate(adminUsersProvider);
@@ -78,44 +86,62 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
             text: "Can't load the users. ${adminErrorText(e)}",
           ),
           data: (all) {
-            final suspended = all.where((u) => u.suspended).length;
-            if (_filter == UserFilter.suspended && suspended == 0) {
+            int count(UserFilter f) =>
+                all.where((u) => userMatches(u, f, '')).length;
+            if (_filter != UserFilter.all && count(_filter) == 0) {
               _filter = UserFilter.all;
             }
             final rows = sortUsers(
-              _filter == UserFilter.all
-                  ? all
-                  : all.where((u) => u.suspended).toList(),
+              all.where((u) => userMatches(u, _filter, _search.text)).toList(),
             );
+            const words = {
+              UserFilter.all: 'All',
+              UserFilter.noPassword: 'Password not set',
+              UserFilter.deletionRequested: 'Deletion requested',
+              UserFilter.suspended: 'Suspended',
+            };
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (suspended > 0) ...[
-                  Wrap(
-                    spacing: AppSpace.s,
-                    children: [
-                      FilterPill(
-                        label: 'All ${all.length}',
-                        selected: _filter == UserFilter.all,
-                        onTap: () => setState(() => _filter = UserFilter.all),
-                      ),
-                      FilterPill(
-                        label: 'Suspended $suspended',
-                        selected: _filter == UserFilter.suspended,
-                        onTap: () =>
-                            setState(() => _filter = UserFilter.suspended),
-                      ),
-                    ],
+                TextField(
+                  controller: _search,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Search by name, mobile or email',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () => setState(_search.clear),
+                          ),
                   ),
-                  const SizedBox(height: AppSpace.m),
-                ],
+                ),
+                const SizedBox(height: AppSpace.s),
+                Wrap(
+                  spacing: AppSpace.s,
+                  runSpacing: AppSpace.s,
+                  children: [
+                    for (final f in UserFilter.values)
+                      if (f == UserFilter.all || count(f) > 0)
+                        FilterPill(
+                          label: '${words[f]} ${count(f)}',
+                          selected: _filter == f,
+                          onTap: () => setState(() => _filter = f),
+                        ),
+                  ],
+                ),
+                const SizedBox(height: AppSpace.m),
                 GlassPanel(
                   padding: const EdgeInsets.symmetric(vertical: AppSpace.s),
                   child: rows.isEmpty
                       ? Padding(
                           padding: const EdgeInsets.all(AppSpace.l),
                           child: Text(
-                            'No users yet. Create the first one.',
+                            all.isEmpty
+                                ? 'No users yet. Create the first one.'
+                                : 'No users match.',
                             style: AppText.body,
                           ),
                         )
@@ -332,7 +358,7 @@ class _UserPanelState extends ConsumerState<UserPanel> {
         if (!mounted) return;
         showToast(
           context,
-          "User created. Ask them to open the app and tap 'Forgot password or first time?'.",
+          "User created. Ask them to open the app and tap 'Forgot password?' to set their password.",
         );
       } else {
         await repo.updateUser(
@@ -462,6 +488,10 @@ class _UserPanelState extends ConsumerState<UserPanel> {
             destructive: true,
             onPressed: _busy ? null : _delete,
           ),
+        ],
+        if (u != null) ...[
+          const SizedBox(height: AppSpace.xl),
+          TargetActivity(targetId: u.uid),
         ],
       ],
     );

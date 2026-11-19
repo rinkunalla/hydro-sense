@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,8 +12,10 @@ import '../../data/account_repository.dart';
 import 'code_entry.dart';
 import 'password_rules.dart';
 
-/// Set or reset the password by SMS code, 3 steps (D22, docs/UI_UX_SPEC.md 5.2).
-/// Step 1 always continues, so it never reveals whether a number has an account.
+/// Set or reset the password with a 6-digit code, 3 steps (D22, D59,
+/// docs/UI_UX_SPEC.md 5.2): by email first, or by mobile number. No reset link:
+/// the code is typed here and the new password is set here. Step 1 always
+/// continues, so it never reveals whether an address has an account.
 class SmsResetScreen extends ConsumerStatefulWidget {
   const SmsResetScreen({super.key, this.now});
 
@@ -27,8 +28,9 @@ class SmsResetScreen extends ConsumerStatefulWidget {
 class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
   final _mobile = TextEditingController();
   final _email = TextEditingController();
-  bool _byEmail = false;
-  String? _emailSentTo;
+  // Email first: it works before any SMS sender is approved, and the code
+  // never leaves the app as a clickable link (D59).
+  bool _byEmail = true;
   final _a = TextEditingController();
   final _b = TextEditingController();
   int _step = 1;
@@ -88,122 +90,51 @@ class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
   String authOrCodeMessage(Object e) =>
       authMessage(e) == Messages.generic ? callableMessage(e) : authMessage(e);
 
+  /// The email typed, trimmed and lower-case, or null when it is not one.
+  String? get _emailAddress {
+    final e = _email.text.trim().toLowerCase();
+    return RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(e) ? e : null;
+  }
+
+  /// Where the code goes: the email, or the mobile number.
+  String? get _address => _byEmail ? _emailAddress : _phone;
+
+  /// "j•••@gmail.com" or "0917 ••• 4567", for "a code is on its way".
+  String get _maskedAddress {
+    if (!_byEmail) return maskedPhone(_phone);
+    final e = _emailAddress ?? '';
+    final at = e.indexOf('@');
+    return at < 1 ? e : '${e[0]}•••${e.substring(at)}';
+  }
+
   Future<void> _send() async {
-    final phone = _phone;
-    if (phone == null) {
-      setState(() => _error = Messages.phoneHint);
+    final address = _address;
+    if (address == null) {
+      setState(
+        () => _error = _byEmail
+            ? 'Enter the email on your account.'
+            : Messages.phoneHint,
+      );
       return;
     }
     await _run(() async {
       _resendAfter = await ref
           .read(accountRepositoryProvider)
-          .requestResetCode(phone);
+          .requestResetCode(address, byEmail: _byEmail);
       _sentAt = _now();
       if (mounted) setState(() => _step = 2);
     });
   }
 
-  /// Email link instead of an SMS code. Same reply whether or not the address
-  /// has an account; only "no internet" and "too many tries" are told apart.
-  Future<void> _sendEmail() async {
-    final email = _email.text.trim();
-    if (!email.contains('@') || email.length < 5) {
-      setState(() => _error = 'Enter the email on your account.');
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await ref.read(accountRepositoryProvider).sendResetEmail(email);
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'network-request-failed' || e.code == 'too-many-requests') {
-        if (mounted) {
-          setState(() {
-            _busy = false;
-            _error = authMessage(e);
-          });
-        }
-        return;
-      }
-    } catch (_) {
-      // Every other outcome gets the same confirmation (no account enumeration).
-    }
-    if (mounted) {
-      setState(() {
-        _busy = false;
-        _emailSentTo = email;
-      });
-    }
-  }
-
   void _switchMode() => setState(() {
     _byEmail = !_byEmail;
     _error = null;
-    _emailSentTo = null;
   });
-
-  Widget _emailStep() {
-    final sentTo = _emailSentTo;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Semantics(
-          header: true,
-          child: Text('Set your password by email', style: AppText.title(24)),
-        ),
-        const SizedBox(height: AppSpace.xs),
-        Text(
-          "We'll email you a link. Open it to choose a password.",
-          style: AppText.note,
-        ),
-        const SizedBox(height: AppSpace.l),
-        if (sentTo == null) ...[
-          TextField(
-            controller: _email,
-            enabled: !_busy,
-            keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.email],
-            decoration: const InputDecoration(labelText: 'Email'),
-            onSubmitted: (_) => _sendEmail(),
-          ),
-          _errorText(),
-          const SizedBox(height: AppSpace.l),
-          PrimaryButton(
-            label: 'Send the link',
-            busy: _busy,
-            onPressed: _sendEmail,
-          ),
-        ] else ...[
-          Text(
-            'If $sentTo has an account, we sent a link to it. Open the link, '
-            'choose a password, then come back and sign in.',
-            style: AppText.body,
-          ),
-          const SizedBox(height: AppSpace.s),
-          Text(
-            "Not there after a few minutes? Check your spam folder.",
-            style: AppText.note,
-          ),
-          const SizedBox(height: AppSpace.l),
-          PrimaryButton(
-            label: 'Back to sign in',
-            onPressed: () => context.go('/login'),
-          ),
-        ],
-        TextButton(
-          onPressed: _busy ? null : _switchMode,
-          child: const Text('Use my mobile number instead'),
-        ),
-      ],
-    );
-  }
 
   Future<void> _verify() => _run(() async {
     _token = await ref
         .read(accountRepositoryProvider)
-        .verifyResetCode(_phone!, _code);
+        .verifyResetCode(_address!, _code, byEmail: _byEmail);
     if (mounted) setState(() => _step = 3);
   });
 
@@ -251,7 +182,33 @@ class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
   @override
   Widget build(BuildContext context) {
     final step = switch (_step) {
-      1 when _byEmail => _emailStep(),
+      1 when _byEmail => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const StepHeader(step: 1, title: 'Your email'),
+          const SizedBox(height: AppSpace.xs),
+          Text(
+            "We'll email you a 6-digit code to set a new password.",
+            style: AppText.note,
+          ),
+          const SizedBox(height: AppSpace.l),
+          TextField(
+            controller: _email,
+            enabled: !_busy,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            decoration: const InputDecoration(labelText: 'Email'),
+            onSubmitted: (_) => _send(),
+          ),
+          _errorText(),
+          const SizedBox(height: AppSpace.l),
+          PrimaryButton(label: 'Send the code', busy: _busy, onPressed: _send),
+          TextButton(
+            onPressed: _busy ? null : _switchMode,
+            child: const Text('Use my mobile number instead'),
+          ),
+        ],
+      ),
       1 => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -282,11 +239,17 @@ class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
         children: [
           const StepHeader(step: 2, title: 'Enter the code'),
           const SizedBox(height: AppSpace.s),
-          Text(Messages.codeSent, style: AppText.note),
+          // Same words for any number, so nobody can learn who has an
+          // account (enumeration-safe, CLAUDE.md section 6).
           Text(
-            'We sent a 6-digit code to ${maskedPhone(_phone)}.',
+            'If $_maskedAddress has an account, a 6-digit code is on '
+            'its way. It can take a minute.',
             style: AppText.body,
           ),
+          if (_byEmail) ...[
+            const SizedBox(height: AppSpace.xs),
+            Text('Not in your inbox? Check spam.', style: AppText.note),
+          ],
           const SizedBox(height: AppSpace.l),
           CodeEntry(
             sentAt: _sentAt ?? _now(),
@@ -312,7 +275,11 @@ class _SmsResetScreenState extends ConsumerState<SmsResetScreen> {
                     _step = 1;
                     _error = null;
                   }),
-            child: const Text('Wrong number? Go back and try again.'),
+            child: Text(
+              _byEmail
+                  ? 'Wrong email? Go back and try again.'
+                  : 'Wrong number? Go back and try again.',
+            ),
           ),
         ],
       ),

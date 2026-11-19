@@ -2,12 +2,21 @@ import { describe, expect, it } from "vitest";
 import { appendVoltage, batteryPercent, chargingTrend, smoothedVoltage } from "../src/lib/battery";
 import { generateToken, safeEqual, sha256Hex } from "../src/lib/tokens";
 
-describe("smoothedVoltage", () => {
-  it("averages the newest five readings so noise does not move the percent", () => {
-    const noisy = [7.0, 8.07, 8.1, 8.05, 8.09, 8.06];
-    expect(smoothedVoltage(noisy)).toBeCloseTo(8.074, 3);
-    expect(batteryPercent(smoothedVoltage(noisy))).toBe(82);
+// The device's real readings on 2026-11-17: steady about 8.05 V with dips
+// (7.78, 7.63, 7.96) while it was running on battery, not charging.
+const REAL = [
+  8.08, 8.05, 8.07, 8.06, 8.06, 8.06, 8.06, 8.05, 8.05, 8.05, 8.04, 8.05, 8.05, 8.04, 8.06,
+  7.78, 7.63, 7.96, 8.06, 8.04,
+];
+
+describe("smoothedVoltage (median, D56)", () => {
+  it("ignores a dip, so the percent does not jump", () => {
+    expect(smoothedVoltage([8.05, 8.06, 7.63, 8.05, 8.04])).toBe(8.05);
     expect(smoothedVoltage([8.2])).toBe(8.2);
+    // Every window of the real readings gives the same few percent.
+    const pcts = new Set<number>();
+    for (let i = 9; i <= REAL.length; i++) pcts.add(batteryPercent(smoothedVoltage(REAL.slice(0, i))));
+    expect(Math.max(...pcts) - Math.min(...pcts)).toBeLessThanOrEqual(1);
   });
 });
 
@@ -26,20 +35,25 @@ describe("batteryPercent", () => {
 });
 
 describe("chargingTrend", () => {
-  const ramp = (start: number, step: number, n = 10) =>
+  const ramp = (start: number, step: number, n = 30) =>
     Array.from({ length: n }, (_, i) => start + i * step);
 
   it("detects charging, discharging, full and steady", () => {
-    expect(chargingTrend(ramp(7.5, 0.01))).toBe("Charging"); // +0.05 between means
+    expect(chargingTrend(ramp(7.5, 0.01))).toBe("Charging"); // +0.15 between medians
     expect(chargingTrend(ramp(7.9, -0.01))).toBe("Discharging");
     expect(chargingTrend(ramp(8.35, 0))).toBe("Full");
     expect(chargingTrend(ramp(7.6, 0))).toBe("Steady");
     expect(chargingTrend([7.6])).toBe("Steady");
   });
 
-  it("keeps recentVoltages capped at 20", () => {
-    const list = appendVoltage(ramp(7, 0.01, 20), 8);
-    expect(list).toHaveLength(20);
+  it("does not call dips leaving the window charging (D56)", () => {
+    expect(chargingTrend(REAL)).toBe("Steady");
+    expect(chargingTrend([...REAL, 8.05, 8.06, 8.05, 8.04, 8.06])).toBe("Steady");
+  });
+
+  it("keeps recentVoltages capped at 60 (30 min)", () => {
+    const list = appendVoltage(ramp(7, 0.01, 60), 8);
+    expect(list).toHaveLength(60);
     expect(list.at(-1)).toBe(8);
   });
 });

@@ -44,6 +44,10 @@ final pushTapsProvider = StreamProvider<Map<String, dynamic>>(
   (ref) => ref.watch(pushServiceProvider).taps(),
 );
 
+final pushForegroundProvider = StreamProvider<ForegroundAlert>(
+  (ref) => ref.watch(pushServiceProvider).foreground(),
+);
+
 void watchPush(WidgetRef ref) {
   ref.listen<AsyncValue<String?>>(roleProvider, (prev, next) {
     final uid = ref.read(authProvider).currentUser?.uid;
@@ -58,6 +62,27 @@ void watchPush(WidgetRef ref) {
     if (data == null) return;
     final hasPipeline = ref.read(pipelineProvider).valueOrNull != null;
     ref.read(routerProvider).go(routeForPush(data, hasPipeline: hasPipeline));
+  });
+  // An alert while the app is open: Android shows nothing, so show it here,
+  // with Open going where a tapped notification would (D37).
+  ref.listen<AsyncValue<ForegroundAlert>>(pushForegroundProvider, (_, next) {
+    final a = next.valueOrNull;
+    if (a == null) return;
+    final hasPipeline = ref.read(pipelineProvider).valueOrNull != null;
+    scaffoldMessengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: AppConfig.foregroundAlertS),
+          content: Text(a.body.isEmpty ? a.title : '${a.title}: ${a.body}'),
+          action: SnackBarAction(
+            label: 'Open',
+            onPressed: () => ref
+                .read(routerProvider)
+                .go(routeForPush(a.data, hasPipeline: hasPipeline)),
+          ),
+        ),
+      );
   });
 }
 

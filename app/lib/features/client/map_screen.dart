@@ -147,6 +147,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _showSheet(DeviceView v, int? position) {
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true, // above the floating tab bar
       backgroundColor: Colors.transparent,
       builder: (c) => SafeArea(
         child: Padding(
@@ -227,8 +228,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (branch != null)
         (at: LatLng(branch.end.lat, branch.end.lng), index: ordered.length),
     ];
+    bool waterAt(int index) {
+      if (ordered.isEmpty || index < 0) return false;
+      final v = ordered[index >= ordered.length ? ordered.length - 1 : index];
+      return v.status == StatusKind.normal || v.status == StatusKind.lowFlow;
+    }
+
     final problem = <LatLng>[];
     final lines = <Polyline>[];
+    // Segments with water in them: droplets glide along these (D57).
+    final flowing = <(LatLng, LatLng)>[];
     for (var k = 1; k < path.length; k++) {
       final a = path[k - 1];
       final b = path[k];
@@ -237,6 +246,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           stop != null && a.index >= stop.fromIndex && a.index < stop.toIndex;
       final dry = stop != null && a.index >= stop.toIndex;
       if (broken) problem.addAll([a.at, b.at]);
+      // Droplets only where the device at the end of the section is online
+      // and reports water (the end point counts as its last device); never
+      // for an offline device or before its first reading.
+      if (!broken && !dry && waterAt(b.index)) flowing.add((a.at, b.at));
       lines
         ..add(
           Polyline(
@@ -374,21 +387,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             ),
                           )
                         : null,
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: StatusStyle.of(v.status).strong,
-                        border: Border.all(color: Colors.white, width: 2.5),
-                        boxShadow: const [
-                          BoxShadow(color: Color(0x330A1B2E), blurRadius: 6),
-                        ],
-                      ),
-                      child: Icon(
-                        StatusStyle.of(v.status).icon,
-                        size: 20,
-                        color: Colors.white,
+                    child: BlinkRing(
+                      // No water or low flow blinks; the rest stand still.
+                      on: v.isProblem,
+                      color: StatusStyle.of(v.status).strong,
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: StatusStyle.of(v.status).strong,
+                          border: Border.all(color: Colors.white, width: 2.5),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x330A1B2E), blurRadius: 6),
+                          ],
+                        ),
+                        child: Icon(
+                          StatusStyle.of(v.status).icon,
+                          size: 20,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -520,6 +538,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             children: [
                               baseLayer(session, view, onError: _onError),
                               PolylineLayer(polylines: lines),
+                              FlowDroplets(segments: flowing),
                               MarkerLayer(markers: markers),
                               MapAttribution(
                                 google: google,
@@ -649,4 +668,157 @@ class _ViewToggle extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// Water droplets gliding along every pipe section that has water (D57), in
+/// their own layer, so only they redraw while they move. Hidden under reduce
+/// motion.
+class FlowDroplets extends StatefulWidget {
+  const FlowDroplets({super.key, required this.segments});
+
+  final List<(LatLng, LatLng)> segments;
+
+  @override
+  State<FlowDroplets> createState() => _FlowDropletsState();
+}
+
+class _FlowDropletsState extends State<FlowDroplets>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reduceMotion(context) || widget.segments.isEmpty) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(FlowDroplets old) {
+    super.didUpdateWidget(old);
+    didChangeDependencies();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (reduceMotion(context) || widget.segments.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, _) => MarkerLayer(
+        markers: [
+          for (final (a, b) in widget.segments)
+            for (final phase in const [0.0, 0.5])
+              Marker(
+                point: _lerp(a, b, (_c.value + phase) % 1),
+                width: 8,
+                height: 8,
+                child: const IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(color: AppColors.water, blurRadius: 4),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  static LatLng _lerp(LatLng a, LatLng b, double t) => LatLng(
+    a.latitude + (b.latitude - a.latitude) * t,
+    a.longitude + (b.longitude - a.longitude) * t,
+  );
+}
+
+/// A soft ring that blinks behind a map marker while its device has a flow
+/// problem (D57). Still under reduce motion.
+class BlinkRing extends StatefulWidget {
+  const BlinkRing({
+    super.key,
+    required this.on,
+    required this.color,
+    required this.child,
+  });
+
+  final bool on;
+  final Color color;
+  final Widget child;
+
+  @override
+  State<BlinkRing> createState() => _BlinkRingState();
+}
+
+class _BlinkRingState extends State<BlinkRing>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  );
+
+  bool get _run => widget.on && !reduceMotion(context);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _run ? _c.repeat() : _c.stop();
+  }
+
+  @override
+  void didUpdateWidget(BlinkRing old) {
+    super.didUpdateWidget(old);
+    if (_run && !_c.isAnimating) _c.repeat();
+    if (!_run && _c.isAnimating) _c.stop();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.on) return widget.child;
+    return AnimatedBuilder(
+      animation: _c,
+      child: widget.child,
+      builder: (_, child) {
+        final t = reduceMotion(context) ? 0.3 : _c.value;
+        return Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 36 + 16 * t,
+              height: 36 + 16 * t,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: widget.color.withValues(alpha: 0.45 * (1 - t)),
+              ),
+            ),
+            child!,
+          ],
+        );
+      },
+    );
+  }
 }

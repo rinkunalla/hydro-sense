@@ -109,17 +109,23 @@ void main() {
       },
     );
 
-    test('Live within 45 s, then Late, Offline only from the server (D35)', () {
-      DeviceView at(int s) =>
-          view('1', lastSeen: testNow.subtract(Duration(seconds: s)));
-      expect(at(45).freshnessAt(testNow), Freshness.live);
-      expect(at(46).freshnessAt(testNow), Freshness.late);
-      expect(
-        at(-30).freshnessAt(testNow),
-        Freshness.live,
-      ); // server clock ahead
-      expect(view('1', online: false).freshnessAt(testNow), Freshness.offline);
-    });
+    test(
+      'Live while online, no Late stage (D53); Offline from the online flag',
+      () {
+        DeviceView at(int s) =>
+            view('1', lastSeen: testNow.subtract(Duration(seconds: s)));
+        expect(at(45).freshnessAt(testNow), Freshness.live);
+        expect(at(55).freshnessAt(testNow), Freshness.live);
+        expect(
+          at(-30).freshnessAt(testNow),
+          Freshness.live,
+        ); // server clock ahead
+        expect(
+          view('1', online: false).freshnessAt(testNow),
+          Freshness.offline,
+        );
+      },
+    );
 
     test('a saved token with an unknown or old role is refreshed first', () {
       expect(needsFreshRole('user'), isFalse);

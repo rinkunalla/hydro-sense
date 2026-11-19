@@ -22,25 +22,34 @@ export function appendVoltage(list: readonly number[], v: number, cap = RECENT_V
   return [...list, v].slice(-cap);
 }
 
-const mean = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+/** The middle value: one dipped or spiked reading cannot move it (D56). */
+export function median(xs: readonly number[]): number {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 === 1 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+}
 
-/** Mean of the newest [samples] readings, for a steady batteryPercent. */
+/** Median of the newest [samples] readings, for a steady batteryPercent. */
 export function smoothedVoltage(
   recent: readonly number[],
   samples = BATTERY_SMOOTH_SAMPLES,
 ): number {
-  return mean(recent.slice(-samples));
+  return median(recent.slice(-samples));
 }
 
-/** Newest vs oldest CHARGING_TREND_SAMPLES means of recentVoltages (CLAUDE.md section 6). */
+/**
+ * Newest vs oldest CHARGING_TREND_SAMPLES medians of recentVoltages (about
+ * 7.5 min each, up to 30 min apart). Medians, so a single dip leaving the
+ * window no longer looks like the voltage rising (D56).
+ */
 export function chargingTrend(
   recent: readonly number[],
   cells = BATTERY_SERIES_CELLS,
 ): ChargingStatus {
   const n = Math.min(CHARGING_TREND_SAMPLES, Math.floor(recent.length / 2));
   if (n < 1) return "Steady";
-  const older = mean(recent.slice(0, n));
-  const newer = mean(recent.slice(-n));
+  const older = median(recent.slice(0, n));
+  const newer = median(recent.slice(-n));
   const threshold = CHARGING_RISE_PER_CELL_V * cells;
   // Compare with a small tolerance so float noise at the threshold counts as reaching it.
   const delta = newer - older;

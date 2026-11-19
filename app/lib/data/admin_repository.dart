@@ -204,7 +204,14 @@ abstract class AdminRepository {
   /// verified new email into the record (D40).
   Future<void> syncMyAdmin();
   Future<void> signOutEverywhere();
-  Future<List<AuditEntry>> audit();
+
+  /// Activity, newest first: a page of [limit] before [before], or only the
+  /// entries about [targetId] (a user or device), D53.
+  Future<List<AuditEntry>> audit({
+    int limit = 100,
+    DateTime? before,
+    String? targetId,
+  });
 
   /// Unauthenticated (D23): always "ok", whether or not the email was invited.
   Future<void> requestAdminSetup(String email);
@@ -337,8 +344,19 @@ class FunctionsAdminRepository implements AdminRepository {
   Future<void> signOutEverywhere() => _call('signOutEverywhere');
 
   @override
-  Future<List<AuditEntry>> audit() async => [
-    for (final m in _rows(await _call('listAdminAudit'), 'entries'))
+  Future<List<AuditEntry>> audit({
+    int limit = 100,
+    DateTime? before,
+    String? targetId,
+  }) async => [
+    for (final m in _rows(
+      await _call('listAdminAudit', {
+        'limit': limit,
+        'beforeMs': ?before?.millisecondsSinceEpoch,
+        'targetId': ?targetId,
+      }),
+      'entries',
+    ))
       AuditEntry.fromMap(m),
   ];
 

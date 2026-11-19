@@ -2,6 +2,7 @@ import { getMessaging } from "firebase-admin/messaging";
 import { defineSecret } from "firebase-functions/params";
 import { createTransport, type Transporter } from "nodemailer";
 import {
+  ALERT_CHANNEL_ID,
   ALERT_EMAIL_FROM_NAME,
   PROVIDER_TIMEOUT_MS,
   SEMAPHORE_OTP_URL,
@@ -107,7 +108,18 @@ class FcmPush implements PushSender {
       fids,
       notification: { title, body },
       data,
-      android: { priority: "high" },
+      // The app's high-importance "alerts" channel pops the alert up on screen
+      // with sound, like a chat message, and shows it on the lock screen.
+      android: {
+        priority: "high",
+        notification: {
+          channelId: ALERT_CHANNEL_ID,
+          priority: "max",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+          visibility: "public",
+        },
+      },
     });
     const stale = res.responses.flatMap((r, i) =>
       !r.success && STALE_PUSH.some((c) => r.error?.code?.endsWith(c)) ? [fids[i]!] : [],

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/config.dart';
+import 'tile_cache.dart';
 import '../../core/theme.dart';
 
 // Map tiles (CLAUDE.md section 9, D26, D46). With a Google Map Tiles key
@@ -133,7 +134,8 @@ final googleSessionProvider = FutureProvider.family<GoogleSession?, MapView>(
 /// tile provider whenever the layer goes away (view switch, rebuild) and then
 /// closes the provider's own client; a client passed in from outside is never
 /// closed, so a later layer can't be left with a dead one (grey map).
-final _tileClient = RetryClient(http.Client());
+// Wrapped in the phone's 24 h tile cache (Google allows max-age=86400).
+final _tileClient = TileCacheClient(RetryClient(http.Client()));
 
 /// Highest zoom with real tiles; the map zooms further by enlarging them.
 /// Satellite imagery in rural areas often stops at 18.

@@ -9,10 +9,16 @@ import '../core/config.dart';
 /// the codes to the spec wording. Widget tests replace this with a fake.
 abstract class AccountRepository {
   /// Reset step 1. Returns the resend gap; throws COOLDOWN / DAILY_LIMIT / PHONE_INVALID.
-  Future<int> requestResetCode(String mobile);
+  /// A reset code to [address]: an email (the main way, D59) or, with
+  /// [byEmail] false, a mobile number.
+  Future<int> requestResetCode(String address, {bool byEmail = false});
 
   /// Reset step 2. Returns the one-time reset token.
-  Future<String> verifyResetCode(String mobile, String code);
+  Future<String> verifyResetCode(
+    String address,
+    String code, {
+    bool byEmail = false,
+  });
 
   /// Reset step 3. Sets the password, then signs in with it.
   Future<void> setPasswordAndSignIn(String resetToken, String newPassword);
@@ -41,10 +47,6 @@ abstract class AccountRepository {
 
   Future<void> requestAccountDeletion();
 
-  /// Firebase's reset link by email, the other way to set a password (D22).
-  /// Never reveals whether the address has an account.
-  Future<void> sendResetEmail(String email);
-
   /// After a password sign-in: marks the profile "Password set" (an email-link
   /// reset happens outside the app, so the server only learns of it here).
   Future<void> syncPasswordSet();
@@ -65,14 +67,23 @@ class FirebaseAccountRepository implements AccountRepository {
   }
 
   @override
-  Future<int> requestResetCode(String mobile) async {
-    final r = await _call('requestResetCode', {'mobile': mobile});
+  Future<int> requestResetCode(String address, {bool byEmail = false}) async {
+    final r = await _call('requestResetCode', {
+      byEmail ? 'email' : 'mobile': address,
+    });
     return (r['resendAfterSeconds'] as num?)?.toInt() ?? AppConfig.resetResendS;
   }
 
   @override
-  Future<String> verifyResetCode(String mobile, String code) async {
-    final r = await _call('verifyResetCode', {'mobile': mobile, 'code': code});
+  Future<String> verifyResetCode(
+    String address,
+    String code, {
+    bool byEmail = false,
+  }) async {
+    final r = await _call('verifyResetCode', {
+      byEmail ? 'email' : 'mobile': address,
+      'code': code,
+    });
     return r['resetToken'] as String;
   }
 
@@ -129,10 +140,6 @@ class FirebaseAccountRepository implements AccountRepository {
     await reauthenticate(currentPassword);
     await _auth.currentUser!.verifyBeforeUpdateEmail(newEmail);
   }
-
-  @override
-  Future<void> sendResetEmail(String email) =>
-      _auth.sendPasswordResetEmail(email: email);
 
   @override
   Future<void> syncPasswordSet() => _call('syncPasswordSet', {});

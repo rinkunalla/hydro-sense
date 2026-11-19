@@ -10,6 +10,8 @@ import '../../core/theme.dart';
 import '../../data/fleet_logic.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import 'live_trend.dart';
+import 'history_providers.dart';
 import 'widgets.dart';
 
 /// Devices (home): is water flowing to every area? (docs/UI_UX_SPEC.md 4.1)
@@ -53,7 +55,7 @@ class DevicesScreen extends ConsumerWidget {
   }
 }
 
-class _FleetBody extends ConsumerWidget {
+class _FleetBody extends ConsumerStatefulWidget {
   const _FleetBody({
     required this.fleet,
     required this.phoneOffline,
@@ -65,11 +67,36 @@ class _FleetBody extends ConsumerWidget {
   final String firstName;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_FleetBody> createState() => _FleetBodyState();
+}
+
+class _FleetBodyState extends ConsumerState<_FleetBody> {
+  DeviceFilter _filter = DeviceFilter.all;
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fleet = widget.fleet;
+    final phoneOffline = widget.phoneOffline;
+    final firstName = widget.firstName;
     final now = ref.watch(clockProvider).valueOrNull ?? DateTime.now();
     if (fleet.views.isEmpty) return const NoDevicesYet();
-    final views = sortForHome(fleet.views);
-    final banner = problemBanner(views, now);
+    final all = sortForHome(fleet.views);
+    final banner = problemBanner(all, now);
+    final showPills = all.length >= AppConfig.devicesFilterFrom;
+    final showSearch = all.length >= AppConfig.devicesSearchFrom;
+    final views = filterDevices(
+      all,
+      showPills ? _filter : DeviceFilter.all,
+      showSearch ? _search.text : '',
+    );
+    int count(DeviceFilter f) => filterDevices(all, f, '').length;
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         AppSpace.l,
@@ -78,12 +105,26 @@ class _FleetBody extends ConsumerWidget {
         AppSpace.xxl * 3,
       ),
       children: [
-        Semantics(
-          header: true,
-          child: Text(
-            firstName.isEmpty ? 'Welcome back' : 'Welcome back, $firstName',
-            style: AppText.title(26),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Semantics(
+                header: true,
+                child: Text(
+                  firstName.isEmpty
+                      ? 'Welcome back'
+                      : 'Welcome back, $firstName',
+                  style: AppText.title(26),
+                ),
+              ),
+            ),
+            // History for the whole account (D49): labelled, not a bare icon.
+            SecondaryButton(
+              label: 'History',
+              icon: Icons.history_rounded,
+              onPressed: () => context.push('/devices/history'),
+            ),
+          ],
         ),
         const SizedBox(height: AppSpace.l),
         if (phoneOffline && fleet.fromCache) ...[
@@ -103,6 +144,50 @@ class _FleetBody extends ConsumerWidget {
           const SizedBox(height: AppSpace.m),
         ],
         const SectionLabel('Your devices'),
+        if (showSearch) ...[
+          TextField(
+            controller: _search,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              labelText: 'Search by name',
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _search.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => setState(_search.clear),
+                    ),
+            ),
+          ),
+          const SizedBox(height: AppSpace.s),
+        ],
+        if (showPills) ...[
+          Wrap(
+            spacing: AppSpace.s,
+            runSpacing: AppSpace.s,
+            children: [
+              for (final (f, word) in const [
+                (DeviceFilter.all, 'All'),
+                (DeviceFilter.problems, 'Problems'),
+                (DeviceFilter.offline, 'Offline'),
+                (DeviceFilter.notSetUp, 'Not set up yet'),
+              ])
+                if (f == DeviceFilter.all || count(f) > 0)
+                  ChoiceChip(
+                    label: Text('$word ${count(f)}'),
+                    selected: _filter == f,
+                    onSelected: (_) => setState(() => _filter = f),
+                  ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.m),
+        ],
+        if (views.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(AppSpace.l),
+            child: Text('No devices match.', style: AppText.body),
+          ),
         FlipColumn(
           children: [
             for (final v in views)
@@ -148,17 +233,31 @@ class DeviceCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  DeviceIllustration(ring: s.strong),
+                  DeviceIllustration(
+                    ring: s.strong,
+                    // Spins while water flows; still when offline or dry (D57).
+                    turnsPerSecond: offline ? 0 : rotorTurnsPerSecond(rate),
+                  ),
                   const SizedBox(width: AppSpace.m),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          view.nickname,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppText.title(18),
+                        // Name on the left, battery in the top right corner.
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                view.nickname,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.title(18),
+                              ),
+                            ),
+                            const SizedBox(width: AppSpace.s),
+                            BatteryGauge(view, compact: true),
+                          ],
                         ),
                         const SizedBox(height: AppSpace.xs),
                         StatusChip(status),
@@ -203,9 +302,10 @@ class DeviceCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  BatteryGauge(view),
                 ],
               ),
+              const SizedBox(height: AppSpace.s),
+              _TodaySoFar(view: view, now: now),
               if (sleeping) ...[
                 const SizedBox(height: AppSpace.s),
                 Text(
@@ -446,4 +546,72 @@ class _ErrorCard extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// The card's live chart (D61): the last 30 minutes, minute by minute.
+class _TodaySoFar extends ConsumerWidget {
+  const _TodaySoFar({required this.view, required this.now});
+
+  final DeviceView view;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The live chart (D61): 1 h, 2 h or 24 h from the per-minute series
+    // (D60); the 24 h view also needs yesterday's minutes.
+    final range = ref.watch(trendRangeProvider);
+    final today =
+        ref.watch(todaySeriesProvider((view.id, dayKey(now)))).valueOrNull ??
+        const <int, double>{};
+    // Yesterday's minutes whenever the range reaches back past midnight.
+    final yesterday = dayMinute(now) < range.minutes
+        ? ref
+                  .watch(
+                    todaySeriesProvider((
+                      view.id,
+                      dayKey(now.subtract(const Duration(days: 1))),
+                    )),
+                  )
+                  .valueOrNull ??
+              const <int, double>{}
+        : const <int, double>{};
+    final byMinute = <int, double>{
+      for (final e in yesterday.entries) e.key - 1440: e.value,
+      ...today,
+    };
+    final rate = view.device.flowRate;
+    final offline = view.status == StatusKind.offline;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: SegmentedButton<TrendRange>(
+            showSelectedIcon: false,
+            style: const ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.padded,
+            ),
+            segments: [
+              for (final r in TrendRange.values)
+                ButtonSegment(value: r, label: Text(r.label)),
+            ],
+            selected: {range},
+            onSelectionChanged: (s) =>
+                ref.read(trendRangeProvider.notifier).set(s.first),
+          ),
+        ),
+        const SizedBox(height: AppSpace.s),
+        LiveTrend(
+          byMinute: byMinute,
+          nowMinute: dayMinute(now),
+          now: now,
+          range: range,
+          normalAbove: view.device.limits.normal,
+          live: offline ? null : rate,
+          offline: offline,
+        ),
+      ],
+    );
+  }
 }

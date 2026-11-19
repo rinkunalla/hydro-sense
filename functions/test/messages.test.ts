@@ -16,28 +16,28 @@ const item = (over: Partial<AlertItem>): AlertItem => ({
 
 describe("single SMS uses the spec wording exactly", () => {
   it.each([
-    ["flow_low", "Hydro Sense: Garden Line has low water flow. Please check the pipe or valve."],
+    ["flow_low", "HydroSense: Garden Line has low water flow. Please check the pipe or valve."],
     [
       "flow_none",
-      "Hydro Sense: No water is flowing at Garden Line. Please check the pipe, valve or pump.",
+      "HydroSense: No water is flowing at Garden Line. Please check the pipe, valve or pump.",
     ],
-    ["offline", "Hydro Sense: Garden Line is offline. Please check its power and Wi-Fi."],
+    ["offline", "HydroSense: Garden Line is offline. Please check its power and Wi-Fi."],
   ] as const)("%s", (type, text) => {
     expect(buildSms([item({ type })])).toBe(text);
   });
 
   it("battery, low-voltage sleep and reminders", () => {
     expect(buildSms([item({ type: "battery_low", batteryPercent: 15 })])).toBe(
-      "Hydro Sense: Garden Line battery is low (15%). Please check its solar panel.",
+      "HydroSense: Garden Line battery is low (15%). Please check its solar panel.",
     );
     expect(buildSms([item({ type: "offline", batteryEmpty: true })])).toBe(
-      "Hydro Sense: Garden Line is offline because its battery is empty. Please check its solar panel.",
+      "HydroSense: Garden Line is offline because its battery is empty. Please check its solar panel.",
     );
     expect(buildSms([item({ type: "flow_none", reminder: true })])).toBe(
-      "Hydro Sense: Reminder: still no water at Garden Line. Please check the pipe, valve or pump.",
+      "HydroSense: Reminder: still no water at Garden Line. Please check the pipe, valve or pump.",
     );
     expect(buildSms([item({ type: "flow_low", reminder: true })])).toBe(
-      "Hydro Sense: Reminder: Garden Line still has low water flow. Please check the pipe or valve.",
+      "HydroSense: Reminder: Garden Line still has low water flow. Please check the pipe or valve.",
     );
   });
 
@@ -61,7 +61,7 @@ describe("batched SMS", () => {
       item({ deviceId: "C", nickname: "Garden Line", type: "flow_none" }),
     ]);
     expect(text).toBe(
-      "Hydro Sense: 3 areas need attention: Garden Line (no flow), Kitchen (low flow), Orchard (low battery). Open the app.",
+      "HydroSense: 3 areas need attention: Garden Line (no flow), Kitchen (low flow), Orchard (low battery). Open the app.",
     );
   });
 
@@ -71,7 +71,7 @@ describe("batched SMS", () => {
     );
     const text = buildSms(items);
     expect(text.length).toBeLessThanOrEqual(160);
-    expect(text).toMatch(/^Hydro Sense: 5 areas need attention: .+, \+\d more\. Open the app\.$/);
+    expect(text).toMatch(/^HydroSense: 5 areas need attention: .+, \+\d more\. Open the app\.$/);
   });
 
   it("counts each device once, by its worst issue", () => {

@@ -1,6 +1,7 @@
-// Set or reset a user's password by SMS code (CLAUDE.md D22, section 6). These
-// callables need no sign-in, so every reply is the same whether or not the
-// mobile number belongs to an account.
+// Set or reset a user's password with a 6-digit code sent by email (the main
+// way, D59) or by SMS (CLAUDE.md D22, section 6). These callables need no
+// sign-in, so every reply is the same whether or not the address belongs to an
+// account.
 import { getAuth } from "firebase-admin/auth";
 import { HttpsError, onCall } from "firebase-functions/https";
 import { MIN_PASSWORD_LENGTH, RESET_TOKEN_TTL_S } from "../config";
@@ -8,7 +9,7 @@ import { C, db, ms, ts } from "../lib/db";
 import { newOneTimeToken, uidOfToken } from "../lib/otp";
 import { OTP_SECRETS } from "../lib/providers";
 import { sha256Hex } from "../lib/tokens";
-import { parsePhone } from "../lib/userInput";
+import { parseEmail, parsePhone } from "../lib/userInput";
 import { checkCode, sendCode } from "./codes";
 
 /** The account a code may go to: an active user who owns this number, else null. */
@@ -17,6 +18,27 @@ async function resetAccount(phone: string): Promise<string | null> {
   if (!uid) return null;
   const user = await db.collection(C.users).doc(uid).get();
   return user.get("role") === "user" && user.get("status") === "active" ? uid : null;
+}
+
+/** An active user whose account email is this address, else null. */
+async function resetAccountByEmail(email: string): Promise<string | null> {
+  try {
+    const uid = (await getAuth().getUserByEmail(email)).uid;
+    const user = await db.collection(C.users).doc(uid).get();
+    return user.get("role") === "user" && user.get("status") === "active" ? uid : null;
+  } catch {
+    return null; // no such account: same reply as a real one
+  }
+}
+
+/** {email} or {mobile}: where the code goes, and the account it may reset. */
+async function resetTarget(d: Record<string, unknown>) {
+  if (d.email !== undefined) {
+    const email = parseEmail(d.email);
+    return { address: email, channel: "email" as const, uid: await resetAccountByEmail(email) };
+  }
+  const phone = parsePhone(d.mobile);
+  return { address: phone, channel: "sms" as const, uid: await resetAccount(phone) };
 }
 
 export function parsePassword(v: unknown): string {
@@ -29,19 +51,22 @@ export function parsePassword(v: unknown): string {
 }
 
 export const requestResetCode = onCall({ secrets: OTP_SECRETS }, async (request) => {
-  const phone = parsePhone((request.data as { mobile?: unknown } | null)?.mobile);
-  const uid = await resetAccount(phone);
-  const resendAfterSeconds = await sendCode({ phone, uid, purpose: "reset" });
+  const t = await resetTarget((request.data ?? {}) as Record<string, unknown>);
+  const resendAfterSeconds = await sendCode({
+    phone: t.address,
+    channel: t.channel,
+    uid: t.uid,
+    purpose: "reset",
+  });
   return { ok: true, resendAfterSeconds };
 });
 
 export const verifyResetCode = onCall(async (request) => {
   const d = (request.data ?? {}) as Record<string, unknown>;
-  const phone = parsePhone(d.mobile);
-  const uid = await resetAccount(phone);
+  const { address, uid } = await resetTarget(d);
   const { token, hash } = newOneTimeToken(uid ?? "none");
   const nowMs = Date.now();
-  await checkCode(phone, uid, "reset", d.code, (tx, doc) => {
+  await checkCode(address, uid, "reset", d.code, (tx, doc) => {
     tx.update(doc.ref, {
       resetTokenHash: hash,
       resetTokenExpiresAt: ts(nowMs + RESET_TOKEN_TTL_S * 1000),

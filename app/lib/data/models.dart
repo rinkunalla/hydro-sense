@@ -155,28 +155,18 @@ class DeviceView {
     _ => null,
   };
 
-  /// The Live cue (D35). Display only: Offline itself is decided by the server.
+  /// The Live cue (D35). Live while online: with Offline at 60 s on the
+  /// server's clock (D51) a separate "Late" stage lasted only seconds and
+  /// confused owners, so it was removed (D53).
   Freshness freshnessAt(DateTime now) {
     final h = health;
     if (h == null || !h.registered) return Freshness.none;
     if (!h.online) return Freshness.offline;
-    final seen = h.lastSeen;
-    if (seen == null) return Freshness.none;
-    // A negative age (server clock ahead of the phone) counts as live.
-    return now.difference(seen).inSeconds <= AppConfig.liveLateAfterS
-        ? Freshness.live
-        : Freshness.late;
+    return h.lastSeen == null ? Freshness.none : Freshness.live;
   }
 }
 
-enum Freshness { live, late, offline, none }
-
-class StatusChange {
-  const StatusChange(this.at, this.flowStatus);
-
-  final DateTime at;
-  final String flowStatus;
-}
+enum Freshness { live, offline, none }
 
 class AlertPrefs {
   const AlertPrefs({this.push = true, this.sms = true, this.email = false});
@@ -216,13 +206,54 @@ class UserProfile {
       (displayName ?? '').trim().split(RegExp(r'\s+')).first;
 }
 
-/// One flow_logs row on the 24 h chart.
-class FlowPoint {
-  const FlowPoint(this.at, this.flowStatus, this.flowRate);
+/// The kinds of problem History records (D49), in the order they matter.
+enum ProblemType {
+  noFlow('no_flow'),
+  lowFlow('low_flow'),
+  offline('offline'),
+  batteryLow('battery_low');
 
-  final DateTime at;
-  final String flowStatus;
-  final double flowRate;
+  const ProblemType(this.wire);
+
+  /// The value stored in `problems/{id}.type`.
+  final String wire;
+
+  static ProblemType? fromWire(String? v) {
+    for (final t in values) {
+      if (t.wire == v) return t;
+    }
+    return null;
+  }
+}
+
+/// One `problems/{id}` record: a problem with a start and, once over, an end.
+class Problem {
+  const Problem({
+    required this.id,
+    required this.deviceId,
+    required this.type,
+    required this.startedAt,
+    this.endedAt,
+    this.note,
+  });
+
+  final String id;
+  final String deviceId;
+  final ProblemType type;
+  final DateTime startedAt;
+
+  /// Null while the problem is still going on.
+  final DateTime? endedAt;
+  final String? note;
+
+  bool get ongoing => endedAt == null;
+
+  /// The end, or [now] while it is ongoing.
+  DateTime endOr(DateTime now) => endedAt ?? now;
+
+  /// True when the problem covers any part of [from, to).
+  bool overlaps(DateTime from, DateTime to, DateTime now) =>
+      startedAt.isBefore(to) && endOr(now).isAfter(from);
 }
 
 /// The client's fleet, with whether it came from the offline cache.

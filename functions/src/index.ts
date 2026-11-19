@@ -37,3 +37,4 @@ export {
 } from "./auth/self";
 export { placeSuggest, placeLocation } from "./maps/places";
 export { claimPushToken } from "./alerts/pushTokens";
+export { mirrorDeviceOnWrite } from "./device/mirrorTrigger";

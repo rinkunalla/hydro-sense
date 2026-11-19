@@ -38,16 +38,28 @@ export function maskPhone(phone: string): string {
   return `${local.slice(0, 4)} ••• ${local.slice(-4)}`;
 }
 
+/** The emailed reset code (D59): no link, so nothing to click or forward. */
+export const codeEmail = (code: string) => ({
+  subject: `Your Hydro Sense code is ${code}`,
+  text:
+    `Your Hydro Sense code is ${code}.\n\n` +
+    "Enter it in the Hydro Sense app to set a new password. It expires in 5 minutes.\n\n" +
+    "Never share this code. If you did not ask for it, you can ignore this email; " +
+    "your password stays the same.",
+});
+
 export const codeSms = (code: string) =>
-  `Hydro Sense: your code is ${code}. It expires in 5 minutes. Never share this code.`;
+  `HydroSense: your code is ${code}. It expires in 5 minutes. Never share this code.`;
 
 export interface SendCounters {
   /** Last send to this phone, ms. */
   lastSentMs: number | null;
   /** Codes sent to this phone today (Asia/Manila). */
   phoneToday: number;
-  /** Code SMS sent by the whole project today. */
+  /** Codes sent on this channel by the whole project today. */
   projectToday: number;
+  /** That channel's daily ceiling; SMS by default. */
+  projectCap?: number;
 }
 
 export type SendDecision =
@@ -66,7 +78,7 @@ export function sendDecision(c: SendCounters, nowMs: number): SendDecision {
     if (waitMs > 0) return { kind: "cooldown", retryAfterSeconds: Math.ceil(waitMs / 1000) };
   }
   if (c.phoneToday >= RESET_MAX_PER_PHONE_DAY) return { kind: "phone_limit" };
-  if (c.projectToday >= OTP_PROJECT_DAILY_CAP) return { kind: "project_limit" };
+  if (c.projectToday >= (c.projectCap ?? OTP_PROJECT_DAILY_CAP)) return { kind: "project_limit" };
   return { kind: "send" };
 }
 

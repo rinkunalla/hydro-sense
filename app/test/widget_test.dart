@@ -13,6 +13,7 @@ import 'package:hydro_sense/data/models.dart';
 import 'package:hydro_sense/data/providers.dart';
 import 'package:hydro_sense/features/client/device_detail_screen.dart';
 import 'package:hydro_sense/features/client/devices_screen.dart';
+import 'package:hydro_sense/features/client/history_providers.dart';
 import 'package:hydro_sense/features/client/widgets.dart';
 
 import 'test_data.dart';
@@ -21,7 +22,9 @@ Widget harness(
   Stream<Fleet> fleet, {
   bool phoneOffline = false,
   Widget home = const DevicesScreen(),
-  List<FlowPoint> history = const [],
+  List<Problem> problems = const [],
+  Map<int, double> today = const {},
+  Map<int, double> series = const {},
   bool solid = false,
 }) => ProviderScope(
   overrides: [
@@ -31,7 +34,10 @@ Widget harness(
     profileProvider.overrideWith(
       (_) => Stream.value(const UserProfile(displayName: 'Juan Dela Cruz')),
     ),
-    flowHistoryProvider.overrideWith((_, _) async => history),
+    deviceProblemsProvider.overrideWith((_, _) => Stream.value(problems)),
+    todayReadingsProvider.overrideWith((_, _) => Stream.value(today)),
+    todaySeriesProvider.overrideWith((_, _) => Stream.value(series)),
+    monthProblemsProvider.overrideWith((_, _) => Stream.value(problems)),
     solidGlassProvider.overrideWith((_) => _FixedSolid(solid)),
   ],
   child: MaterialApp(
@@ -149,7 +155,28 @@ void main() {
     expect(find.byType(AppBanner), findsNothing);
   });
 
-  testWidgets('an offline device shows its battery as when last seen', (t) async {
+  testWidgets('the card charts the last hour, rising to now (D61)', (t) async {
+    await phone(t);
+    // testNow is 3:12 PM, minute 912 of the day: readings from 2:50 PM on.
+    await t.pumpWidget(
+      harness(
+        Stream.value(Fleet([view('1', nickname: 'Garden', flowRate: 8.0)])),
+        series: {for (var m = 890; m < 912; m++) m: 5.0 + (m - 890) * 0.1},
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(
+      find.bySemanticsLabel(
+        RegExp(r'Last 1 h: rising, now 8\.0 litres per minute'),
+      ),
+      findsOneWidget,
+    );
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('an offline device shows its battery as when last seen', (
+    t,
+  ) async {
     await phone(t);
     await t.pumpWidget(
       harness(
@@ -162,12 +189,18 @@ void main() {
       ),
     );
     await t.pumpAndSettle();
+    // The card corner shows the number; the words are in the spoken label.
     expect(find.text('82%'), findsOneWidget);
-    expect(find.text('77% when last seen'), findsOneWidget);
-    expect(find.text('77%'), findsNothing);
+    expect(find.text('77%'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel(RegExp('Battery 77% when last seen')),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('Live within 45 s, Late after, Offline replaces both', (t) async {
+  testWidgets('Live while online, Offline replaces it, no Late (D53)', (
+    t,
+  ) async {
     await phone(t);
     await t.pumpWidget(
       harness(
@@ -189,12 +222,11 @@ void main() {
       ),
     );
     await t.pumpAndSettle();
-    expect(find.text('Live'), findsOneWidget);
-    expect(find.text('Late'), findsOneWidget);
+    expect(find.text('Live'), findsNWidgets(2));
+    expect(find.text('Late'), findsNothing);
     expect(find.text('Offline'), findsOneWidget);
-    // Live stays calm (no seconds counter); only Late shows its age.
+    // Live stays calm: no seconds counter.
     expect(find.text('12 s ago'), findsNothing);
-    expect(find.text('2 min ago'), findsOneWidget);
   });
 
   testWidgets('Offline device: "–" L/min, Offline since, sleeping note', (
@@ -237,8 +269,11 @@ void main() {
       ),
     );
     await t.pumpAndSettle();
-    expect(find.text('15% low'), findsOneWidget);
-    expect(find.text('Battery reading unavailable'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('Battery 15% low')), findsOneWidget);
+    expect(
+      find.bySemanticsLabel(RegExp('Battery reading unavailable')),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -409,48 +444,66 @@ void main() {
     expect(find.byType(BackdropFilter), findsWidgets);
   });
 
-  testWidgets('Details: number, pipe, battery trend and the 24 h chart', (
-    t,
-  ) async {
-    await phone(t, textScale: 1.5);
-    await t.pumpWidget(
-      harness(
-        Stream.value(
-          Fleet([
-            view(
-              '1',
-              nickname: 'Garden Line',
-              flowStatus: 'Low Flow',
-              flowRate: 1.4,
-              abnormalSince: testNow.subtract(const Duration(minutes: 42)),
+  testWidgets(
+    'Details: number, pipe, battery trend and the 24 h status strip',
+    (t) async {
+      await phone(t, textScale: 1.5);
+      await t.pumpWidget(
+        harness(
+          Stream.value(
+            Fleet([
+              view(
+                '1',
+                nickname: 'Garden Line',
+                flowStatus: 'Low Flow',
+                flowRate: 1.4,
+                abnormalSince: testNow.subtract(const Duration(minutes: 42)),
+              ),
+            ]),
+          ),
+          home: const DeviceDetailScreen(deviceId: '1'),
+          problems: [
+            Problem(
+              id: 'p1',
+              deviceId: '1',
+              type: ProblemType.noFlow,
+              startedAt: testNow.subtract(const Duration(hours: 5)),
+              endedAt: testNow.subtract(const Duration(hours: 4)),
             ),
-          ]),
+            Problem(
+              id: 'p2',
+              deviceId: '1',
+              type: ProblemType.lowFlow,
+              startedAt: testNow.subtract(const Duration(minutes: 42)),
+            ),
+          ],
         ),
-        home: const DeviceDetailScreen(deviceId: '1'),
-        history: [
-          for (var i = 0; i < 288; i++)
-            FlowPoint(
-              testNow.subtract(Duration(minutes: 5 * (288 - i))),
-              i > 250 ? 'No Flow' : 'Normal Flow',
-              i > 250 ? 0 : 6 + (i % 7) * 0.3,
-            ),
-        ],
-      ),
-    );
-    await t.pumpAndSettle();
-    expect(find.text('Garden Line'), findsOneWidget);
-    expect(find.text('Low flow'), findsOneWidget);
-    expect(find.textContaining('Since 2:30 PM · 42 min'), findsOneWidget);
-    expect(find.textContaining('Steady'), findsOneWidget);
-    expect(find.text('FLOW, LAST 24 HOURS'), findsOneWidget);
-    expect(
-      find.bySemanticsLabel(RegExp('Flow over the last 24 hours')),
-      findsOneWidget,
-    );
-    expect(t.takeException(), isNull);
-  });
+      );
+      await t.pumpAndSettle();
+      expect(find.text('Garden Line'), findsOneWidget);
+      expect(
+        find.text('Low flow'),
+        findsWidgets,
+      ); // the chip and the strip legend
+      expect(find.textContaining('Since 2:30 PM · 42 min'), findsOneWidget);
+      expect(find.textContaining('Steady'), findsOneWidget);
+      await t.scrollUntilVisible(find.text('LAST 24 HOURS'), 300);
+      expect(find.text('LAST 24 HOURS'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(
+          RegExp('Last 24 hours: No water .* Low flow .* to now'),
+        ),
+        findsOneWidget,
+      );
+      // The legend names only what happened.
+      expect(find.text('No water'), findsOneWidget);
+      expect(find.text('Offline'), findsNothing);
+      expect(find.text('History'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    },
+  );
 
-  testWidgets('Details with no history says so', (t) async {
+  testWidgets('Details with no problems: one calm strip', (t) async {
     await phone(t);
     await t.pumpWidget(
       harness(
@@ -459,6 +512,12 @@ void main() {
       ),
     );
     await t.pumpAndSettle();
-    expect(find.text('No readings in the last 24 hours.'), findsOneWidget);
+    await t.scrollUntilVisible(find.text('LAST 24 HOURS'), 300);
+    expect(
+      find.bySemanticsLabel(
+        RegExp('Last 24 hours: water flowing the whole time'),
+      ),
+      findsOneWidget,
+    );
   });
 }

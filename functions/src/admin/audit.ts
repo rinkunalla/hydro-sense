@@ -2,7 +2,7 @@
 // written only here and are never updated or deleted by a person (rules deny it);
 // the TTL policy removes them after AUDIT_TTL_DAYS.
 import { onCall } from "firebase-functions/https";
-import { AUDIT_LIST_LIMIT, AUDIT_TTL_DAYS, RESTORE_WINDOW_DAYS } from "../config";
+import { AUDIT_LIST_LIMIT, AUDIT_PAGE_MAX, AUDIT_TTL_DAYS, RESTORE_WINDOW_DAYS } from "../config";
 import { requireAdmin } from "../lib/auth";
 import { C, db, ms, ts } from "../lib/db";
 import { logError } from "../lib/logError";
@@ -104,13 +104,27 @@ export async function audit(input: AuditInput): Promise<void> {
   }
 }
 
+/**
+ * The Activity page (D53): newest first, a page at a time. Optional:
+ * `beforeMs` (the next page starts after the last entry shown), `limit` (up to
+ * AUDIT_PAGE_MAX) and `targetId` (one user's or device's own activity).
+ */
 export const listAdminAudit = onCall(async (request) => {
   await requireAdmin(request);
-  const snap = await db
-    .collection(C.adminAudit)
-    .orderBy("at", "desc")
-    .limit(AUDIT_LIST_LIMIT)
-    .get();
+  const data = (request.data ?? {}) as { beforeMs?: unknown; limit?: unknown; targetId?: unknown };
+  const limit =
+    typeof data.limit === "number" && Number.isFinite(data.limit)
+      ? Math.min(AUDIT_PAGE_MAX, Math.max(1, Math.floor(data.limit)))
+      : AUDIT_LIST_LIMIT;
+  let q: FirebaseFirestore.Query = db.collection(C.adminAudit);
+  if (typeof data.targetId === "string" && data.targetId.length > 0 && data.targetId.length <= 128) {
+    q = q.where("targetId", "==", data.targetId);
+  }
+  q = q.orderBy("at", "desc");
+  if (typeof data.beforeMs === "number" && Number.isFinite(data.beforeMs)) {
+    q = q.where("at", "<", ts(data.beforeMs));
+  }
+  const snap = await q.limit(limit).get();
   return {
     entries: snap.docs.map((d) => ({
       id: d.id,

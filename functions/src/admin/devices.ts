@@ -10,6 +10,7 @@ import { MAIL_SECRETS } from "../lib/providers";
 import { confirmMatches, parseDeviceId, parseLabel, parseUid } from "../lib/userInput";
 import { audit } from "./audit";
 import { setOwner } from "./ownership";
+import { mirrorDevice, readAllLive } from "../lib/liveStore";
 
 const DAY_MS = 86_400_000;
 
@@ -40,6 +41,7 @@ async function unremove(deviceId: string, device: DocumentSnapshot, nowMs: numbe
     removedLabel: FieldValue.delete(),
   });
   await batch.commit();
+  await mirrorDevice(deviceId);
   return label;
 }
 
@@ -140,6 +142,7 @@ export const removeDevice = onCall({ secrets: MAIL_SECRETS }, async (request) =>
     });
   }
   await batch.commit();
+  await mirrorDevice(deviceId); // drops the token hash: the device can no longer upload
   await audit({
     adminUid,
     action: "device_removed",
@@ -196,9 +199,11 @@ export async function listDevicesForAdmin(): Promise<AdminDeviceRow[]> {
   ]);
   const ids = [...new Set([...allowed.docs.map((d) => d.id), ...removed.docs.map((d) => d.id)])];
   if (ids.length === 0) return [];
-  const [devices, health] = await Promise.all([
+  // online and lastSeen come from the live channel (D48); never flow or battery (D24).
+  const [devices, health, live] = await Promise.all([
     db.getAll(...ids.map((id) => db.collection(C.devices).doc(id))),
     db.getAll(...ids.map((id) => db.collection(C.deviceHealth).doc(id))),
+    readAllLive(),
   ]);
   const owners = [
     ...new Set(devices.map((d) => d.get("ownerUid") as string | null).filter(Boolean)),
@@ -220,8 +225,8 @@ export async function listDevicesForAdmin(): Promise<AdminDeviceRow[]> {
       ownerUid,
       ownerName: ownerUid ? (names.get(ownerUid) ?? null) : null,
       registered: Boolean(h.get("registeredAt")),
-      online: h.get("online") === true,
-      lastSeenMs: ms(h.get("lastSeen")),
+      online: live.get(id)?.online ?? false,
+      lastSeenMs: live.get(id)?.lastSeen ?? null,
       removedAtMs: ms(dev.get("removedAt")),
       purgeAfterMs: ms(dev.get("purgeAfter")),
     };

@@ -174,21 +174,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           onPressed: _busy
                               ? null
                               : () => context.push('/reset'),
-                          child: Text(
-                            widget.admin
-                                ? 'Forgot password?'
-                                : 'Forgot password or first time?',
-                          ),
+                          // New users set their first password here too (D22).
+                          child: const Text('Forgot password?'),
                         ),
-                        if (widget.admin)
-                          // First-time setup for invited admins (D23).
-                          TextButton(
-                            onPressed: _busy
-                                ? null
-                                : () => context.go('/setup'),
-                            child: const Text('Set up an admin account'),
-                          )
-                        else
+                        // Invited admins open the setup link from their invite
+                        // email; an expired one is re-sent from Admins (D23, D53).
+                        if (!widget.admin)
                           Text(
                             'No account yet? Ask your Hydro Sense provider to create one.',
                             textAlign: TextAlign.center,

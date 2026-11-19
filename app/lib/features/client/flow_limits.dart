@@ -37,7 +37,11 @@ class FlowLimitsCard extends StatelessWidget {
           ),
           const SizedBox(width: AppSpace.s),
           Expanded(child: Text(StatusStyle.all[k]!.word, style: AppText.body)),
-          Text(value, style: AppText.strong),
+          // Wraps at large text sizes instead of running past the card edge.
+          Flexible(
+            flex: 2,
+            child: Text(value, style: AppText.strong, textAlign: TextAlign.end),
+          ),
         ],
       ),
     );
@@ -62,6 +66,7 @@ class FlowLimitsCard extends StatelessWidget {
               icon: Icons.tune_rounded,
               onPressed: () => showModalBottomSheet<void>(
                 context: context,
+                useRootNavigator: true, // above the floating tab bar
                 isScrollControlled: true,
                 backgroundColor: Colors.transparent,
                 builder: (_) => FlowLimitSheet(device: device),

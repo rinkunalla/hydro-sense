@@ -20,6 +20,7 @@ class _Dest {
 const _destinations = [
   _Dest('/users', 'Users', Icons.people_alt_rounded),
   _Dest('/devices', 'Devices', Icons.memory_rounded),
+  _Dest('/activity', 'Activity', Icons.history_rounded),
   _Dest('/account', 'Account', Icons.person_rounded),
 ];
 

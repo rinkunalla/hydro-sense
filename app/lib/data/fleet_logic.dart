@@ -1,3 +1,4 @@
+import '../core/config.dart';
 import '../core/theme.dart';
 import 'models.dart';
 
@@ -68,3 +69,41 @@ List<String> newlyNoFlow(List<DeviceView> before, List<DeviceView> after) {
         '${v.nickname}, no flow',
   ];
 }
+
+/// The Devices tab filter pills (shown from AppConfig.devicesFilterFrom devices).
+enum DeviceFilter { all, problems, offline, notSetUp }
+
+/// Keeps the devices that match [filter] and whose nickname contains [query].
+List<DeviceView> filterDevices(
+  Iterable<DeviceView> views,
+  DeviceFilter filter,
+  String query,
+) {
+  final q = query.trim().toLowerCase();
+  return [
+    for (final v in views)
+      if ((q.isEmpty || v.nickname.toLowerCase().contains(q)) &&
+          switch (filter) {
+            DeviceFilter.all => true,
+            DeviceFilter.problems => v.isProblem || v.lowBattery,
+            DeviceFilter.offline => v.status == StatusKind.offline,
+            DeviceFilter.notSetUp => v.status == StatusKind.notSetUp,
+          })
+        v,
+  ];
+}
+
+/// Seconds of silence after which a device is Offline: the server's rule
+/// (functions/src/lib/decisions.ts offlineAfterS).
+int offlineAfterS(int? heartbeatS) {
+  if (heartbeatS == null) return AppConfig.offlineAfterDefaultS;
+  final s = AppConfig.offlineMissedHeartbeats * heartbeatS;
+  return s < AppConfig.offlineAfterMinS ? AppConfig.offlineAfterMinS : s;
+}
+
+/// True when the device has been silent past [offlineAfterS], measured on the
+/// server's clock ([serverNow] is phone time plus the database's offset), so a
+/// wrong phone clock cannot mark it Offline (D9, D51).
+bool silentTooLong(DateTime? lastSeen, int? heartbeatS, DateTime serverNow) =>
+    lastSeen != null &&
+    serverNow.difference(lastSeen).inSeconds >= offlineAfterS(heartbeatS);

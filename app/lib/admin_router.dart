@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'data/providers.dart';
+import 'features/admin/activity_screen.dart';
 import 'features/admin/admin_account_screen.dart';
 import 'features/admin/admin_setup_screen.dart';
 import 'features/admin/admin_shell.dart';
@@ -76,6 +77,7 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         routes: [
           page('/users', const UsersScreen()),
           page('/devices', const DevicesAdminScreen()),
+          page('/activity', const ActivityScreen()),
           page('/account', const AdminAccountScreen()),
         ],
       ),

@@ -44,14 +44,14 @@ function run(steps: [number, Condition][], start: AlertState = EMPTY_STATE) {
 }
 
 describe("conditions", () => {
-  it("flow needs 60 continuous seconds and an online device", () => {
+  it("flow needs 30 continuous seconds and an online device (D62)", () => {
     expect(
-      flowCondition(view({ flowStatus: "No Flow", abnormalSinceMs: T - 59 * S }), T).kind,
+      flowCondition(view({ flowStatus: "No Flow", abnormalSinceMs: T - 29 * S }), T).kind,
     ).toBe("neutral");
-    expect(flowCondition(view({ flowStatus: "No Flow", abnormalSinceMs: T - 60 * S }), T)).toEqual(
+    expect(flowCondition(view({ flowStatus: "No Flow", abnormalSinceMs: T - 30 * S }), T)).toEqual(
       fault("flow_none"),
     );
-    expect(flowCondition(view({ flowStatus: "Low Flow", abnormalSinceMs: T - 60 * S }), T)).toEqual(
+    expect(flowCondition(view({ flowStatus: "Low Flow", abnormalSinceMs: T - 30 * S }), T)).toEqual(
       fault("flow_low"),
     );
     expect(
@@ -68,11 +68,11 @@ describe("conditions", () => {
     );
   });
 
-  it("offline alerts only after 15 min of silence", () => {
-    expect(offlineCondition(view({ online: false, lastSeenMs: T - 14 * MIN }), T).kind).toBe(
+  it("offline alerts after 40 s of silence (D58, D62)", () => {
+    expect(offlineCondition(view({ online: false, lastSeenMs: T - 39_000 }), T).kind).toBe(
       "neutral",
     );
-    expect(offlineCondition(view({ online: false, lastSeenMs: T - 15 * MIN }), T)).toEqual(
+    expect(offlineCondition(view({ online: false, lastSeenMs: T - 40_000 }), T)).toEqual(
       fault("offline"),
     );
     expect(offlineCondition(view({ online: false, lastSeenMs: null }), T).kind).toBe("neutral");

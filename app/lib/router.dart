@@ -11,6 +11,7 @@ import 'features/client/phone_change_screen.dart';
 import 'features/client/account_screen.dart';
 import 'features/client/device_detail_screen.dart';
 import 'features/client/devices_screen.dart';
+import 'features/client/history_screen.dart';
 import 'features/client/home_shell.dart';
 import 'features/client/edit_pipeline_screen.dart';
 import 'features/client/map_screen.dart';
@@ -130,6 +131,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: '/devices',
                 builder: (_, _) => const DevicesScreen(),
                 routes: [
+                  // Before ':id', so /devices/history is not read as a device ID.
+                  GoRoute(
+                    path: 'history',
+                    builder: (_, s) => HistoryScreen(
+                      deviceId: s.uri.queryParameters['device'],
+                    ),
+                  ),
                   GoRoute(
                     path: ':id',
                     builder: (_, s) =>

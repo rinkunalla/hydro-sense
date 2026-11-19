@@ -227,7 +227,7 @@ void main() {
     expect(find.text('Placed on the map'), findsOneWidget);
   });
 
-  testWidgets('edit: a device offers its GPS only once it has a fix', (
+  testWidgets('edit: no device GPS option while the module is off (D54)', (
     t,
   ) async {
     await phone(t);
@@ -245,8 +245,10 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(row);
     await t.pumpAndSettle();
-    expect(find.text('No device GPS yet'), findsOneWidget);
+    expect(find.text('No device GPS yet'), findsNothing);
+    expect(find.text('Use device GPS'), findsNothing);
     expect(find.text("Use my phone's location"), findsOneWidget);
+    expect(find.text('Place the pin here'), findsOneWidget);
   });
 
   testWidgets('edit: the picker explains a location problem', (t) async {

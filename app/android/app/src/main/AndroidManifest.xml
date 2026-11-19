@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
         android:label="Hydro Sense"
-        android:name="${applicationName}"
+        android:name=".HydroSenseApplication"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
@@ -36,6 +36,11 @@
         <meta-data
             android:name="firebase_messaging_installation_id_enabled"
             android:value="true" />
+        <!-- Alerts pop up on screen: their channel has high importance
+             (HydroSenseApplication). Used when a push names no channel. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="alerts" />
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

@@ -38,26 +38,26 @@ function singleSms(i: AlertItem): string {
   if (i.reminder) {
     switch (i.type) {
       case "flow_none":
-        return `Hydro Sense: Reminder: still no water at ${n}. Please check the pipe, valve or pump.`;
+        return `HydroSense: Reminder: still no water at ${n}. Please check the pipe, valve or pump.`;
       case "flow_low":
-        return `Hydro Sense: Reminder: ${n} still has low water flow. Please check the pipe or valve.`;
+        return `HydroSense: Reminder: ${n} still has low water flow. Please check the pipe or valve.`;
       case "battery_low":
-        return `Hydro Sense: Reminder: ${n} battery is still low (${pct(i)}). Please check its solar panel.`;
+        return `HydroSense: Reminder: ${n} battery is still low (${pct(i)}). Please check its solar panel.`;
       case "offline":
-        return `Hydro Sense: Reminder: ${n} is still offline. Please check its power and Wi-Fi.`;
+        return `HydroSense: Reminder: ${n} is still offline. Please check its power and Wi-Fi.`;
     }
   }
   switch (i.type) {
     case "flow_none":
-      return `Hydro Sense: No water is flowing at ${n}. Please check the pipe, valve or pump.`;
+      return `HydroSense: No water is flowing at ${n}. Please check the pipe, valve or pump.`;
     case "flow_low":
-      return `Hydro Sense: ${n} has low water flow. Please check the pipe or valve.`;
+      return `HydroSense: ${n} has low water flow. Please check the pipe or valve.`;
     case "battery_low":
-      return `Hydro Sense: ${n} battery is low (${pct(i)}). Please check its solar panel.`;
+      return `HydroSense: ${n} battery is low (${pct(i)}). Please check its solar panel.`;
     case "offline":
       return i.batteryEmpty
-        ? `Hydro Sense: ${n} is offline because its battery is empty. Please check its solar panel.`
-        : `Hydro Sense: ${n} is offline. Please check its power and Wi-Fi.`;
+        ? `HydroSense: ${n} is offline because its battery is empty. Please check its solar panel.`
+        : `HydroSense: ${n} is offline. Please check its power and Wi-Fi.`;
   }
 }
 
@@ -82,8 +82,8 @@ export function buildSms(items: readonly AlertItem[]): string {
   if (list.length === 1) return singleSms(list[0]!);
   const noFlowOnly = list.every((i) => i.type === "flow_none");
   const head = noFlowOnly
-    ? `Hydro Sense: No water at ${list.length} areas: `
-    : `Hydro Sense: ${list.length} areas need attention: `;
+    ? `HydroSense: No water at ${list.length} areas: `
+    : `HydroSense: ${list.length} areas need attention: `;
   const name = (i: AlertItem) => (noFlowOnly ? i.nickname : `${i.nickname} (${ISSUE[i.type]})`);
   for (let k = list.length; k >= 1; k--) {
     const shown = list.slice(0, k).map(name).join(", ");
@@ -91,7 +91,7 @@ export function buildSms(items: readonly AlertItem[]): string {
     const text = `${head}${shown}${more}. Open the app.`;
     if (text.length <= SMS_MAX_CHARS) return text;
   }
-  return `Hydro Sense: ${list.length} areas need attention. Open the app.`;
+  return `HydroSense: ${list.length} areas need attention. Open the app.`;
 }
 
 export interface PushMessage {
@@ -143,7 +143,7 @@ export const DIGEST_PUSH: PushMessage = {
   data: { kind: "batch" },
 };
 
-export const DIGEST_SMS = "Hydro Sense: More alerts today. Open the app for live status.";
+export const DIGEST_SMS = "HydroSense: More alerts today. Open the app for live status.";
 
 function sentence(i: AlertItem): string {
   const n = i.nickname;

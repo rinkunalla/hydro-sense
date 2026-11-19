@@ -9,8 +9,9 @@ import '../../core/theme.dart';
 import '../../core/time_format.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
-import 'flow_chart.dart';
 import 'flow_limits.dart';
+import 'history_providers.dart';
+import 'status_strip.dart';
 import 'widgets.dart';
 
 /// Trims and checks a new nickname (1 to 24 characters). Null when valid.
@@ -22,18 +23,6 @@ String? validateNickname(String raw) {
   }
   return null;
 }
-
-/// The 24 h chart rows, read once per device per session (CLAUDE.md section 8).
-final flowHistoryProvider = FutureProvider.family<List<FlowPoint>, String>(
-  (ref, id) => ref
-      .watch(repositoryProvider)
-      .flowHistory(
-        id,
-        DateTime.now().subtract(
-          const Duration(hours: AppConfig.flowChartHours),
-        ),
-      ),
-);
 
 /// Device details (docs/UI_UX_SPEC.md 4.2).
 class DeviceDetailScreen extends ConsumerStatefulWidget {
@@ -88,7 +77,7 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
     final h = v.health;
     final offline = v.status == StatusKind.offline;
     final rate = v.device.flowRate;
-    final history = ref.watch(flowHistoryProvider(v.id));
+    final problems = ref.watch(deviceProblemsProvider(v.id));
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -203,25 +192,47 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SectionLabel('Flow, last 24 hours'),
-                  history.when(
+                  const SectionLabel('Last 24 hours'),
+                  problems.when(
                     loading: () => const SizedBox(
-                      height: 160,
+                      height: 60,
                       child: Center(child: CircularProgressIndicator()),
                     ),
                     error: (_, _) =>
                         Text(Messages.generic, style: AppText.note),
-                    data: (points) => FlowChart(
-                      points: points,
+                    data: (list) => StatusStrip(
+                      problems: list,
                       now: now,
-                      lowBelow: v.device.limits.normal,
+                      knownFrom: h?.registeredAt,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpace.m),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: SecondaryButton(
+                      label: 'History',
+                      icon: Icons.history_rounded,
+                      onPressed: () =>
+                          context.push('/devices/history?device=${v.id}'),
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: AppSpace.m),
-            FlowLimitsCard(device: v.device, now: now),
+            // Most owners never change these: tucked away, one tap to open (D53).
+            Theme(
+              data: Theme.of(
+                context,
+              ).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+                childrenPadding: EdgeInsets.zero,
+                title: Text('Advanced', style: AppText.strong),
+                subtitle: Text('Flow limits', style: AppText.note),
+                children: [FlowLimitsCard(device: v.device, now: now)],
+              ),
+            ),
           ],
         ),
       ),

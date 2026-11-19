@@ -630,7 +630,7 @@ class _PinPickerState extends ConsumerState<PinPicker> {
                       spacing: AppSpace.s,
                       runSpacing: AppSpace.s,
                       children: [
-                        if (widget.forDevice)
+                        if (widget.forDevice && AppConfig.deviceGpsEnabled)
                           MapPillButton(
                             label: gps == null
                                 ? 'No device GPS yet'

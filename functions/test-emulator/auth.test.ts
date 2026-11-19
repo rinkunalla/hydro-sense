@@ -28,7 +28,7 @@ import {
   syncPasswordSet,
   updateMyName,
 } from "../src/auth/self";
-import { C, db, ts } from "../src/lib/db";
+import { C, db, liveRef, rtdb, ts } from "../src/lib/db";
 import { setProviders, type Providers } from "../src/lib/providers";
 import { manilaDateKey } from "../src/lib/time";
 
@@ -94,6 +94,7 @@ const codeOf = async (p: Promise<unknown>) =>
   );
 
 beforeEach(async () => {
+  await rtdb.ref().set(null);
   await fetch(`http://${FIRESTORE}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, {
     method: "DELETE",
   });
@@ -117,7 +118,7 @@ describe("reset by SMS code (D22)", () => {
     expect(unknown).toEqual(known);
     expect(fake.sent.map((s) => s.to)).toEqual([PHONE]);
     expect(fake.sent[0]!.message).toBe(
-      "Hydro Sense: your code is {otp}. It expires in 5 minutes. Never share this code.",
+      "HydroSense: your code is {otp}. It expires in 5 minutes. Never share this code.",
     );
     expect(lastCode()).toMatch(/^\d{6}$/);
 
@@ -255,6 +256,53 @@ describe("reset by SMS code (D22)", () => {
   });
 });
 
+describe("reset by email code (D59)", () => {
+  const mailedCode = () => /code is (\d{6})/.exec(fake.mail.at(-1)!.subject)![1]!;
+
+  it("emails a 6-digit code, no link, and replies the same for an unknown email", async () => {
+    await newUser();
+    const known = await requestResetCode.run(call({ email: "Juan@Example.com " }));
+    const unknown = await requestResetCode.run(call({ email: "nobody@example.com" }));
+    expect(known).toEqual(unknown);
+    expect(fake.mail).toHaveLength(1);
+    expect(fake.mail[0]!.to).toBe("juan@example.com");
+    expect(fake.mail[0]!.text).not.toMatch(/https?:\/\//); // nothing to click
+    expect(fake.sent).toHaveLength(0); // no SMS
+  });
+
+  it("sets the password with the emailed code", async () => {
+    await newUser();
+    await requestResetCode.run(call({ email: "juan@example.com" }));
+    const { resetToken } = await verifyResetCode.run(
+      call({ email: "juan@example.com", code: mailedCode() }),
+    );
+    await setPasswordWithResetToken.run(call({ resetToken, newPassword: "mail-secret-1" }));
+    expect(await signsIn("juan@example.com", "mail-secret-1")).toBe(true);
+  });
+
+  it("counts wrong codes the same for a real and an unknown email", async () => {
+    await newUser();
+    await requestResetCode.run(call({ email: "juan@example.com" }));
+    await requestResetCode.run(call({ email: "nobody@example.com" }));
+    for (const email of ["juan@example.com", "nobody@example.com"]) {
+      expect(await codeOf(verifyResetCode.run(call({ email, code: "000001" })))).toBe(
+        "RESET_CODE_INVALID:4",
+      );
+    }
+  });
+
+  it("keeps the resend gap and refuses a bad address", async () => {
+    await newUser();
+    await requestResetCode.run(call({ email: "juan@example.com" }));
+    expect(await codeOf(requestResetCode.run(call({ email: "juan@example.com" })))).toBe(
+      "COOLDOWN",
+    );
+    expect(await codeOf(requestResetCode.run(call({ email: "not-an-email" })))).toBe(
+      "EMAIL_INVALID",
+    );
+  });
+});
+
 describe("user self-service (D31, D42)", () => {
   it("changes the mobile: code only to the new number, then alerts go there", async () => {
     const uid = await newUser();
@@ -290,10 +338,13 @@ describe("user self-service (D31, D42)", () => {
         flowStatus: "No Flow",
         abnormalSince: ts(Date.now() - 2 * MIN),
       });
-    await db
-      .collection(C.deviceHealth)
-      .doc("D1")
-      .set({ ownerUid: uid, online: true, lastSeen: ts(Date.now()) });
+    await liveRef("D1").set({
+      ownerUid: uid,
+      online: true,
+      lastSeen: Date.now(),
+      flowStatus: "No Flow",
+      abnormalSince: Date.now() - 2 * MIN,
+    });
     await runAlertPass();
     expect(fake.smsSent).toEqual(["639182222210"]);
   });

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../core/glass.dart';
 import '../../core/theme.dart';
@@ -86,10 +87,9 @@ class _LiveCueState extends State<LiveCue> with SingleTickerProviderStateMixin {
     if (f == Freshness.none || f == Freshness.offline || seen == null) {
       return const SizedBox.shrink();
     }
-    final live = f == Freshness.live;
     final age = relativeAge(seen, widget.now);
     return Semantics(
-      label: live ? 'Live, updated $age' : 'Late, updated $age',
+      label: 'Live, updated $age',
       excludeSemantics: true,
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -97,37 +97,16 @@ class _LiveCueState extends State<LiveCue> with SingleTickerProviderStateMixin {
           SizedBox(
             width: 14,
             height: 14,
-            child: live
-                ? AnimatedBuilder(
-                    animation: _ripple,
-                    builder: (_, _) => CustomPaint(
-                      painter: _DotPainter(
-                        reduceMotion(context) ? 0 : _ripple.value,
-                      ),
-                    ),
-                  )
-                : Center(
-                    child: Container(
-                      width: 9,
-                      height: 9,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.steel, width: 1.5),
-                      ),
-                    ),
-                  ),
+            child: AnimatedBuilder(
+              animation: _ripple,
+              builder: (_, _) => CustomPaint(
+                painter: _DotPainter(reduceMotion(context) ? 0 : _ripple.value),
+              ),
+            ),
           ),
           const SizedBox(width: 6),
-          Text(
-            live ? 'Live' : 'Late',
-            style: AppText.strong.copyWith(fontSize: 13),
-          ),
-          // Calm while live: a seconds counter that resets at every heartbeat
-          // looked like constant flicker. The age only matters once it's late.
-          if (!live) ...[
-            const SizedBox(width: 6),
-            Text(age, style: AppText.note),
-          ],
+          // Calm: no seconds counter that resets at every heartbeat.
+          Text('Live', style: AppText.strong.copyWith(fontSize: 13)),
         ],
       ),
     );
@@ -184,9 +163,18 @@ class SinceLine extends StatelessWidget {
 
 /// Battery: gauge with percent; charging bolt; amber "low"; fault wording.
 class BatteryGauge extends StatelessWidget {
-  const BatteryGauge(this.view, {super.key, this.showTrend = false});
+  const BatteryGauge(
+    this.view, {
+    super.key,
+    this.showTrend = false,
+    this.compact = false,
+  });
 
   final DeviceView view;
+
+  /// The card's top-right corner (D57): the icon and "77%" only; charging,
+  /// low and last-seen show as the icon and colour, and in the spoken label.
+  final bool compact;
 
   /// Details shows the trend sentence ("Charging from solar").
   final bool showTrend;
@@ -215,7 +203,11 @@ class BatteryGauge extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Flexible(
-            child: Text('Battery reading unavailable', style: AppText.note),
+            child: Text(
+              compact ? '–' : 'Battery reading unavailable',
+              style: AppText.note,
+              semanticsLabel: 'Battery reading unavailable',
+            ),
           ),
         ],
       );
@@ -279,7 +271,11 @@ class BatteryGauge extends StatelessWidget {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              withTrend ? '$words · ${trendWord(h.chargingStatus)}' : words,
+              compact
+                  ? '$pct%'
+                  : withTrend
+                  ? '$words · ${trendWord(h.chargingStatus)}'
+                  : words,
               style: AppText.note.copyWith(
                 color: stale ? AppColors.steel : AppColors.ink,
               ),
@@ -441,27 +437,97 @@ class PipePainter extends CustomPainter {
   bool shouldRepaint(PipePainter old) => old.kind != kind || old.phase != phase;
 }
 
+/// How fast the device's rotor turns for a flow rate (D57): faster flow, faster
+/// spin, like the sensor's own water wheel. 0 when no water moves.
+double rotorTurnsPerSecond(double? lpm) {
+  if (lpm == null || lpm <= 0) return 0;
+  return (lpm / 4).clamp(0.4, 3.0);
+}
+
 /// The device drawing with a status-coloured ring (cards and the empty state).
-class DeviceIllustration extends StatelessWidget {
-  const DeviceIllustration({super.key, required this.ring, this.size = 56});
+/// Its rotor spins while water flows, at a speed that follows the flow, and
+/// stands still under reduce motion, with no flow, or offline (D57).
+class DeviceIllustration extends StatefulWidget {
+  const DeviceIllustration({
+    super.key,
+    required this.ring,
+    this.size = 56,
+    this.turnsPerSecond = 0,
+  });
 
   final Color ring;
   final double size;
 
+  /// Rotor speed (0 = still); see [rotorTurnsPerSecond].
+  final double turnsPerSecond;
+
+  @override
+  State<DeviceIllustration> createState() => _DeviceIllustrationState();
+}
+
+class _DeviceIllustrationState extends State<DeviceIllustration>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker = createTicker(_tick);
+  Duration _last = Duration.zero;
+  double _angle = 0;
+
+  bool get _spin => widget.turnsPerSecond > 0 && !reduceMotion(context);
+
+  void _tick(Duration elapsed) {
+    final dt = (elapsed - _last).inMicroseconds / 1e6;
+    _last = elapsed;
+    setState(() => _angle += dt * widget.turnsPerSecond * 2 * math.pi);
+  }
+
+  void _sync() {
+    if (_spin && !_ticker.isActive) {
+      _last = Duration.zero;
+      _ticker.start();
+    } else if (!_spin && _ticker.isActive) {
+      _ticker.stop();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(DeviceIllustration old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
     child: SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(painter: _DevicePainter(ring)),
+      width: widget.size,
+      height: widget.size,
+      child: CustomPaint(
+        painter: _DevicePainter(
+          widget.ring,
+          _angle,
+          spinning: widget.turnsPerSecond > 0,
+        ),
+      ),
     ),
   );
 }
 
 class _DevicePainter extends CustomPainter {
-  _DevicePainter(this.ring);
+  _DevicePainter(this.ring, this.angle, {required this.spinning});
 
   final Color ring;
+  final double angle;
+  final bool spinning;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -502,32 +568,35 @@ class _DevicePainter extends CustomPainter {
         ..color = AppColors.deepCyan,
     );
     canvas.drawCircle(
-      body.center.translate(-r * 0.18, 0),
+      body.center.translate(-r * 0.2, 0),
       r * 0.09,
       Paint()..color = ring,
     );
-    final wave = Path()..moveTo(body.center.dx, body.center.dy + r * 0.05);
-    for (var i = 0; i < 3; i++) {
-      final x = body.center.dx + i * r * 0.1;
-      wave.relativeQuadraticBezierTo(
-        r * 0.05,
-        -r * 0.08 * math.cos(i * math.pi),
-        r * 0.1,
-        0,
+
+    // The rotor: three blades around a hub, like the flow sensor's water
+    // wheel. Water blue while it turns, grey while it stands still.
+    final hub = body.center.translate(r * 0.17, 0);
+    final blade = Paint()
+      ..color = spinning
+          ? AppColors.water
+          : AppColors.steel.withValues(alpha: 0.5)
+      ..strokeWidth = r * 0.07
+      ..strokeCap = StrokeCap.round;
+    final len = r * 0.24;
+    for (var k = 0; k < 3; k++) {
+      final a = angle + k * 2 * math.pi / 3;
+      canvas.drawLine(
+        hub,
+        hub.translate(len * math.cos(a), len * math.sin(a)),
+        blade,
       );
-      wave.moveTo(x + r * 0.1, body.center.dy + r * 0.05);
     }
-    canvas.drawPath(
-      wave,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.4
-        ..color = AppColors.water,
-    );
+    canvas.drawCircle(hub, r * 0.06, Paint()..color = AppColors.deepCyan);
   }
 
   @override
-  bool shouldRepaint(_DevicePainter old) => old.ring != ring;
+  bool shouldRepaint(_DevicePainter old) =>
+      old.ring != ring || old.angle != angle || old.spinning != spinning;
 }
 
 /// Animates children to their new positions when the order changes ("FLIP"),

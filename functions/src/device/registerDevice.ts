@@ -9,6 +9,7 @@ import { effectiveCutoffs } from "../lib/cutoffs";
 import { uploadPace } from "../lib/decisions";
 import { C, db, ts } from "../lib/db";
 import { newDeviceDoc, newHealthDoc } from "../lib/deviceDocs";
+import { mirrorDevice, readLive } from "../lib/liveStore";
 import { header, sendError, sendOk } from "../lib/http";
 import { logError } from "../lib/logError";
 import { parseRegisterBody } from "../lib/payload";
@@ -22,11 +23,13 @@ type Outcome =
 
 const HOUR_MS = 3_600_000;
 
-async function register(deviceId: string, firmware: string | null, nowMs: number) {
+export async function register(deviceId: string, firmware: string | null, nowMs: number) {
   const token = generateToken();
   const hour = Math.floor(nowMs / HOUR_MS);
+  // online lives in the Realtime Database (D48); read before the transaction.
+  const online = (await readLive(deviceId)).online;
 
-  return db.runTransaction<Outcome>(async (tx) => {
+  const out = await db.runTransaction<Outcome>(async (tx) => {
     const rateRef = db.collection(C.rateLimits).doc(`register__${hour}`);
     const [rate, allowed, device, health] = await Promise.all([
       tx.get(rateRef),
@@ -40,7 +43,7 @@ async function register(deviceId: string, firmware: string | null, nowMs: number
     tx.set(rateRef, { count: count + 1, expireAt: ts(nowMs + 2 * HOUR_MS) });
 
     if (!allowed.exists) return { kind: "not_allowed" };
-    if (device.exists && health.get("online") === true) return { kind: "active" };
+    if (device.exists && online) return { kind: "active" };
 
     const now = ts(nowMs);
     tx.set(db.collection(C.deviceSecrets).doc(deviceId), {
@@ -78,6 +81,9 @@ async function register(deviceId: string, firmware: string | null, nowMs: number
       normalFlowCutoff: STARTER_NORMAL_FLOW_CUTOFF,
     };
   });
+  // The new token hash and the device's owner and cutoffs reach the live channel.
+  if (out.kind === "ok") await mirrorDevice(deviceId);
+  return out;
 }
 
 export const registerDevice = onRequest(

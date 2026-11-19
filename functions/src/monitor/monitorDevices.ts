@@ -1,48 +1,59 @@
 import { onSchedule } from "firebase-functions/scheduler";
 import { runAlertPass, type AlertPassResult } from "../alerts/alertPass";
-import { OFFLINE_AFTER_MIN_S, TIME_ZONE } from "../config";
-import { C, db, ms, ts } from "../lib/db";
+import { TIME_ZONE } from "../config";
+import { liveRef, stateRef } from "../lib/db";
 import { isStale } from "../lib/decisions";
+import type { Live } from "../lib/live";
+import { readAllLive, readState } from "../lib/liveStore";
 import { logError } from "../lib/logError";
 import { ALERT_SECRETS } from "../lib/providers";
+import { applyProblemOps } from "../lib/problems";
 
 const SOURCE = "monitorDevices";
 
 /**
- * Flips one device offline only if a fresh read inside the transaction still
- * shows it stale, so an ingest landing at the same moment wins (CLAUDE.md D18).
+ * Flips one device offline only if the transaction still sees it stale, so an
+ * upload landing at the same moment wins (D18). Returns its last-seen time.
  */
-export async function flipOfflineIfStale(deviceId: string, nowMs: number): Promise<boolean> {
-  const ref = db.collection(C.deviceHealth).doc(deviceId);
-  return db.runTransaction(async (tx) => {
-    const health = await tx.get(ref);
-    const hb = health.get("heartbeatS");
-    const heartbeatS = typeof hb === "number" ? hb : null;
-    if (health.get("online") !== true || !isStale(ms(health.get("lastSeen")), nowMs, heartbeatS)) {
-      return false;
-    }
-    tx.update(ref, { online: false });
-    return true;
+export async function flipOfflineIfStale(deviceId: string, nowMs: number): Promise<number | null> {
+  let lastSeen: number | null = null;
+  const r = await liveRef(deviceId).transaction((cur: Record<string, unknown> | null) => {
+    if (cur === null) return cur; // the first read of a transaction may be empty: retried
+    const hb = typeof cur.heartbeatS === "number" ? cur.heartbeatS : null;
+    const seen = typeof cur.lastSeen === "number" ? cur.lastSeen : null;
+    if (cur.online !== true || !isStale(seen, nowMs, hb)) return undefined; // abort
+    lastSeen = seen;
+    return { ...cur, online: false };
   });
+  return r.committed && lastSeen !== null ? lastSeen : null;
 }
 
-/** One monitor pass: offline flips, then alerts. */
+/** Opens the Offline problem from the moment the device went silent (D49). */
+async function openOfflineProblem(deviceId: string, sinceMs: number) {
+  const state = await readState(deviceId);
+  if (state.open.offline) return;
+  const open = await applyProblemOps(deviceId, state.ownerUid, state.open, [
+    { op: "open", type: "offline", startedAt: sinceMs },
+  ]);
+  await stateRef(deviceId).child("open").set(open);
+}
+
+/** One monitor pass: offline flips, then alerts. Reads /live once (D48). */
 export async function runMonitorPass(
   nowMs = Date.now(),
 ): Promise<{ flipped: string[]; alerts: AlertPassResult | null }> {
-  const candidates = await db
-    .collection(C.deviceHealth)
-    .where("online", "==", true)
-    // The shortest possible threshold; each device's own is checked in the flip.
-    .where("lastSeen", "<=", ts(nowMs - OFFLINE_AFTER_MIN_S * 1000))
-    .get();
-
+  const live = await readAllLive();
   const flipped: string[] = [];
-  for (const doc of candidates.docs) {
+  for (const [id, l] of live) {
+    if (!l.online || !isStale(l.lastSeen, nowMs, l.heartbeatS)) continue;
     try {
-      if (await flipOfflineIfStale(doc.id, nowMs)) flipped.push(doc.id);
+      const since = await flipOfflineIfStale(id, nowMs);
+      if (since === null) continue;
+      flipped.push(id);
+      live.set(id, { ...l, online: false } satisfies Live);
+      await openOfflineProblem(id, since);
     } catch (e) {
-      await logError({ source: SOURCE, code: "INTERNAL", message: String(e), deviceId: doc.id });
+      await logError({ source: SOURCE, code: "INTERNAL", message: String(e), deviceId: id });
     }
   }
   if (flipped.length > 0) {
@@ -53,7 +64,7 @@ export async function runMonitorPass(
 
   let alerts: AlertPassResult | null = null;
   try {
-    alerts = await runAlertPass(nowMs);
+    alerts = await runAlertPass(nowMs, live);
   } catch (e) {
     await logError({ source: SOURCE, code: "INTERNAL", message: `alerts: ${String(e)}` });
   }

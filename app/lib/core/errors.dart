@@ -29,7 +29,6 @@ abstract final class Messages {
   static const offlineBanner = 'No internet · Showing the last saved readings';
   static const deviceGone = 'This device is no longer on your account.';
   static const mapFailed = "Map can't load. Your devices list still works.";
-  static const codeSent = 'If this number has an account, we sent a code.';
   static const codeExpired = 'This code has expired. Send a new one.';
   static const codeLocked = 'Too many wrong codes. Send a new one.';
   static const dailyLimit =

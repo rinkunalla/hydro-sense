@@ -1,3 +1,4 @@
+import { manilaSlot } from "../src/lib/time";
 import { describe, expect, it } from "vitest";
 import {
   isStale,
@@ -33,6 +34,17 @@ describe("rateChangedEnough", () => {
     expect(rateChangedEnough(0, 0.25)).toBe(false); // noise at zero
     expect(rateChangedEnough(0, 0.3)).toBe(true);
     expect(rateChangedEnough(null, 1)).toBe(true);
+  });
+});
+
+describe("manilaSlot (History graph)", () => {
+  it("is the 15-minute slot of the Manila day", () => {
+    // 2026-11-16 00:00 Manila = 2026-11-15 16:00 UTC
+    const midnight = Date.UTC(2026, 10, 15, 16, 0);
+    expect(manilaSlot(midnight)).toBe(0);
+    expect(manilaSlot(midnight + 14 * 60_000)).toBe(0);
+    expect(manilaSlot(midnight + 15 * 60_000)).toBe(1);
+    expect(manilaSlot(midnight + 23 * 3_600_000 + 59 * 60_000)).toBe(95);
   });
 });
 
@@ -79,11 +91,11 @@ describe("sampleDue and isStale", () => {
     expect(isStale(null, NOW)).toBe(false);
   });
 
-  it("uses three missed heartbeats when the device reports its heartbeat", () => {
-    expect(offlineAfterS(30)).toBe(90);
-    expect(offlineAfterS(10)).toBe(60);
+  it("uses two missed heartbeats when the device reports its heartbeat", () => {
+    expect(offlineAfterS(30)).toBe(60);
+    expect(offlineAfterS(10)).toBe(40);
     expect(offlineAfterS(null)).toBe(180);
-    expect(isStale(NOW - 89 * S, NOW, 30)).toBe(false);
-    expect(isStale(NOW - 90 * S, NOW, 30)).toBe(true);
+    expect(isStale(NOW - 59 * S, NOW, 30)).toBe(false);
+    expect(isStale(NOW - 60 * S, NOW, 30)).toBe(true);
   });
 });

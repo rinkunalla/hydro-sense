@@ -4,6 +4,7 @@ import { getAuth } from "firebase-admin/auth";
 import { C, db, ts } from "../lib/db";
 import { logError } from "../lib/logError";
 import { deleteDeviceData, setOwner } from "./ownership";
+import { deleteUserProblems } from "../lib/problems";
 
 const SOURCE = "purge";
 
@@ -16,6 +17,7 @@ export interface PurgeResult {
 export async function purgeUser(uid: string): Promise<void> {
   const owned = await db.collection(C.devices).where("ownerUid", "==", uid).get();
   for (const d of owned.docs) await setOwner(d.id, null);
+  await deleteUserProblems(uid);
 
   const user = await db.collection(C.users).doc(uid).get();
   const phone = user.get("phone") as string | undefined;

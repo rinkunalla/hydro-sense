@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 // Reset by SMS (5.2) and Account (4.6) with fake repositories.
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -20,13 +19,17 @@ class FakeAccount implements AccountRepository {
   Object? verifyError;
 
   @override
-  Future<int> requestResetCode(String mobile) async {
-    calls.add('code $mobile');
+  Future<int> requestResetCode(String address, {bool byEmail = false}) async {
+    calls.add('code ${byEmail ? 'email ' : ''}$address');
     return 60;
   }
 
   @override
-  Future<String> verifyResetCode(String mobile, String code) async {
+  Future<String> verifyResetCode(
+    String address,
+    String code, {
+    bool byEmail = false,
+  }) async {
     calls.add('verify $code');
     if (verifyError != null) throw verifyError!;
     return 'uid.token';
@@ -37,14 +40,6 @@ class FakeAccount implements AccountRepository {
     String resetToken,
     String newPassword,
   ) async => calls.add('set $resetToken');
-
-  Object? emailError;
-
-  @override
-  Future<void> sendResetEmail(String email) async {
-    calls.add('email $email');
-    if (emailError != null) throw emailError!;
-  }
 
   @override
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
@@ -95,6 +90,9 @@ void main() {
       ),
     );
     expect(find.text('STEP 1 OF 3'), findsOneWidget);
+    expect(find.text('Your email'), findsOneWidget); // email first (D59)
+    await t.tap(find.text('Use my mobile number instead'));
+    await t.pump();
     await t.enterText(find.byType(TextField), '0917 12');
     await t.tap(find.text('Send the code'));
     await t.pump();
@@ -108,7 +106,10 @@ void main() {
     expect(account.calls, ['code 639171234567']);
     expect(find.text('STEP 2 OF 3'), findsOneWidget);
     expect(
-      find.text('We sent a 6-digit code to 0917 ••• 4567.'),
+      find.text(
+        'If 0917 ••• 4567 has an account, a 6-digit code is on its way. '
+        'It can take a minute.',
+      ),
       findsOneWidget,
     );
     expect(find.text('Code expires in 5:00'), findsOneWidget);
@@ -144,49 +145,43 @@ void main() {
     expect(account.calls.last, 'set uid.token');
   });
 
-  testWidgets('reset by email: same reply for any address; mobile again', (
-    t,
-  ) async {
-    await phone(t);
-    final account = FakeAccount()
-      ..emailError = FirebaseAuthException(code: 'user-not-found');
-    await t.pumpWidget(
-      ProviderScope(
-        overrides: [accountRepositoryProvider.overrideWithValue(account)],
-        child: MaterialApp(
-          theme: buildLightTheme(),
-          home: SmsResetScreen(now: () => testNow),
+  testWidgets(
+    'reset by email code: masked address, then the same 3 steps (D59)',
+    (t) async {
+      await phone(t);
+      final account = FakeAccount();
+      await t.pumpWidget(
+        ProviderScope(
+          overrides: [accountRepositoryProvider.overrideWithValue(account)],
+          child: MaterialApp(
+            theme: buildLightTheme(),
+            home: SmsResetScreen(now: () => testNow),
+          ),
         ),
-      ),
-    );
-    await t.tap(find.text('Use my email instead'));
-    await t.pump();
-    expect(find.text('Set your password by email'), findsOneWidget);
-    await t.enterText(find.byType(TextField), 'nobody');
-    await t.tap(find.text('Send the link'));
-    await t.pump();
-    expect(find.text('Enter the email on your account.'), findsOneWidget);
-    await t.enterText(find.byType(TextField), 'ana@example.com');
-    await t.tap(find.text('Send the link'));
-    await t.pump();
-    // An unknown address gets the same confirmation (no account enumeration).
-    expect(account.calls, ['email ana@example.com']);
-    expect(
-      find.textContaining('If ana@example.com has an account'),
-      findsOneWidget,
-    );
-    await t.tap(find.text('Use my mobile number instead'));
-    await t.pump();
-    expect(find.text('Send the code'), findsOneWidget);
-
-    account.emailError = FirebaseAuthException(code: 'too-many-requests');
-    await t.tap(find.text('Use my email instead'));
-    await t.pump();
-    await t.enterText(find.byType(TextField), 'ana@example.com');
-    await t.tap(find.text('Send the link'));
-    await t.pump();
-    expect(find.textContaining('Too many tries'), findsOneWidget);
-  });
+      );
+      expect(find.text('Your email'), findsOneWidget);
+      await t.enterText(find.byType(TextField), 'nobody');
+      await t.tap(find.text('Send the code'));
+      await t.pump();
+      expect(find.text('Enter the email on your account.'), findsOneWidget);
+      await t.enterText(find.byType(TextField), ' Ana@Example.com ');
+      await t.tap(find.text('Send the code'));
+      await t.pump();
+      expect(account.calls, ['code email ana@example.com']);
+      // Same words for any address (no account enumeration), and no link.
+      expect(
+        find.text(
+          'If a•••@example.com has an account, a 6-digit code is on its way. '
+          'It can take a minute.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Not in your inbox? Check spam.'), findsOneWidget);
+      await t.tap(find.text('Wrong email? Go back and try again.'));
+      await t.pump();
+      expect(find.text('Your email'), findsOneWidget);
+    },
+  );
 
   Widget accountHarness(FakeClient client) => ProviderScope(
     overrides: [

@@ -11,6 +11,7 @@ import 'package:hydro_sense/data/admin_providers.dart';
 import 'package:hydro_sense/data/admin_repository.dart';
 import 'package:hydro_sense/data/providers.dart';
 import 'package:hydro_sense/data/repository.dart';
+import 'package:hydro_sense/features/admin/activity_screen.dart';
 import 'package:hydro_sense/features/admin/admin_account_screen.dart';
 import 'package:hydro_sense/features/admin/admin_setup_screen.dart';
 import 'package:hydro_sense/features/admin/admin_shell.dart';
@@ -101,7 +102,16 @@ class FakeAdmin implements AdminRepository {
   @override
   Future<void> signOutEverywhere() => _rec('signOutEverywhere');
   @override
-  Future<List<AuditEntry>> audit() async => log;
+  Future<List<AuditEntry>> audit({
+    int limit = 100,
+    DateTime? before,
+    String? targetId,
+  }) async => [
+    for (final e in log)
+      if ((targetId == null || e.targetId == targetId) &&
+          (before == null || (e.at?.isBefore(before) ?? false)))
+        e,
+  ].take(limit).toList();
   @override
   Future<void> requestAdminSetup(String email) => _rec('setupLink $email');
   @override
@@ -407,23 +417,67 @@ void main() {
       expect(find.text('Admin since Nov 2, 2026'), findsOneWidget);
       expect(find.text('You'), findsOneWidget);
       expect(find.text('Invite expired'), findsOneWidget);
-      expect(
-        find.textContaining(
-          'dana@x.ph deleted the user Carlo Diaz',
-          findRichText: true,
-        ),
-        findsOne,
-      );
+      // Activity has its own page now (D53).
+      expect(find.textContaining('deleted the user'), findsNothing);
 
       await t.tap(find.text('Resend'));
       await t.pumpAndSettle();
       await t.enterText(find.widgetWithText(TextField, 'Email').last, 'z@x.ph');
       await t.tap(find.widgetWithText(PrimaryButton, 'Invite'));
       await t.pumpAndSettle();
-      await t.ensureVisible(find.text('Restore'));
+      expect(fake.calls, ['resend a2', 'invite z@x.ph']);
+    });
+
+    testWidgets('Activity page: search, groups, dates and Restore (D53)', (
+      t,
+    ) async {
+      final now = DateTime.now();
+      final fake = FakeAdmin()
+        ..log = [
+          AuditEntry(
+            id: 'e1',
+            at: now,
+            adminEmail: 'dana@x.ph',
+            action: 'user_deleted',
+            targetId: 'u3',
+            targetName: 'Carlo Diaz',
+          ),
+          AuditEntry(
+            id: 'e2',
+            at: now.subtract(const Duration(days: 40)),
+            adminEmail: 'mark@x.ph',
+            action: 'device_removed',
+            targetId: 'A4F00F6936B0',
+            targetName: 'Unit 1',
+          ),
+        ];
+      await pumpAdmin(t, fake, const ActivityScreen());
+      expect(
+        find.text('dana@x.ph deleted the user Carlo Diaz'),
+        findsOneWidget,
+      );
+      expect(find.text('mark@x.ph removed Unit 1'), findsOneWidget);
+      expect(find.text('Download CSV'), findsOneWidget);
+
+      await t.enterText(
+        find.widgetWithText(TextField, 'Search by name, ID or admin email'),
+        'a4f0',
+      );
+      await t.pumpAndSettle();
+      expect(find.text('dana@x.ph deleted the user Carlo Diaz'), findsNothing);
+      expect(find.text('mark@x.ph removed Unit 1'), findsOneWidget);
+
+      await t.enterText(
+        find.widgetWithText(TextField, 'Search by name, ID or admin email'),
+        '',
+      );
+      await t.tap(find.text('Last 30 days'));
+      await t.pumpAndSettle();
+      expect(find.text('mark@x.ph removed Unit 1'), findsNothing);
+
       await t.tap(find.text('Restore'));
       await t.pumpAndSettle();
-      expect(fake.calls, ['resend a2', 'invite z@x.ph', 'restoreUser u3']);
+      expect(fake.calls, ['restoreUser u3']);
     });
   });
 

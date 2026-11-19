@@ -1,11 +1,13 @@
-// Six-digit SMS codes for password reset and mobile change (CLAUDE.md D22, D31).
-// Limits are counted per phone number, also for numbers with no account, so the
-// replies and their timing never tell a caller whether a number has an account.
+// Six-digit codes for password reset (by email or SMS) and mobile change (SMS)
+// (CLAUDE.md D22, D31, D59). Limits are counted per address (phone number or
+// email), also for addresses with no account, so the replies and their timing
+// never tell a caller whether an address has an account.
 import { HttpsError } from "firebase-functions/https";
-import { RESET_CODE_TTL_S, RESET_RESEND_S } from "../config";
+import { EMAIL_CODE_PROJECT_DAILY_CAP, RESET_CODE_TTL_S, RESET_RESEND_S } from "../config";
 import { C, db, ms, ts } from "../lib/db";
 import { logError } from "../lib/logError";
 import {
+  codeEmail,
   codeHash,
   codeSms,
   codeVerdict,
@@ -27,9 +29,13 @@ const phoneDayRef = (phone: string, nowMs: number) =>
 const projectDayRef = (nowMs: number) => db.collection(C.alertDaily).doc(manilaDateKey(nowMs));
 const resetRef = (uid: string) => db.collection(C.passwordResets).doc(uid);
 
-/** A code goes to `phone` for account `uid`; uid null means "count, send nothing". */
+/**
+ * A code goes to `phone` (a mobile number, or with channel "email" an email
+ * address) for account `uid`; uid null means "count, send nothing".
+ */
 export interface CodeTarget {
   phone: string;
+  channel?: "sms" | "email";
   uid: string | null;
   purpose: CodePurpose;
   newPhone?: string;
@@ -41,6 +47,8 @@ export interface CodeTarget {
  */
 export async function sendCode(t: CodeTarget, nowMs = Date.now()): Promise<number> {
   const code = generateCode();
+  const byEmail = t.channel === "email";
+  const projectField = byEmail ? "emailCodeCount" : "otpCount";
   const decision = await db.runTransaction(async (tx) => {
     const [phoneDay, projectDay] = await Promise.all([
       tx.get(phoneDayRef(t.phone, nowMs)),
@@ -50,7 +58,8 @@ export async function sendCode(t: CodeTarget, nowMs = Date.now()): Promise<numbe
       {
         lastSentMs: ms(phoneDay.get("lastSentAt")),
         phoneToday: (phoneDay.get("count") as number | undefined) ?? 0,
-        projectToday: (projectDay.get("otpCount") as number | undefined) ?? 0,
+        projectToday: (projectDay.get(projectField) as number | undefined) ?? 0,
+        projectCap: byEmail ? EMAIL_CODE_PROJECT_DAILY_CAP : undefined,
       },
       nowMs,
     );
@@ -71,7 +80,7 @@ export async function sendCode(t: CodeTarget, nowMs = Date.now()): Promise<numbe
       tx.set(
         projectDayRef(nowMs),
         {
-          otpCount: ((projectDay.get("otpCount") as number | undefined) ?? 0) + 1,
+          [projectField]: ((projectDay.get(projectField) as number | undefined) ?? 0) + 1,
         },
         { merge: true },
       );
@@ -106,11 +115,17 @@ export async function sendCode(t: CodeTarget, nowMs = Date.now()): Promise<numbe
 
   if (t.uid !== null) {
     try {
-      const sent = await providers().otp.send(t.phone, codeSms("{otp}"), code);
-      if (sent !== code) await resetRef(t.uid).update({ codeHash: codeHash(t.uid, sent) });
+      if (byEmail) {
+        const mail = codeEmail(code);
+        await providers().email.send(t.phone, mail.subject, mail.text);
+      } else {
+        const sent = await providers().otp.send(t.phone, codeSms("{otp}"), code);
+        if (sent !== code) await resetRef(t.uid).update({ codeHash: codeHash(t.uid, sent) });
+      }
     } catch (e) {
       // Same reply as success (no enumeration); the user can send again after the gap.
-      await logError({ source: SOURCE, code: "OTP_FAILED", message: String(e), nowMs });
+      const failed = byEmail ? "EMAIL_CODE_FAILED" : "OTP_FAILED";
+      await logError({ source: SOURCE, code: failed, message: String(e), nowMs });
     }
   }
   return RESET_RESEND_S;

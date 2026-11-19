@@ -9,6 +9,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 
 import 'app.dart';
 import 'core/config.dart';
+import 'data/live_db.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -43,12 +44,29 @@ Future<void> _useEmulators() async {
   final host = kIsWeb
       ? AppConfig.emulatorHostWeb
       : AppConfig.emulatorHostAndroid;
-  await FirebaseAuth.instance.useAuthEmulator(host, AppConfig.authEmulatorPort);
+  // The plugins turn 127.0.0.1 into the Android emulator's 10.0.2.2; a real
+  // phone on USB (EMULATOR_HOST given, with adb reverse) must keep it.
+  const map = !bool.hasEnvironment('EMULATOR_HOST');
+  await FirebaseAuth.instance.useAuthEmulator(
+    host,
+    AppConfig.authEmulatorPort,
+    automaticHostMapping: map,
+  );
   FirebaseFirestore.instance.useFirestoreEmulator(
     host,
     AppConfig.firestoreEmulatorPort,
+    automaticHostMapping: map,
   );
   FirebaseFunctions.instanceFor(
     region: AppConfig.functionsRegion,
-  ).useFunctionsEmulator(host, AppConfig.functionsEmulatorPort);
+  ).useFunctionsEmulator(
+    host,
+    AppConfig.functionsEmulatorPort,
+    automaticHostMapping: map,
+  );
+  liveDatabase().useDatabaseEmulator(
+    host,
+    AppConfig.databaseEmulatorPort,
+    automaticHostMapping: map,
+  );
 }

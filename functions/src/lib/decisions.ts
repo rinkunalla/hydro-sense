@@ -60,7 +60,7 @@ export function sampleDue(lastAtMs: number | null, nowMs: number, intervalS: num
 }
 
 /**
- * Silence before a device counts as offline: three missed heartbeats when it
+ * Silence before a device counts as offline: two missed heartbeats when it
  * reports its heartbeat (firmware 0.3.0+), else the 0.2.0 value of 180 s.
  */
 export function offlineAfterS(heartbeatS: number | null): number {

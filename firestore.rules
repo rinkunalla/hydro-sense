@@ -139,6 +139,22 @@ service cloud.firestore {
       allow read: if ownsDoc(resource.data);
     }
 
+    // History (D49): only the functions create problems. The owner may add or
+    // clear a note (up to 100 characters) and delete a problem that has ended.
+    match /problems/{id} {
+      allow read: if ownsDoc(resource.data);
+      allow update: if ownsDoc(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['note'])
+        && (request.resource.data.note == null || textOf(request.resource.data.note, 100));
+      allow delete: if ownsDoc(resource.data) && resource.data.endedAt != null;
+    }
+
+    // The History graph (D53): one day of 15-minute flow samples per device.
+    // Read by the owner; written only by the functions.
+    match /readings/{id} {
+      allow read: if ownsDoc(resource.data);
+    }
+
     match /pipelines/{uid} {
       allow read, delete: if isSelf(uid);
       allow create, update: if isSelf(uid) && validPipeline(request.resource.data);

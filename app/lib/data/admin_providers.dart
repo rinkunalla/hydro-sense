@@ -35,3 +35,10 @@ final adminsProvider =
 final adminAuditProvider = FutureProvider<List<AuditEntry>>(
   (ref) => ref.watch(adminRepositoryProvider).audit(),
 );
+
+/// One user's or device's own activity, for its side panel (D53).
+final targetAuditProvider = FutureProvider.autoDispose
+    .family<List<AuditEntry>, String>(
+      (ref, id) =>
+          ref.watch(adminRepositoryProvider).audit(targetId: id, limit: 10),
+    );

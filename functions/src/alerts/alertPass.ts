@@ -21,7 +21,8 @@ import {
   buildSms,
   type AlertItem,
 } from "../lib/messages";
-import type { FlowStatus } from "../lib/payload";
+import type { Live } from "../lib/live";
+import { readAllLive } from "../lib/liveStore";
 import { providers } from "../lib/providers";
 import { manilaDateKey } from "../lib/time";
 
@@ -262,45 +263,43 @@ async function deliver(
   return "sent";
 }
 
-/** Evaluates one device's three families; failures are logged per device. */
-async function evaluateDevice(
-  dev: FirebaseFirestore.QueryDocumentSnapshot,
-  h: FirebaseFirestore.DocumentData,
-  activeIds: Set<string>,
-  nowMs: number,
-): Promise<Claimed[]> {
-  const view: DeviceView = {
-    online: h.online === true,
-    lastSeenMs: ms(h.lastSeen),
-    flowStatus: (dev.get("flowStatus") as FlowStatus | null) ?? null,
-    abnormalSinceMs: ms(dev.get("abnormalSince")),
-    batteryPercent: (h.batteryPercent as number | null | undefined) ?? null,
-    batteryFault: h.batteryFault === true,
-  };
-  const out: Claimed[] = [];
+const viewOf = (l: Live): DeviceView => ({
+  online: l.online,
+  lastSeenMs: l.lastSeen,
+  flowStatus: l.flowStatus,
+  abnormalSinceMs: l.abnormalSince,
+  batteryPercent: l.batteryPercent,
+  batteryFault: l.batteryFault,
+});
+
+/** The families of one device that need a transaction this pass (fault or active). */
+function dueFamilies(id: string, l: Live, activeIds: Set<string>, nowMs: number) {
+  const view = viewOf(l);
+  const due: { family: Family; cond: Condition }[] = [];
   for (const family of FAMILIES) {
     const cond = conditionFor(family, view, nowMs);
     if (cond.kind === "skip") continue;
-    if (cond.kind !== "fault" && !activeIds.has(`${dev.id}__${family}`)) continue;
+    if (cond.kind !== "fault" && !activeIds.has(`${id}__${family}`)) continue;
+    due.push({ family, cond });
+  }
+  return due;
+}
+
+/** Evaluates one device's due families; failures are logged per device. */
+async function evaluateDevice(
+  id: string,
+  l: Live,
+  due: { family: Family; cond: Condition }[],
+  nickname: string,
+  nowMs: number,
+): Promise<Claimed[]> {
+  const out: Claimed[] = [];
+  for (const { family, cond } of due) {
     try {
-      const c = await evaluate(
-        dev.id,
-        family,
-        cond,
-        view,
-        dev.get("nickname") as string,
-        h.lowVoltageSleep === true,
-        nowMs,
-      );
+      const c = await evaluate(id, family, cond, viewOf(l), nickname, l.lowVoltageSleep, nowMs);
       if (c) out.push(c);
     } catch (e) {
-      await logError({
-        source: SOURCE,
-        code: "INTERNAL",
-        message: String(e),
-        deviceId: dev.id,
-        nowMs,
-      });
+      await logError({ source: SOURCE, code: "INTERNAL", message: String(e), deviceId: id, nowMs });
     }
   }
   return out;
@@ -309,34 +308,45 @@ async function evaluateDevice(
 /**
  * Evaluates every assigned device and sends what is due as one SMS and one email
  * per owner. Unassigned and removed devices and suspended users send nothing.
+ * Reads the live nodes the monitor already has (D48); Firestore is read only for
+ * owners and the nicknames of devices with something due.
  */
-export async function runAlertPass(nowMs = Date.now()): Promise<AlertPassResult> {
+export async function runAlertPass(
+  nowMs = Date.now(),
+  liveNodes?: Map<string, Live>,
+): Promise<AlertPassResult> {
   const result: AlertPassResult = { sent: [], users: {} };
-  const [devices, health, active] = await Promise.all([
-    db.collection(C.devices).where("ownerUid", "!=", null).get(),
-    db.collection(C.deviceHealth).where("ownerUid", "!=", null).get(),
+  const [live, active] = await Promise.all([
+    liveNodes ? Promise.resolve(liveNodes) : readAllLive(),
     db.collection(C.alertState).where("active", "==", true).get(),
   ]);
-  const healthById = new Map(health.docs.map((d) => [d.id, d.data()]));
   // Only active states can change without a fault, so healthy devices cost no reads.
   const activeIds = new Set(active.docs.map((d) => d.id));
 
-  const byOwner = new Map<string, FirebaseFirestore.QueryDocumentSnapshot[]>();
-  for (const dev of devices.docs) {
-    if (dev.get("removedAt")) continue;
-    const owner = dev.get("ownerUid") as string;
-    byOwner.set(owner, [...(byOwner.get(owner) ?? []), dev]);
+  const byOwner = new Map<string, { id: string; l: Live; due: ReturnType<typeof dueFamilies> }[]>();
+  for (const [id, l] of live) {
+    if (!l.ownerUid || l.removed) continue;
+    const due = dueFamilies(id, l, activeIds, nowMs);
+    if (due.length === 0) continue;
+    byOwner.set(l.ownerUid, [...(byOwner.get(l.ownerUid) ?? []), { id, l, due }]);
   }
   if (byOwner.size === 0) return result;
   const owners = [...byOwner.keys()];
-  const users = await db.getAll(...owners.map((u) => db.collection(C.users).doc(u)));
+  const dueIds = [...byOwner.values()].flat().map((d) => d.id);
+  const [users, devices] = await Promise.all([
+    db.getAll(...owners.map((u) => db.collection(C.users).doc(u))),
+    db.getAll(...dueIds.map((id) => db.collection(C.devices).doc(id))),
+  ]);
+  const deviceById = new Map(devices.map((d) => [d.id, d]));
 
   for (const user of users) {
     if (!user.exists || user.get("status") !== "active") continue;
     const claimed: Claimed[] = [];
-    for (const dev of byOwner.get(user.id)!) {
-      const h = healthById.get(dev.id);
-      if (h) claimed.push(...(await evaluateDevice(dev, h, activeIds, nowMs)));
+    for (const { id, l, due } of byOwner.get(user.id)!) {
+      const dev = deviceById.get(id);
+      // Firestore is the source of truth for owner and removal; /live is a mirror.
+      if (!dev?.exists || dev.get("ownerUid") !== user.id || dev.get("removedAt")) continue;
+      claimed.push(...(await evaluateDevice(id, l, due, dev.get("nickname") as string, nowMs)));
     }
     if (claimed.length === 0) continue;
 

@@ -4,6 +4,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { FAMILIES } from "../lib/alertLogic";
 import { C, db, ts } from "../lib/db";
 import { newDeviceDoc, newHealthDoc, ownerResetFields } from "../lib/deviceDocs";
+import { clearOpenProblems, clearSeries, deleteLiveNodes, mirrorDevice } from "../lib/liveStore";
+import { deleteDeviceProblems, deleteDeviceReadings } from "../lib/problems";
 import { alertStateRef } from "../alerts/alertPass";
 
 export type OwnerChange =
@@ -28,9 +30,13 @@ export async function removeFromPipeline(uid: string, deviceId: string): Promise
   });
 }
 
-/** Flow history and alert state: everything the next owner must never inherit. */
+/** Flow history, problems and alert state: everything the next owner must never inherit. */
 async function wipeHistory(deviceId: string): Promise<void> {
   await db.recursiveDelete(db.collection(C.devices).doc(deviceId).collection(C.flowLogs));
+  await deleteDeviceProblems(deviceId);
+  await deleteDeviceReadings(deviceId);
+  await clearSeries(deviceId);
+  await clearOpenProblems(deviceId);
   const batch = db.batch();
   for (const f of FAMILIES) batch.delete(alertStateRef(deviceId, f));
   await batch.commit();
@@ -90,11 +96,14 @@ export async function setOwner(
 
   if (first.kind === "unchanged") return { kind: "unchanged" };
   if (first.kind === "created") {
+    await mirrorDevice(deviceId);
     await updateDeviceCounts([to]);
     return { kind: "changed", from: null, to, created: true };
   }
 
-  // Phase 2: nobody can read the device now; delete what the old owner caused.
+  // Phase 2: nobody can read the device now (the live node follows the detach),
+  // then delete what the old owner caused.
+  await mirrorDevice(deviceId);
   await wipeHistory(deviceId);
   if (first.from) await removeFromPipeline(first.from, deviceId);
 
@@ -104,6 +113,7 @@ export async function setOwner(
     batch.update(deviceRef, { ownerUid: to });
     batch.set(healthRef, { ownerUid: to }, { merge: true });
     await batch.commit();
+    await mirrorDevice(deviceId);
   }
   await updateDeviceCounts([first.from, to]);
   return { kind: "changed", from: first.from, to, created: false };
@@ -120,6 +130,9 @@ export async function deleteDeviceData(deviceId: string): Promise<void> {
   batch.delete(db.collection(C.allowedDevices).doc(deviceId));
   for (const f of FAMILIES) batch.delete(alertStateRef(deviceId, f));
   await batch.commit();
+  await deleteDeviceProblems(deviceId);
+  await deleteDeviceReadings(deviceId);
+  await deleteLiveNodes(deviceId);
   if (owner) {
     await removeFromPipeline(owner, deviceId);
     await updateDeviceCounts([owner]);

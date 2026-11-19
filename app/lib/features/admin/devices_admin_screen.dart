@@ -8,9 +8,10 @@ import '../../core/time_format.dart';
 import '../../data/admin_logic.dart';
 import '../../data/admin_providers.dart';
 import '../../data/admin_repository.dart';
+import 'activity_screen.dart' show TargetActivity;
 import 'admin_widgets.dart';
 
-enum _Filter { all, unassigned, offline, removed }
+enum _Filter { all, unassigned, offline, notSetUp, removed }
 
 /// Devices (docs/UI_UX_SPEC.md 6.2): connection status only (D24), from
 /// adminListDevices, refreshed every ADMIN_DEVICES_REFRESH_S.
@@ -23,6 +24,13 @@ class DevicesAdminScreen extends ConsumerStatefulWidget {
 
 class _DevicesAdminScreenState extends ConsumerState<DevicesAdminScreen> {
   _Filter _filter = _Filter.all;
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   /// null = the default order (Offline longest silent first, then Not set up
   /// yet, then Online); otherwise a column index.
@@ -137,12 +145,18 @@ class _DevicesAdminScreenState extends ConsumerState<DevicesAdminScreen> {
             text: "Can't load the devices. ${adminErrorText(e)}",
           ),
           data: (all) {
-            final live = all.where((d) => !d.removed).toList();
+            final found = all
+                .where((d) => deviceMatches(d, _search.text))
+                .toList();
+            final live = found.where((d) => !d.removed).toList();
             final unassigned = live.where((d) => d.ownerUid == null).toList();
             final offline = live
                 .where((d) => stateOf(d) == AdminState.offline)
                 .toList();
-            final removed = all.where((d) => d.removed).toList();
+            final notSetUp = live
+                .where((d) => stateOf(d) == AdminState.notSetUp)
+                .toList();
+            final removed = found.where((d) => d.removed).toList();
             if (_filter == _Filter.removed && removed.isEmpty) {
               _filter = _Filter.all;
             }
@@ -150,6 +164,7 @@ class _DevicesAdminScreenState extends ConsumerState<DevicesAdminScreen> {
               _Filter.all => live,
               _Filter.unassigned => unassigned,
               _Filter.offline => offline,
+              _Filter.notSetUp => notSetUp,
               _Filter.removed => removed,
             });
             Widget pill(_Filter f, String label, int n) => FilterPill(
@@ -160,6 +175,22 @@ class _DevicesAdminScreenState extends ConsumerState<DevicesAdminScreen> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                TextField(
+                  controller: _search,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Search by ID, label or owner',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () => setState(_search.clear),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: AppSpace.s),
                 Wrap(
                   spacing: AppSpace.s,
                   runSpacing: AppSpace.s,
@@ -167,6 +198,8 @@ class _DevicesAdminScreenState extends ConsumerState<DevicesAdminScreen> {
                     pill(_Filter.all, 'All', live.length),
                     pill(_Filter.unassigned, 'Unassigned', unassigned.length),
                     pill(_Filter.offline, 'Offline', offline.length),
+                    if (notSetUp.isNotEmpty)
+                      pill(_Filter.notSetUp, 'Not set up yet', notSetUp.length),
                     if (removed.isNotEmpty)
                       pill(_Filter.removed, 'Removed', removed.length),
                   ],
@@ -180,6 +213,8 @@ class _DevicesAdminScreenState extends ConsumerState<DevicesAdminScreen> {
                           child: Text(
                             all.isEmpty
                                 ? 'No devices yet. Add the first one.'
+                                : _search.text.isNotEmpty
+                                ? 'No devices match.'
                                 : 'No devices here.',
                             style: AppText.body,
                           ),
@@ -773,6 +808,8 @@ class _DevicePanelState extends ConsumerState<DevicePanel> {
           destructive: true,
           onPressed: _busy ? null : _remove,
         ),
+        const SizedBox(height: AppSpace.xl),
+        TargetActivity(targetId: d.id),
       ],
     );
   }

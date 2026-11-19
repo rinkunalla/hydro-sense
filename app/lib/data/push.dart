@@ -30,6 +30,19 @@ abstract class PushService {
 
   /// Data of tapped notifications: the one that opened the app, then later taps.
   Stream<Map<String, dynamic>> taps();
+
+  /// Alerts that arrive while the app is open. Android shows a notification
+  /// only when the app is in the background, so the app shows these itself.
+  Stream<ForegroundAlert> foreground();
+}
+
+/// One alert received while the app is on screen.
+class ForegroundAlert {
+  const ForegroundAlert(this.title, this.body, this.data);
+
+  final String title;
+  final String body;
+  final Map<String, dynamic> data;
 }
 
 class FcmPushService implements PushService {
@@ -95,6 +108,15 @@ class FcmPushService implements PushService {
     }
     _subs.clear();
   }
+
+  @override
+  Stream<ForegroundAlert> foreground() => FirebaseMessaging.onMessage.map(
+    (m) => ForegroundAlert(
+      m.notification?.title ?? 'Hydro Sense',
+      m.notification?.body ?? '',
+      m.data,
+    ),
+  );
 
   @override
   Stream<Map<String, dynamic>> taps() async* {

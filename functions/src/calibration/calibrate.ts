@@ -1,4 +1,5 @@
 import { onSchedule } from "firebase-functions/scheduler";
+import { mirrorDevice } from "../lib/liveStore";
 import {
   CALIBRATE_BUCKET_S,
   CALIBRATE_SCHEDULE,
@@ -44,6 +45,7 @@ export async function calibrateDevice(deviceId: string, nowMs: number): Promise<
     .collection(C.devices)
     .doc(deviceId)
     .update({ ...cutoffs, calibratedAt: ts(nowMs) });
+  await mirrorDevice(deviceId); // reaches the device in its next upload reply
   return "updated";
 }
 

@@ -8,7 +8,7 @@ import type { CallableRequest } from "firebase-functions/https";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { addAllowedDevice, removeDevice, restoreDevice } from "../src/admin/devices";
 import { setOwner } from "../src/admin/ownership";
-import { C, db } from "../src/lib/db";
+import { C, db, liveRef, rtdb, stateRef } from "../src/lib/db";
 import { flipOfflineIfStale, runMonitorPass } from "../src/monitor/monitorDevices";
 
 const PROJECT = process.env.GCLOUD_PROJECT ?? "hydro-sense-dc836";
@@ -61,7 +61,20 @@ const dev = (id = ID) => db.collection(C.devices).doc(id);
 const health = (id = ID) => db.collection(C.deviceHealth).doc(id);
 const get = async (ref: FirebaseFirestore.DocumentReference) => (await ref.get()).data() ?? {};
 const count = async (q: FirebaseFirestore.Query) => (await q.count().get()).data().count;
-const ago = (seconds: number) => Timestamp.fromMillis(Date.now() - seconds * S);
+const live = async (id = ID) => ((await liveRef(id).get()).val() ?? {}) as Json;
+const state = async (id = ID) => ((await stateRef(id).get()).val() ?? {}) as Json;
+const problems = (id = ID) => db.collection(C.problems).where("deviceId", "==", id);
+const setLastSeen = (secondsAgo: number, id = ID) =>
+  liveRef(id).update({ lastSeen: Date.now() - secondsAgo * S });
+
+/** Waits for the devices trigger to mirror a change to /state (D48). */
+async function mirrored(check: (st: Json) => boolean) {
+  for (let i = 0; i < 50; i++) {
+    if (check(await state())) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error("the devices trigger did not mirror the change");
+}
 
 async function allow(id = ID) {
   await db.collection(C.allowedDevices).doc(id).set({ addedAt: Timestamp.now() });
@@ -82,6 +95,7 @@ beforeEach(async () => {
   await fetch(`http://${FIRESTORE}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, {
     method: "DELETE",
   });
+  await rtdb.ref().set(null);
   // Admin callables need a live admin record, not only the claim.
   await db.collection(C.admins).doc("admin1").set({ name: "A", status: "active" });
 });
@@ -138,7 +152,7 @@ describe("registerDevice", () => {
     expect(active.status).toBe(409);
     expect(active.body.code).toBe("DEVICE_ACTIVE");
 
-    await health().update({ online: false });
+    await liveRef(ID).update({ online: false });
     const again = await register();
     expect(again.status).toBe(200);
     expect(again.body.token).not.toBe(first);
@@ -160,10 +174,13 @@ describe("deviceIngest", () => {
   it("returns the owner's own Low flow limit while it is set (D43)", async () => {
     const token = await registered();
     await dev().update({ normalFlowCutoff: 4, lowFlowCutoff: 1.2 });
+    await mirrored((st) => st.normalFlowCutoff === 4);
     expect((await ingest(token)).body).toMatchObject({ lowFlowCutoff: 1.2, normalFlowCutoff: 4 });
     await dev().update({ userNormalCutoff: 6.5 });
+    await mirrored((st) => st.normalFlowCutoff === 6.5);
     expect((await ingest(token)).body).toMatchObject({ lowFlowCutoff: 0.2, normalFlowCutoff: 6.5 });
     await dev().update({ userNormalCutoff: null });
+    await mirrored((st) => st.normalFlowCutoff === 4);
     expect((await ingest(token)).body).toMatchObject({ lowFlowCutoff: 1.2, normalFlowCutoff: 4 });
   });
 
@@ -178,106 +195,162 @@ describe("deviceIngest", () => {
     expect(bad.body).toMatchObject({ ok: false, code: "PAYLOAD_INVALID" });
   });
 
-  it("applies a status change immediately and returns the cutoffs", async () => {
+  it("writes the live node and returns the cutoffs and pace", async () => {
     const token = await registered();
-    const r = await ingest(token, { trigger: "status_change" });
+    const r = await ingest(token, { trigger: "status_change", heartbeatS: 30 });
     // The reply also sets the upload pace (D47); firmware 0.2.0 ignores it.
     expect(r.body).toEqual({
       ok: true,
       lowFlowCutoff: 0.2,
       normalFlowCutoff: 2.0,
-      heartbeatS: 30,
-      rateMinIntervalS: 10,
+      heartbeatS: 20,
+      rateMinIntervalS: 5,
     });
-
-    const d = await get(dev());
-    expect(d).toMatchObject({ flowStatus: "Normal Flow", flowRate: 10, gpsLat: 16.04 });
-    expect(d.statusChangedAt).toBeInstanceOf(Timestamp);
-    const h = await get(health());
-    expect(h).toMatchObject({ online: true, batteryVoltage: 7.9, batteryPercent: 72 });
-    expect(h.lastSeen).toBeInstanceOf(Timestamp);
-    expect(await count(dev().collection(C.flowLogs))).toBe(1);
+    const l = await live();
+    expect(l).toMatchObject({
+      online: true,
+      flowStatus: "Normal Flow",
+      flowRate: 10,
+      batteryPercent: 72,
+      heartbeatS: 30,
+    });
+    expect(Math.abs(Date.now() - (l.lastSeen as number))).toBeLessThan(10 * S);
+    expect(l).not.toHaveProperty("rssi"); // the owner sees no radio data
+    expect((await state()).recentVoltages).toEqual([7.9]);
   });
 
-  it("writes only device_health for a steady heartbeat", async () => {
+  it("a steady heartbeat writes nothing to Firestore (D48)", async () => {
     const token = await registered();
-    await ingest(token, { trigger: "status_change" });
+    await ingest(token, { trigger: "status_change" }); // first sample of the day
     const before = await get(dev());
-    const r = await ingest(token, { flowRate: 10.5 });
-    expect(r.status).toBe(200);
-    expect((await get(dev())).updatedAt).toEqual(before.updatedAt);
-    expect((await get(dev())).flowRate).toBe(10);
-    expect(await count(dev().collection(C.flowLogs))).toBe(1);
-    expect((await get(health())).recentVoltages).toHaveLength(2);
+    const logs = await count(dev().collection(C.flowLogs));
+    for (let i = 0; i < 3; i++) await ingest(token, { flowRate: 10 + i });
+    expect(await get(dev())).toEqual(before);
+    expect(await count(dev().collection(C.flowLogs))).toBe(logs);
+    expect(await count(db.collection(C.problems))).toBe(0);
+    expect((await live()).flowRate).toBe(12);
   });
 
-  it("writes a 20 % rate change, but not more often than every 30 s", async () => {
+  it("samples flow_logs once per 15 min, for calibration", async () => {
     const token = await registered();
-    await ingest(token, { trigger: "status_change" });
-    await ingest(token, { flowRate: 12, trigger: "rate_change" });
-    expect((await get(dev())).flowRate).toBe(10);
-
-    await dev().update({ updatedAt: ago(31) });
-    await ingest(token, { flowRate: 12, trigger: "rate_change" });
-    expect((await get(dev())).flowRate).toBe(12);
-  });
-
-  it("ignores a 20 % change below the 0.3 L/min floor", async () => {
-    const token = await registered();
-    await ingest(token, { flowStatus: "Low Flow", flowRate: 0.5, trigger: "status_change" });
-    await dev().update({ updatedAt: ago(31) });
-    await ingest(token, { flowStatus: "Low Flow", flowRate: 0.6 });
-    expect((await get(dev())).flowRate).toBe(0.5);
-  });
-
-  it("refreshes devices.updatedAt at least every 5 min", async () => {
-    const token = await registered();
-    await ingest(token, { trigger: "status_change" });
-    await dev().update({ updatedAt: ago(301) });
     await ingest(token);
-    const age = Date.now() - ((await get(dev())).updatedAt as Timestamp).toMillis();
-    expect(age).toBeLessThan(10 * S);
-  });
-
-  it("samples flow_logs once per 5 min plus every status change", async () => {
-    const token = await registered();
-    await ingest(token, { trigger: "status_change" });
     await ingest(token);
     expect(await count(dev().collection(C.flowLogs))).toBe(1);
-
-    await health().update({ lastFlowLogAt: ago(301) });
+    await stateRef(ID).update({ lastSampleAt: Date.now() - 901 * S });
     await ingest(token);
     expect(await count(dev().collection(C.flowLogs))).toBe(2);
+  });
 
+  it("writes this minute's flow into today's live series (D60)", async () => {
+    const token = await registered();
+    await ingest(token, { flowRate: 19.6 });
+    const days = ((await rtdb.ref(`series/${ID}`).get()).val() ?? {}) as Record<
+      string,
+      Record<string, number>
+    >;
+    const [day] = Object.keys(days);
+    expect(day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(Object.values(days[day!]!)).toEqual([19.6]);
+    expect((await state()).seriesDay).toBe(day);
+    // A drop later in the same minute keeps the minute's peak.
+    await ingest(token, { flowRate: 0 });
+    const minute = (await state()).seriesMinute!;
+    if (minute.startsWith(day!)) {
+      expect((await rtdb.ref(`series/${ID}/${minute}`).get()).val()).toBe(19.6);
+    }
+    // An old day is dropped when a new day starts.
+    await rtdb.ref(`series/${ID}/2020-01-01`).set({ 1: 3 });
+    await stateRef(ID).update({ seriesDay: "2020-01-02" });
+    await ingest(token);
+    expect(((await rtdb.ref(`series/${ID}/2020-01-01`).get()).val())).toBeNull();
+  });
+
+  it("keeps each 15-minute sample in the owner's day record, kept a year (D53)", async () => {
+    const token = await registered();
+    await ingest(token); // unassigned: no day record
+    expect(await count(db.collection(C.readings))).toBe(0);
+    await setOwner(ID, "userA");
+    await stateRef(ID).update({ lastSampleAt: Date.now() - 901 * S });
+    await ingest(token, { flowRate: 6.5 });
+    const days = (await db.collection(C.readings).where("deviceId", "==", ID).get()).docs;
+    expect(days).toHaveLength(1);
+    const day = days[0]!.data();
+    expect(day).toMatchObject({ ownerUid: "userA", deviceId: ID });
+    expect(Object.values(day.rates as Record<string, number>)).toEqual([6.5]);
+    expect((day.expireAt as Timestamp).toMillis()).toBeGreaterThan(Date.now() + 360 * 86_400_000);
+    // Reassigning deletes it with the rest of the history (D20).
+    await setOwner(ID, "userB");
+    expect(await count(db.collection(C.readings))).toBe(0);
+  });
+
+  it("opens and closes problem records on status changes, owner only (D49)", async () => {
+    const token = await registered();
+    await ingest(token, { trigger: "status_change" });
+    await ingest(token, { flowStatus: "No Flow", flowRate: 0, trigger: "status_change" });
+    expect(await count(problems())).toBe(0); // unassigned: nobody could read it
+
+    await setOwner(ID, "userA");
+    await ingest(token, { trigger: "status_change" });
+    await ingest(token, { flowStatus: "No Flow", flowRate: 0, trigger: "status_change" });
+    const open = (await problems().get()).docs;
+    expect(open).toHaveLength(1);
+    expect(open[0]!.data()).toMatchObject({
+      ownerUid: "userA",
+      type: "no_flow",
+      endedAt: null,
+      note: null,
+    });
+    expect(open[0]!.get("expireAt")).toBeInstanceOf(Timestamp);
+
+    // Ended within 60 s: a blip, dropped.
+    await ingest(token, { trigger: "status_change" });
+    expect(await count(problems())).toBe(0);
+
+    // Lasting longer: kept with its end time.
     await ingest(token, { flowStatus: "Low Flow", flowRate: 1, trigger: "status_change" });
-    const logs = await dev().collection(C.flowLogs).where("trigger", "==", "status_change").get();
-    expect(logs.size).toBe(2);
+    const id = (await problems().get()).docs[0]!.id;
+    await db
+      .collection(C.problems)
+      .doc(id)
+      .update({ startedAt: Timestamp.fromMillis(Date.now() - 300 * S) });
+    await ingest(token, { trigger: "status_change" });
+    const ended = await db.collection(C.problems).doc(id).get();
+    expect(ended.get("endedAt")).toBeInstanceOf(Timestamp);
+    expect((await state()).open ?? {}).toEqual({});
   });
 
   it("keeps abnormalSince through Normal -> Low -> No and clears it on Normal", async () => {
     const token = await registered();
     await ingest(token, { trigger: "status_change" });
-    expect((await get(dev())).abnormalSince).toBeNull();
+    expect((await live()).abnormalSince ?? null).toBeNull();
 
     await ingest(token, { flowStatus: "Low Flow", flowRate: 1, trigger: "status_change" });
-    const since = (await get(dev())).abnormalSince as Timestamp;
-    expect(since).toBeInstanceOf(Timestamp);
+    const since = (await live()).abnormalSince as number;
+    expect(typeof since).toBe("number");
 
     await ingest(token, { flowStatus: "No Flow", flowRate: 0, trigger: "status_change" });
-    expect(((await get(dev())).abnormalSince as Timestamp).toMillis()).toBe(since.toMillis());
+    expect((await live()).abnormalSince).toBe(since);
 
     await ingest(token, { trigger: "status_change" });
-    expect((await get(dev())).abnormalSince).toBeNull();
+    expect((await live()).abnormalSince ?? null).toBeNull();
   });
 
-  it("keeps the low-voltage sleep flag on device_health and writes no battery history", async () => {
+  it("keeps the low-voltage sleep flag on the live node", async () => {
     const token = await registered();
     await ingest(token, { batteryVoltage: 6.7, lowVoltageSleep: true });
-    expect((await get(health())).lowVoltageSleep).toBe(true);
+    expect((await live()).lowVoltageSleep).toBe(true);
     await ingest(token);
-    expect((await get(health())).lowVoltageSleep).toBe(false);
-    expect(await count(health().collection("battery_logs"))).toBe(0);
-    expect(await get(health())).not.toHaveProperty("lastBatteryLogAt");
+    expect((await live()).lowVoltageSleep).toBe(false);
+  });
+
+  it("writes GPS to Firestore only when it moves", async () => {
+    const token = await registered();
+    await ingest(token);
+    await dev().update({ gpsLat: 1 }); // a marker: rewritten only on a move
+    await ingest(token);
+    expect((await get(dev())).gpsLat).toBe(1);
+    await ingest(token, { lat: 16.05 });
+    expect((await get(dev())).gpsLat).toBe(16.05);
   });
 
   it("accepts any pulseHz from old firmware, even a negative one (D29)", async () => {
@@ -307,27 +380,74 @@ describe("deviceIngest", () => {
   });
 });
 
+describe("alerts at the upload (D62)", () => {
+  it("only when a flow problem is confirmed or the battery is low", async () => {
+    const { alertMayBeDue } = await import("../src/device/deviceIngest");
+    const now = Date.now();
+    const base = {
+      ownerUid: "u1",
+      removed: false,
+      online: true,
+      lastSeen: now,
+      flowStatus: "Normal Flow" as const,
+      flowRate: 8,
+      abnormalSince: null,
+      statusChangedAt: now,
+      batteryPercent: 80,
+      chargingStatus: null,
+      batteryFault: false,
+      lowVoltageSleep: false,
+      heartbeatS: 30,
+    };
+    expect(alertMayBeDue(base, now)).toBe(false);
+    const dry = { ...base, flowStatus: "No Flow" as const, abnormalSince: now - 10_000 };
+    expect(alertMayBeDue(dry, now)).toBe(false); // not yet 30 s
+    expect(alertMayBeDue({ ...dry, abnormalSince: now - 30_000 }, now)).toBe(true);
+    expect(alertMayBeDue({ ...base, batteryPercent: 15 }, now)).toBe(true);
+    expect(alertMayBeDue({ ...dry, abnormalSince: now - 30_000, ownerUid: null }, now)).toBe(
+      false,
+    );
+  });
+});
+
 describe("monitorDevices", () => {
-  it("flips a silent device offline after 3 min", async () => {
+  it("flips a silent device offline after two missed heartbeats and opens Offline", async () => {
     const token = await registered();
     const token2 = await registered(ID2);
-    await ingest(token);
-    await ingest(token2, {}, ID2);
+    await setOwner(ID, "userA");
+    await ingest(token, { heartbeatS: 30 });
+    await ingest(token2, { heartbeatS: 30 }, ID2);
 
-    await health().update({ lastSeen: ago(181) });
+    await setLastSeen(61);
     const { flipped } = await runMonitorPass();
     expect(flipped).toEqual([ID]);
-    expect((await get(health())).online).toBe(false);
-    expect((await get(health(ID2))).online).toBe(true);
+    expect((await live()).online).toBe(false);
+    expect((await live(ID2)).online).toBe(true);
+    const off = (await problems().get()).docs;
+    expect(off.map((d) => d.get("type"))).toEqual(["offline"]);
+
+    // Back: the Offline problem ends.
+    await ingest(token, { heartbeatS: 30 });
+    const back = await db.collection(C.problems).doc(off[0]!.id).get();
+    expect(back.get("endedAt")).toBeInstanceOf(Timestamp);
+  });
+
+  it("keeps 3 min for firmware that does not report its heartbeat", async () => {
+    const token = await registered();
+    await ingest(token);
+    await setLastSeen(120);
+    expect((await runMonitorPass()).flipped).toEqual([]);
+    await setLastSeen(181);
+    expect((await runMonitorPass()).flipped).toEqual([ID]);
   });
 
   it("leaves a device online when an ingest lands before the flip transaction", async () => {
     const token = await registered();
     await ingest(token);
-    await health().update({ lastSeen: ago(181) });
-    await ingest(token); // lands between the candidate query and the transaction
-    expect(await flipOfflineIfStale(ID, Date.now())).toBe(false);
-    expect((await get(health())).online).toBe(true);
+    await setLastSeen(181);
+    await ingest(token); // lands between the read and the transaction
+    expect(await flipOfflineIfStale(ID, Date.now())).toBeNull();
+    expect((await live()).online).toBe(true);
   });
 });
 
@@ -339,7 +459,7 @@ describe("removeDevice", () => {
     await allow();
     const token = await registered();
     expect((await ingest(token)).status).toBe(200);
-    await health().update({ online: false });
+    await liveRef(ID).update({ online: false });
 
     await removeDevice.run(admin({ deviceId: ID.toLowerCase(), confirmLabel: ID }));
     expect((await get(dev())).removedAt).toBeTruthy();

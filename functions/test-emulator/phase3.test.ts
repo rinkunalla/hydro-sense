@@ -22,7 +22,7 @@ import { purgeExpired } from "../src/admin/purge";
 import { createUser, deleteUser, restoreUser, updateUser } from "../src/admin/users";
 import { runAlertPass } from "../src/alerts/alertPass";
 import { calibrateDevice } from "../src/calibration/calibrate";
-import { C, db, ts } from "../src/lib/db";
+import { C, db, liveRef, rtdb, ts } from "../src/lib/db";
 import { migrateV2 } from "../src/migration/v2";
 import { locatePlace, setPlacesHttp, suggestPlaces } from "../src/maps/places";
 import { claimPushTokenFor } from "../src/alerts/pushTokens";
@@ -134,16 +134,22 @@ async function seedDevice(id: string, o: DeviceSeed = {}) {
       firmware: "1.0.0",
       rssi: -60,
     });
+  // What the monitor and alerts read (D48).
+  await liveRef(id).set({
+    ownerUid: o.owner === undefined ? "u1" : o.owner,
+    online: o.online ?? true,
+    lastSeen: o.lastSeenMs === undefined ? T0 : o.lastSeenMs,
+    flowStatus: o.flowStatus === undefined ? "Normal Flow" : o.flowStatus,
+    flowRate: o.flowRate ?? 8,
+    abnormalSince: o.abnormalSinceMs ?? null,
+    batteryPercent: o.batteryPercent === undefined ? 80 : o.batteryPercent,
+    batteryFault: false,
+    lowVoltageSleep: o.lowVoltageSleep ?? false,
+  });
 }
 
 const setFlow = (id: string, flowStatus: string, abnormalSinceMs: number | null) =>
-  db
-    .collection(C.devices)
-    .doc(id)
-    .update({
-      flowStatus,
-      abnormalSince: abnormalSinceMs === null ? null : ts(abnormalSinceMs),
-    });
+  liveRef(id).update({ flowStatus, abnormalSince: abnormalSinceMs });
 
 const allSms = () => fake.smsSent.map((s) => s.msg);
 const allMail = () => fake.emailSent.map((m) => m.text);
@@ -156,6 +162,7 @@ beforeEach(async () => {
   fake = new Fake();
   setProviders(fake);
   T0 = Math.floor(Date.now() / MIN) * MIN;
+  await rtdb.ref().set(null);
   // Admin callables need a live admin record, not only the claim.
   await db.collection(C.admins).doc("admin1").set({ name: "A", status: "active" });
 });
@@ -163,19 +170,19 @@ beforeEach(async () => {
 afterAll(() => setProviders(null));
 
 describe("alerts", () => {
-  it("needs 60 s of Low/No Flow, then sends one SMS and one email", async () => {
+  it("needs 30 s of Low/No Flow, then sends one SMS and one email", async () => {
     await seedUser();
     await seedDevice("D1", {
       nickname: "Garden Line",
       flowStatus: "No Flow",
-      abnormalSinceMs: T0 - 59 * S,
+      abnormalSinceMs: T0 - 29 * S,
     });
     expect((await runAlertPass(T0)).sent).toHaveLength(0);
 
     const r = await runAlertPass(T0 + S);
     expect(r.users.u1).toMatchObject({ sms: "sent", email: "sent" });
     expect(allSms()).toEqual([
-      "Hydro Sense: No water is flowing at Garden Line. Please check the pipe, valve or pump.",
+      "HydroSense: No water is flowing at Garden Line. Please check the pipe, valve or pump.",
     ]);
     expect(fake.smsSent[0]!.to).toBe(PHONE);
     expect(fake.emailSent[0]).toMatchObject({
@@ -252,7 +259,7 @@ describe("alerts", () => {
       "Hydro Sense alert: Garden Line - No flow",
     ]);
     expect(allSms()).toEqual([
-      "Hydro Sense: No water is flowing at Garden Line. Please check the pipe, valve or pump.",
+      "HydroSense: No water is flowing at Garden Line. Please check the pipe, valve or pump.",
     ]);
   });
 
@@ -272,7 +279,7 @@ describe("alerts", () => {
     // "+k more" is unit-tested.
     expect(allSms()[0]!.length).toBeLessThanOrEqual(160);
     expect(allSms()[0]).toMatch(
-      /^Hydro Sense: No water at 3 areas: D1 x+, D2 .+, D3 .+\. Open the app\.$/,
+      /^HydroSense: No water at 3 areas: D1 x+, D2 .+, D3 .+\. Open the app\.$/,
     );
     expect(fake.emailSent[0]!.subject).toBe("Hydro Sense alert: 3 areas need attention");
   });
@@ -286,7 +293,7 @@ describe("alerts", () => {
     await seedDevice("D1", { flowStatus: "No Flow", abnormalSinceMs: T0 - 2 * MIN });
     const r1 = await runAlertPass(T0);
     expect(r1.users.u1).toMatchObject({ sms: "digest", email: "sent" });
-    expect(allSms()).toEqual(["Hydro Sense: More alerts today. Open the app for live status."]);
+    expect(allSms()).toEqual(["HydroSense: More alerts today. Open the app for live status."]);
 
     await seedDevice("D2", { flowStatus: "No Flow", abnormalSinceMs: T0 - 2 * MIN });
     const r2 = await runAlertPass(T0 + MIN);
@@ -296,16 +303,22 @@ describe("alerts", () => {
     expect(cap.size).toBe(1);
   });
 
-  it("shows Offline at 3 min but sends the offline alert only after 15 min", async () => {
+  it("shows Offline at 3 min (no heartbeat reported) and alerts in the same pass (D58)", async () => {
     await seedUser();
-    await seedDevice("D1", { nickname: "Garden Line", online: true, lastSeenMs: T0 - 4 * MIN });
+    await seedDevice("D1", { nickname: "Garden Line", online: true, lastSeenMs: T0 - 181_000 });
+    // The alert pass in the same monitor run finds it already past 2 min.
     const m = await runMonitorPass(T0);
     expect(m.flipped).toEqual(["D1"]);
     expect(fake.smsSent).toHaveLength(0);
+    expect(fake.emailSent).toHaveLength(1);
+  });
 
-    await runAlertPass(T0 + 10 * MIN);
+  it("does not alert an offline device before 40 s of silence", async () => {
+    await seedUser();
+    await seedDevice("D1", { nickname: "Garden Line", online: false, lastSeenMs: T0 - 30_000 });
+    await runAlertPass(T0);
     expect(fake.emailSent).toHaveLength(0);
-    await runAlertPass(T0 + 11 * MIN);
+    await runAlertPass(T0 + 10_000);
     expect(fake.emailSent.map((m) => m.subject)).toEqual([
       "Hydro Sense alert: Garden Line - Offline",
     ]);
@@ -328,7 +341,7 @@ describe("alerts", () => {
     await seedUser();
     await seedDevice("D1", { batteryPercent: 15 });
     await runAlertPass(T0);
-    const bat = db.collection(C.deviceHealth).doc("D1");
+    const bat = liveRef("D1");
     await bat.update({ batteryPercent: 25 });
     await runAlertPass(T0 + 20 * MIN);
     await bat.update({ batteryPercent: 18 });
@@ -469,7 +482,7 @@ describe("alert channels (D27)", () => {
     await seedDevice("D3", { nickname: "Orchard", batteryPercent: 10 });
     await runAlertPass(T0);
     expect(allSms()).toEqual([
-      "Hydro Sense: No water is flowing at Garden. Please check the pipe, valve or pump.",
+      "HydroSense: No water is flowing at Garden. Please check the pipe, valve or pump.",
     ]);
     expect(fake.pushSent[0]).toMatchObject({
       title: "3 areas need attention",
@@ -773,6 +786,8 @@ describe("device admin (D20, D24, D32, D41, D42)", () => {
     });
     await d1.collection(C.flowLogs).add({ ts: ts(T0), flowStatus: "Normal Flow" });
     await db.collection(C.alertState).doc("D1__flow").set({ active: true });
+    await db.collection(C.problems).add({ ownerUid: "u1", deviceId: "D1", type: "no_flow" });
+    await liveRef("D1").child("ownerUid").set("u1");
     await db
       .collection(C.pipelines)
       .doc("u1")
@@ -797,6 +812,9 @@ describe("device admin (D20, D24, D32, D41, D42)", () => {
     expect((await db.collection(C.deviceHealth).doc("D1").get()).get("ownerUid")).toBe("u2");
     expect((await d1.collection(C.flowLogs).get()).size).toBe(0);
     expect((await db.collection(C.alertState).doc("D1__flow").get()).exists).toBe(false);
+    // Problems go with the history (D49); the live node follows the new owner (D48).
+    expect((await db.collection(C.problems).where("deviceId", "==", "D1").get()).size).toBe(0);
+    expect((await liveRef("D1").child("ownerUid").get()).val()).toBe("u2");
     const branches = (await db.collection(C.pipelines).doc("u1").get()).get("branches");
     expect(branches[0].deviceIds).toEqual(["D0", "D2"]);
   });
@@ -1031,17 +1049,13 @@ describe("v1 -> v2 migration", () => {
   it("the migrated user gets alerts again", async () => {
     await seedV1();
     await migrateV2({ apply: true, nowMs: T0 });
-    await db
-      .collection(C.devices)
-      .doc("D1")
-      .update({
-        flowStatus: "No Flow",
-        abnormalSince: ts(T0 - 2 * MIN),
-      });
-    await db
-      .collection(C.deviceHealth)
-      .doc("D1")
-      .update({ online: true, lastSeen: ts(T0) });
+    await liveRef("D1").set({
+      ownerUid: "c1",
+      online: true,
+      lastSeen: T0,
+      flowStatus: "No Flow",
+      abnormalSince: T0 - 2 * MIN,
+    });
     const r = await runAlertPass(T0);
     // The migrated account gets the defaults (D27): email starts off.
     expect(r.users.c1).toMatchObject({ sms: "sent", email: "off" });
