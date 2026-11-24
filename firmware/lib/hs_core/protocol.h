@@ -48,6 +48,12 @@ struct Pace {
 /** Reads heartbeatS/rateMinIntervalS from an ok response; false if either is missing. */
 bool parsePace(const char* json, size_t len, Pace& out);
 
+/**
+ * Reads pulsesPerLpm/flowWindowS from an ok response (firmware 0.4.0, D69);
+ * false if either is missing or outside the config.h ranges (out unchanged).
+ */
+bool parseSensor(const char* json, size_t len, Sensor& out);
+
 /** Reads `token` from a registerDevice ok response into out (cap includes the terminator). */
 bool parseToken(const char* json, size_t len, char* out, size_t cap);
 

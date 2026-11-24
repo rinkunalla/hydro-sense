@@ -94,12 +94,14 @@ static void samplingTask(void*) {
       if (guard.update(battery.packV, battery.fault)) {
         lowVoltageSleeping = true;
         Reading r;
+        Sensor sensor;
         {
           Locked l;
           r = app.outbox;
+          sensor = app.sensor;
         }
         r.status = scheduler.confirmed();
-        r.flowRate = window.rateLpm();
+        r.flowRate = window.rateLpm(sensor);
         r.batteryVoltage = battery.packV;
         r.batteryFault = battery.fault;
         r.trigger = Trigger::Heartbeat;
@@ -116,12 +118,14 @@ static void samplingTask(void*) {
     bootHeldS = digitalRead(PIN_WIFI_RESET) == LOW ? bootHeldS + 1 : 0;
 
     Cutoffs cut;
+    Sensor sensor;
     Pace pace;
     bool reconnected;
     uint32_t aliveMs;
     {
       Locked l;
       cut = app.cutoffs;
+      sensor = app.sensor;
       pace = app.pace;
       reconnected = app.reconnected;
       app.reconnected = false;
@@ -135,8 +139,9 @@ static void samplingTask(void*) {
     if (reconnected) scheduler.requestImmediate();
     scheduler.setPace(pace.heartbeatS, pace.rateMinIntervalS);
 
-    const float rate = window.rateLpm();
-    const Status classified = classify(rate, scheduler.confirmed(), cut.low, cut.normal);
+    const float rate = window.rateLpm(sensor);
+    const Status classified =
+        classify(rate, scheduler.confirmed(), cut.low, cut.normal, flowHysteresis(sensor));
     const UploadDecision d = scheduler.tick(seconds, classified, rate);
     if (d.trigger == Trigger::None) continue;
     if (d.trigger == Trigger::Heartbeat) battery = sensors::readBattery();
@@ -146,7 +151,7 @@ static void samplingTask(void*) {
     Reading& r = app.outbox;
     r.status = d.status;
     r.flowRate = d.rateLpm;
-    r.pulseHz = window.pulseHz();
+    r.pulseHz = window.pulseHz(sensor.windowS);
     r.batteryVoltage = battery.packV;
     r.batteryFault = battery.fault;
     r.gpsValid = app.gpsValid;
@@ -184,6 +189,9 @@ void setup() {
 
   storage::begin();
   app.cutoffs = storage::loadCutoffs();
+  app.sensor = storage::loadSensor();
+  Serial.printf("Flow sensor: %.2f pulses/s per L/min, %u s window\n", app.sensor.pulsesPerLpm,
+                static_cast<unsigned>(app.sensor.windowS));
   app.networkAliveMs = millis();
   gps::begin();
 

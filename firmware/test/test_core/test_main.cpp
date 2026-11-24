@@ -417,6 +417,91 @@ static void test_parse_server_responses() {
   TEST_ASSERT_EQUAL_STRING("", code);
 }
 
+// ---------- the sensor from the server (firmware 0.4.0, D69) ----------
+
+static const Sensor DN50 = {0.2f, 15};
+
+static void test_window_uses_the_sensors_factor_and_window() {
+  FlowWindow w;
+  for (int i = 0; i < 15; i++) w.push(10);  // 10 Hz on a DN50 = 50 L/min
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 50.0f, w.rateLpm(DN50));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 10.0f / 7.5f, w.rateLpm());  // same pulses, YF-S201
+  // Under the YF-S201's 40 L/min of 0.3.0, a DN50 reads up to the server's 250.
+  for (int i = 0; i < 15; i++) w.push(100);
+  TEST_ASSERT_EQUAL_FLOAT(FLOW_RATE_MAX, w.rateLpm(DN50));
+  TEST_ASSERT_EQUAL_FLOAT(250.0f, FLOW_RATE_MAX);
+}
+
+static void test_a_new_window_keeps_the_seconds_already_counted() {
+  FlowWindow w;
+  for (int i = 0; i < 10; i++) w.push(4);
+  for (int i = 0; i < 5; i++) w.push(0);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, w.pulseHz(5));  // the YF-S201 sees the stop
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 40.0f / 15.0f, w.pulseHz(15));  // the DN50 still averages
+  // Before the buffer holds a full window, the seconds so far are averaged.
+  FlowWindow young;
+  young.push(6);
+  young.push(2);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 4.0f, young.pulseHz(15));
+  // The ring keeps 20 s: older seconds drop out.
+  for (int i = 0; i < 25; i++) w.push(1);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, w.pulseHz(20));
+}
+
+static void test_hysteresis_follows_the_pulse_step() {
+  const Sensor yf;
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.0f / 37.5f, flowStepLpm(yf));
+  TEST_ASSERT_EQUAL_FLOAT(FLOW_HYSTERESIS, flowHysteresis(yf));  // 0.1 as before
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.0f / 3.0f, flowStepLpm(DN50));
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.5f, flowHysteresis(DN50));
+}
+
+static void test_dn50_does_not_chatter_around_a_cutoff() {
+  // 4 pulses a second on a DN50 is 20 L/min, its starter Normal line. One extra
+  // or missing pulse in the window moves the reading 0.33 L/min either way.
+  auto run = [](float hysteresis) {
+    FlowWindow w;
+    Status s = Status::Unknown;
+    int changes = 0;
+    for (int t = 0; t < 300; t++) {
+      const int k = t % 8;
+      w.push(k == 0 ? 5 : k == 4 ? 3 : 4);
+      if (t < 15) continue;
+      Status next = classify(w.rateLpm(DN50), s, 5.0f, 20.0f, hysteresis);
+      if (s != Status::Unknown && next != s) changes++;
+      s = next;
+    }
+    return changes;
+  };
+  TEST_ASSERT_GREATER_THAN(1, run(FLOW_HYSTERESIS));  // a fixed 0.1 band flips back and forth
+  TEST_ASSERT_LESS_OR_EQUAL(1, run(flowHysteresis(DN50)));
+}
+
+static void test_parse_sensor_from_replies() {
+  Sensor s;
+  const char* dn = "{\"ok\":true,\"lowFlowCutoff\":5,\"normalFlowCutoff\":20,"
+                   "\"pulsesPerLpm\":0.2,\"flowWindowS\":15,\"heartbeatS\":30}";
+  TEST_ASSERT_TRUE(parseSensor(dn, strlen(dn), s));
+  TEST_ASSERT_EQUAL_FLOAT(0.2f, s.pulsesPerLpm);
+  TEST_ASSERT_EQUAL_UINT32(15, s.windowS);
+  // The DN50's cutoffs fit under the new ceiling.
+  Cutoffs c;
+  TEST_ASSERT_TRUE(parseCutoffs(dn, strlen(dn), c));
+  TEST_ASSERT_EQUAL_FLOAT(20.0f, c.normal);
+
+  // An older server sends no sensor; out of range or wrong types are refused.
+  const char* none = "{\"ok\":true,\"lowFlowCutoff\":0.2,\"normalFlowCutoff\":2}";
+  const char* zero = "{\"ok\":true,\"pulsesPerLpm\":0,\"flowWindowS\":15}";
+  const char* longWindow = "{\"ok\":true,\"pulsesPerLpm\":0.2,\"flowWindowS\":60}";
+  const char* text = "{\"ok\":true,\"pulsesPerLpm\":\"0.2\",\"flowWindowS\":15}";
+  TEST_ASSERT_FALSE(parseSensor(none, strlen(none), s));
+  TEST_ASSERT_FALSE(parseSensor(zero, strlen(zero), s));
+  TEST_ASSERT_FALSE(parseSensor(longWindow, strlen(longWindow), s));
+  TEST_ASSERT_FALSE(parseSensor(text, strlen(text), s));
+  TEST_ASSERT_EQUAL_FLOAT(0.2f, s.pulsesPerLpm);  // unchanged by the refusals
+  TEST_ASSERT_TRUE(validSensor(Sensor()));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_counter_delta_survives_wraparound);
@@ -453,5 +538,10 @@ int main() {
   RUN_TEST(test_ingest_body_uses_protocol_field_names);
   RUN_TEST(test_ingest_body_fault_no_gps_and_sleep);
   RUN_TEST(test_parse_server_responses);
+  RUN_TEST(test_window_uses_the_sensors_factor_and_window);
+  RUN_TEST(test_a_new_window_keeps_the_seconds_already_counted);
+  RUN_TEST(test_hysteresis_follows_the_pulse_step);
+  RUN_TEST(test_dn50_does_not_chatter_around_a_cutoff);
+  RUN_TEST(test_parse_sensor_from_replies);
   return UNITY_END();
 }

@@ -55,9 +55,15 @@ export const SENSORS = {
     starterNormal: 2.0,
     userCutoffMin: 1.0,
     userCutoffMax: 30,
+    // Weekly calibration (D28): never below these, and only from a usual flow
+    // (mean of the 5-minute averages) of at least calibrateMinMean.
+    calibrateLowMin: 0.2,
+    calibrateNormalMin: 1.0,
+    calibrateMinMean: 1.25,
   },
-  // Listings give F = 0.2 x Q and 10 to 200 L/min; confirmed by a bucket test in stage V4.
-  // Below about 10 L/min the rotor may not turn, so the No Flow line sits under it.
+  // Listings give F = 0.2 x Q and 10 to 200 L/min; confirm with the bucket test
+  // (docs/hardware/NOTES.md). Below about 10 L/min the rotor may not turn, so
+  // the No Flow line sits under it and calibration never sets limits lower.
   zj_dn50: {
     label: "ZJ-DN50",
     pulsesPerLpm: 0.2,
@@ -66,6 +72,9 @@ export const SENSORS = {
     starterNormal: 20,
     userCutoffMin: 10,
     userCutoffMax: 150,
+    calibrateLowMin: 5,
+    calibrateNormalMin: 10,
+    calibrateMinMean: 12.5,
   },
 } as const;
 export type SensorType = keyof typeof SENSORS;
@@ -113,10 +122,8 @@ export const CALIBRATE_SCHEDULE = "0 0 * * 0"; // weekly, Sunday 00:00 Asia/Mani
 export const CALIBRATE_BUCKET_S = 300;
 export const CALIBRATE_WINDOW_H = 24;
 export const CALIBRATE_MIN_SAMPLES = 36;
-export const CALIBRATE_MIN_MEAN = 1.25;
 export const CALIBRATE_SKIP_AFTER_ALERT_H = 24;
-export const CALIBRATE_LOW_MIN = 0.2;
-export const CALIBRATE_NORMAL_MIN = 1.0;
+// The floors and the minimum mean are per sensor: SENSORS[...].calibrate*.
 export const CALIBRATE_NORMAL_MAX_OF_MEAN = 0.8;
 export const CALIBRATE_FALLBACK_NORMAL_OF_MEAN = 0.5;
 export const CALIBRATE_FALLBACK_LOW_OF_MEAN = 0.15;

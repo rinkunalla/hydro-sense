@@ -80,7 +80,7 @@ static void logUpload(const Reading& r, int code) {
   }
   const char* status = statusName(r.status);
   const char* trigger = triggerName(r.trigger);
-  Serial.printf("Upload %s: HTTP %d | %s %.2f L/min (%.1f pulses/s) | battery %s | GPS %s | RSSI %d dBm | heap %u\n",
+  Serial.printf("Upload %s: HTTP %d | %s %.2f L/min (%.2f pulses/s) | battery %s | GPS %s | RSSI %d dBm | heap %u\n",
                 trigger ? trigger : "?", code, status ? status : "?", r.flowRate, r.pulseHz, battery,
                 r.gpsValid ? "fix saved" : "no fix yet", r.rssi,
                 static_cast<unsigned>(ESP.getFreeHeap()));
@@ -91,6 +91,14 @@ static void applyCutoffs(const String& response) {
   if (parsePace(response.c_str(), response.length(), pace)) {
     Locked l;
     app.pace = pace;
+  }
+  // The sensor before the cutoffs: a new sensor type arrives with its own
+  // starter cutoffs in the same reply (D69). Older servers send no sensor.
+  Sensor sensor;
+  if (parseSensor(response.c_str(), response.length(), sensor)) {
+    storage::saveSensorIfChanged(sensor);
+    Locked l;
+    app.sensor = sensor;
   }
   Cutoffs c;
   if (!parseCutoffs(response.c_str(), response.length(), c)) return;

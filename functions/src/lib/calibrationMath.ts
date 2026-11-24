@@ -1,11 +1,10 @@
 import {
   CALIBRATE_FALLBACK_LOW_OF_MEAN,
   CALIBRATE_FALLBACK_NORMAL_OF_MEAN,
-  CALIBRATE_LOW_MIN,
-  CALIBRATE_MIN_MEAN,
   CALIBRATE_MIN_SAMPLES,
   CALIBRATE_NORMAL_MAX_OF_MEAN,
-  CALIBRATE_NORMAL_MIN,
+  SENSORS,
+  type SensorType,
 } from "../config";
 
 export interface Cutoffs {
@@ -57,27 +56,33 @@ export function flowStats(values: readonly number[]): FlowStats | null {
   };
 }
 
-export const enoughData = (s: FlowStats | null): s is FlowStats =>
-  s !== null && s.samples >= CALIBRATE_MIN_SAMPLES && s.mean >= CALIBRATE_MIN_MEAN;
+/** Enough samples, and a usual flow the sensor can measure (its calibrateMinMean). */
+export const enoughData = (s: FlowStats | null, sensor: SensorType): s is FlowStats =>
+  s !== null && s.samples >= CALIBRATE_MIN_SAMPLES && s.mean >= SENSORS[sensor].calibrateMinMean;
 
-export function validCutoffs(c: Cutoffs, mean: number): boolean {
+export function validCutoffs(c: Cutoffs, mean: number, sensor: SensorType): boolean {
   const { lowFlowCutoff: low, normalFlowCutoff: normal } = c;
+  const { calibrateLowMin, calibrateNormalMin } = SENSORS[sensor];
   return (
     Number.isFinite(low) &&
     Number.isFinite(normal) &&
-    low >= CALIBRATE_LOW_MIN &&
+    low >= calibrateLowMin &&
     low < normal &&
-    normal >= CALIBRATE_NORMAL_MIN &&
+    normal >= calibrateNormalMin &&
     normal <= CALIBRATE_NORMAL_MAX_OF_MEAN * mean
   );
 }
 
-/** The weekly cutoffs: a fixed formula, always valid when mean >= CALIBRATE_MIN_MEAN. */
-export function fallbackCutoffs(mean: number): Cutoffs {
+/**
+ * The weekly cutoffs: a fixed formula with the sensor's floors, always valid
+ * when the mean is at least the sensor's calibrateMinMean.
+ */
+export function fallbackCutoffs(mean: number, sensor: SensorType): Cutoffs {
+  const { calibrateLowMin, calibrateNormalMin } = SENSORS[sensor];
   return {
-    lowFlowCutoff: round2(Math.max(CALIBRATE_LOW_MIN, CALIBRATE_FALLBACK_LOW_OF_MEAN * mean)),
+    lowFlowCutoff: round2(Math.max(calibrateLowMin, CALIBRATE_FALLBACK_LOW_OF_MEAN * mean)),
     normalFlowCutoff: round2(
-      Math.max(CALIBRATE_NORMAL_MIN, CALIBRATE_FALLBACK_NORMAL_OF_MEAN * mean),
+      Math.max(calibrateNormalMin, CALIBRATE_FALLBACK_NORMAL_OF_MEAN * mean),
     ),
   };
 }

@@ -22,14 +22,16 @@ describe("config invariants", () => {
     expect(c.DEVICES_WRITE_MIN_INTERVAL_S).toBeLessThan(c.DEVICES_WRITE_MAX_AGE_S);
   });
 
-  it("keeps the calibration fallback valid at the minimum mean", () => {
-    const mean = c.CALIBRATE_MIN_MEAN;
-    const normal = Math.max(c.CALIBRATE_NORMAL_MIN, c.CALIBRATE_FALLBACK_NORMAL_OF_MEAN * mean);
-    const low = Math.max(c.CALIBRATE_LOW_MIN, c.CALIBRATE_FALLBACK_LOW_OF_MEAN * mean);
-    expect(low).toBeGreaterThanOrEqual(c.CALIBRATE_LOW_MIN);
+  it.each(c.SENSOR_TYPES)("keeps the %s calibration fallback valid at its minimum mean", (t) => {
+    const s = c.SENSORS[t];
+    const mean = s.calibrateMinMean;
+    const normal = Math.max(s.calibrateNormalMin, c.CALIBRATE_FALLBACK_NORMAL_OF_MEAN * mean);
+    const low = Math.max(s.calibrateLowMin, c.CALIBRATE_FALLBACK_LOW_OF_MEAN * mean);
     expect(low).toBeLessThan(normal);
-    expect(normal).toBeGreaterThanOrEqual(c.CALIBRATE_NORMAL_MIN);
     expect(normal).toBeLessThanOrEqual(c.CALIBRATE_NORMAL_MAX_OF_MEAN * mean);
+    // Calibrated limits stay where the admin could set them too.
+    expect(s.calibrateNormalMin).toBeGreaterThanOrEqual(s.userCutoffMin);
+    expect(s.calibrateLowMin).toBeLessThanOrEqual(s.starterLow);
   });
 
   it("starter cutoffs are ordered", () => {

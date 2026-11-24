@@ -16,6 +16,10 @@ void clearToken();
 Cutoffs loadCutoffs();
 void saveCutoffsIfChanged(const Cutoffs& c);
 
+/** The sensor from the last reply (D69); YF-S201 when none was saved. */
+Sensor loadSensor();
+void saveSensorIfChanged(const Sensor& s);
+
 bool loadGps(double& lat, double& lng);
 void saveGps(double lat, double lng);
 

@@ -421,6 +421,20 @@ describe("calibration", () => {
     expect((await stateRef("D1").get()).val()).toMatchObject({ normalFlowCutoff: 5 });
     expect((await db.collection(C.errorLogs).get()).size).toBe(0);
   });
+
+  it("uses the ZJ-DN50's floors: never under 5 and 10 L/min, nothing from a trickle", async () => {
+    await seedDevice("D2", { sensorType: "zj_dn50" });
+    // 10 L/min is a fine usual flow for a YF-S201, but too little for a DN50.
+    await seedLogs("D2", 40, 10);
+    expect(await calibrateDevice("D2", T0)).toBe("kept_insufficient");
+
+    await seedDevice("D3", { sensorType: "zj_dn50" });
+    await seedLogs("D3", 40, 16);
+    expect(await calibrateDevice("D3", T0)).toBe("updated");
+    const d = (await db.collection(C.devices).doc("D3").get()).data()!;
+    // 0.15 x 16 = 2.4 and 0.5 x 16 = 8 sit under the rotor's floor.
+    expect(d).toMatchObject({ lowFlowCutoff: 5, normalFlowCutoff: 10 });
+  });
 });
 
 describe("alert channels", () => {

@@ -5,7 +5,7 @@
 
 namespace hs {
 
-constexpr const char* FIRMWARE_VERSION = "0.3.0";
+constexpr const char* FIRMWARE_VERSION = "0.4.0";
 
 // Pins (Pinout). The board prints them as D27, D34, D25, D26 and D2
 // (same numbers); GPIO 0 is the BOOT button. Not the pins printed RX2/TX2 (GPIO 16/17).
@@ -17,13 +17,24 @@ constexpr uint8_t PIN_WIFI_RESET = 0;
 constexpr uint8_t PIN_STATUS_LED = 2;
 constexpr uint32_t GPS_BAUD = 9600;
 
-// Flow sensing and classification (L/min)
+// Flow sensing and classification (L/min). The sensor's pulse factor and window
+// come from every register and ingest reply (D69) and are kept in NVS; these
+// YF-S201 values apply until the first reply. A ZJ-DN50 is about 0.2 and 15 s.
 constexpr uint32_t FLOW_WINDOW_S = 5;
 constexpr float PULSES_PER_LPM = 7.5f;
-constexpr float FLOW_RATE_MAX = 40.0f;
+// Ranges a reply must fall in, else the device keeps what it has.
+constexpr uint32_t FLOW_WINDOW_MIN_S = 3;
+constexpr uint32_t FLOW_WINDOW_MAX_S = 20;  // also the ring buffer size
+constexpr float PULSES_PER_LPM_MIN = 0.05f;
+constexpr float PULSES_PER_LPM_MAX = 50.0f;
+constexpr float FLOW_RATE_MAX = 250.0f;  // same as the server's FLOW_RATE_MAX
 constexpr float STARTER_LOW_FLOW_CUTOFF = 0.2f;
 constexpr float STARTER_NORMAL_FLOW_CUTOFF = 2.0f;
+// At least this much, and at least FLOW_HYSTERESIS_STEPS pulse steps of the
+// sensor's window (flowHysteresis in flow.h): a reading that swings by one
+// pulse then never flips the status (YF-S201: 0.1; ZJ-DN50: 0.5 L/min).
 constexpr float FLOW_HYSTERESIS = 0.1f;
+constexpr float FLOW_HYSTERESIS_STEPS = 1.5f;
 
 // Upload rules A/B/C
 constexpr uint32_t STATUS_CONFIRM_S = 3;
@@ -93,6 +104,8 @@ static_assert(TLS_HANDSHAKE_TIMEOUT_S + HTTP_TIMEOUT_S < NETWORK_STALL_RESTART_S
               "A slow upload must not trip the stall restart");
 static_assert(NO_RESPONSE_RESTART_S >= 2 * BACKOFF_MAX_S, "Allow several retries before restarting");
 static_assert(STARTER_LOW_FLOW_CUTOFF < STARTER_NORMAL_FLOW_CUTOFF, "Cutoffs out of order");
+static_assert(FLOW_WINDOW_MIN_S <= FLOW_WINDOW_S && FLOW_WINDOW_S <= FLOW_WINDOW_MAX_S, "Window default out of range");
+static_assert(PULSES_PER_LPM_MIN <= PULSES_PER_LPM && PULSES_PER_LPM <= PULSES_PER_LPM_MAX, "Factor default out of range");
 static_assert(LOW_VOLTAGE_SLEEP_CELL_V < LOW_VOLTAGE_RESUME_CELL_V, "Sleep needs hysteresis");
 static_assert(BACKOFF_MIN_S < BACKOFF_MAX_S, "Backoff range inverted");
 

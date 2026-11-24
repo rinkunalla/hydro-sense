@@ -11,6 +11,7 @@ import { alertStateRef } from "../alerts/alertPass";
 import { bucketAverages, enoughData, fallbackCutoffs, flowStats } from "../lib/calibrationMath";
 import { C, db, ms, ts } from "../lib/db";
 import { logError } from "../lib/logError";
+import { sensorOf } from "../lib/sensors";
 
 const SOURCE = "calibrateFlowThresholdsWeekly";
 const HOUR_MS = 3_600_000;
@@ -24,9 +25,10 @@ export async function calibrateDevice(deviceId: string, nowMs: number): Promise<
     return "kept_recent_alert";
   }
 
-  const rows = await db
-    .collection(C.devices)
-    .doc(deviceId)
+  // The device's sensor sets the floors (a DN50 cannot measure under about 10 L/min).
+  const device = db.collection(C.devices).doc(deviceId);
+  const sensor = sensorOf((await device.get()).get("sensorType"));
+  const rows = await device
     .collection(C.flowLogs)
     .where("flowStatus", "!=", "No Flow")
     .where("ts", ">=", ts(nowMs - CALIBRATE_WINDOW_H * HOUR_MS))
@@ -37,13 +39,10 @@ export async function calibrateDevice(deviceId: string, nowMs: number): Promise<
       CALIBRATE_BUCKET_S,
     ),
   );
-  if (!enoughData(stats)) return "kept_insufficient";
+  if (!enoughData(stats, sensor)) return "kept_insufficient";
 
-  const cutoffs = fallbackCutoffs(stats.mean);
-  await db
-    .collection(C.devices)
-    .doc(deviceId)
-    .update({ ...cutoffs, calibratedAt: ts(nowMs) });
+  const cutoffs = fallbackCutoffs(stats.mean, sensor);
+  await device.update({ ...cutoffs, calibratedAt: ts(nowMs) });
   await mirrorDevice(deviceId); // reaches the device in its next upload reply
   return "updated";
 }

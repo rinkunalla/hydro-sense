@@ -70,6 +70,20 @@ bool parsePace(const char* json, size_t len, Pace& out) {
   return true;
 }
 
+bool parseSensor(const char* json, size_t len, Sensor& out) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json, len)) return false;
+  JsonVariant factor = doc["pulsesPerLpm"];
+  JsonVariant window = doc["flowWindowS"];
+  if (!factor.is<float>() || !window.is<uint32_t>()) return false;
+  Sensor s;
+  s.pulsesPerLpm = factor.as<float>();
+  s.windowS = window.as<uint32_t>();
+  if (!validSensor(s)) return false;
+  out = s;
+  return true;
+}
+
 bool parseToken(const char* json, size_t len, char* out, size_t cap) {
   JsonDocument doc;
   if (deserializeJson(doc, json, len)) return false;

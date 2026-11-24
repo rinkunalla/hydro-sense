@@ -39,6 +39,20 @@ void saveCutoffsIfChanged(const Cutoffs& c) {
   if (stored.normal != c.normal) prefs.putFloat("normal", c.normal);
 }
 
+Sensor loadSensor() {
+  Sensor s;
+  if (prefs.isKey("ppl")) s.pulsesPerLpm = prefs.getFloat("ppl", PULSES_PER_LPM);
+  if (prefs.isKey("win")) s.windowS = prefs.getUInt("win", FLOW_WINDOW_S);
+  if (!validSensor(s)) s = Sensor();  // corrupt NVS: the YF-S201
+  return s;
+}
+
+void saveSensorIfChanged(const Sensor& s) {
+  const Sensor stored = loadSensor();
+  if (stored.pulsesPerLpm != s.pulsesPerLpm) prefs.putFloat("ppl", s.pulsesPerLpm);
+  if (stored.windowS != s.windowS) prefs.putUInt("win", s.windowS);
+}
+
 bool loadGps(double& lat, double& lng) {
   if (!prefs.isKey("gps") || !prefs.getBool("gps", false)) return false;
   lat = prefs.getDouble("lat", 0);
