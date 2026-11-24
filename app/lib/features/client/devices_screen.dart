@@ -156,7 +156,8 @@ class _FleetBodyState extends ConsumerState<_FleetBody> {
           ),
           const SizedBox(height: AppSpace.m),
         ],
-        const SectionLabel('Your devices'),
+        // Every device of the organization (D62).
+        const SectionLabel('All devices'),
         if (showSearch) ...[
           TextField(
             controller: _search,
@@ -334,8 +335,8 @@ class DeviceCard extends StatelessWidget {
   }
 }
 
-/// A device assigned before delivery that has never connected: the Wi-Fi
-/// steps live in its own card (4.3).
+/// A device the admin added that has never connected: the Wi-Fi steps live
+/// in its own card (4.3), for whoever is at the device.
 class NotSetUpCard extends StatelessWidget {
   const NotSetUpCard({super.key, required this.view});
 
@@ -479,7 +480,7 @@ class _WifiStepsState extends State<WifiSteps> {
   }
 }
 
-/// Shown only when no device is assigned to the user.
+/// Shown only while the organization has no device yet (4.3).
 class NoDevicesYet extends ConsumerWidget {
   const NoDevicesYet({super.key});
 

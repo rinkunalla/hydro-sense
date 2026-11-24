@@ -135,12 +135,29 @@ void main() {
   testWidgets('staff see the map but never the pipeline editor (D63)', (
     t,
   ) async {
+    // Reduce motion: the droplets along a pipeline never settle otherwise.
+    await phone(t);
     await t.pumpWidget(
-      harness(const MapScreen(), views: [at('Garden', 16.041)], admin: false),
+      harness(
+        const MapScreen(),
+        views: [at('Garden', 16.041), at('Unplaced', null)],
+        pipeline: const Pipeline(
+          name: 'Farm pipeline',
+          source: source,
+          branches: [
+            Branch(id: 'b1', end: home, deviceIds: ['Garden', 'Unplaced']),
+          ],
+        ),
+        admin: false,
+      ),
     );
-    await t.pumpAndSettle();
+    await t.pump();
+    await t.pump();
+    expect(find.text('Farm pipeline'), findsOneWidget);
     expect(find.text('Draw pipeline'), findsNothing);
     expect(find.text('Edit pipeline'), findsNothing);
+    // No pointer to a screen staff can't open.
+    expect(find.text('1 device has no location yet.'), findsOneWidget);
   });
 
   testWidgets('no pipeline yet: device pins and one Draw pipeline button', (

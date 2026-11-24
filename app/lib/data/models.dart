@@ -145,7 +145,7 @@ class Health {
   final int? rssi;
   final String? firmware;
 
-  /// Null until the device first registers (assigned before delivery).
+  /// Null until the device first registers (added on the website, Not set up yet).
   final DateTime? registeredAt;
 
   bool get registered => registeredAt != null || lastSeen != null;

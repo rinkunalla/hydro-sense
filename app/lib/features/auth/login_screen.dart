@@ -7,10 +7,11 @@ import '../../core/errors.dart';
 import '../../core/password_field.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
-import '../../data/account_repository.dart';
 import '../../data/providers.dart';
+import 'staff_login.dart';
 
-/// Sign in with email + password; no sign-up (5.3).
+/// Sign in: staff with username + password on the phone app (5.1, D64),
+/// the admin with email + password on the website (5.3). No sign-up.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, this.refused, this.admin = false});
 
@@ -25,7 +26,8 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _email = TextEditingController();
+  // The admin's email on the website, the staff username on the app.
+  final _login = TextEditingController();
   final _password = TextEditingController();
   bool _busy = false;
   String? _error;
@@ -45,14 +47,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   void dispose() {
-    _email.dispose();
+    _login.dispose();
     _password.dispose();
     super.dispose();
   }
 
   Future<void> _signIn() async {
-    if (_email.text.trim().isEmpty || _password.text.isEmpty) {
-      setState(() => _error = Messages.enterBoth);
+    if (_login.text.trim().isEmpty || _password.text.isEmpty) {
+      setState(
+        () => _error = widget.admin
+            ? Messages.enterBoth
+            : Messages.staffEnterBoth,
+      );
       return;
     }
     setState(() {
@@ -63,20 +69,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref
           .read(authProvider)
           .signInWithEmailAndPassword(
-            email: _email.text.trim(),
+            email: widget.admin
+                ? _login.text.trim()
+                : staffSignInAddress(_login.text),
             password: _password.text,
           );
       // Lets the password manager offer to save what worked.
       TextInput.finishAutofillContext();
-      if (!widget.admin) {
-        // Best effort: a missed sync is retried at the next sign-in.
-        ref
-            .read(accountRepositoryProvider)
-            .syncPasswordSet()
-            .catchError((Object _) {});
-      }
     } catch (e) {
-      if (mounted) setState(() => _error = authMessage(e));
+      if (mounted) {
+        setState(
+          () => _error = widget.admin ? authMessage(e) : staffAuthMessage(e),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -136,11 +141,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         const SizedBox(height: AppSpace.xl),
                         TextField(
-                          controller: _email,
+                          controller: _login,
                           enabled: !_busy,
-                          keyboardType: TextInputType.emailAddress,
-                          autofillHints: const [AutofillHints.email],
-                          decoration: const InputDecoration(labelText: 'Email'),
+                          keyboardType: widget.admin
+                              ? TextInputType.emailAddress
+                              : TextInputType.text,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          textInputAction: TextInputAction.next,
+                          autofillHints: [
+                            widget.admin
+                                ? AutofillHints.email
+                                : AutofillHints.username,
+                          ],
+                          decoration: InputDecoration(
+                            labelText: widget.admin ? 'Email' : 'Username',
+                          ),
                         ),
                         const SizedBox(height: AppSpace.m),
                         // Password managers may fill it (NIST SP 800-63B
@@ -170,21 +186,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           onPressed: _signIn,
                         ),
                         const SizedBox(height: AppSpace.s),
-                        TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () => context.push('/reset'),
-                          // New users set their first password here too.
-                          child: const Text('Forgot password?'),
-                        ),
-                        // Invited admins open the setup link from their invite
-                        // email; an expired one is re-sent from Admins.
-                        if (!widget.admin)
+                        // Admins reset by Firebase's emailed link. Invited
+                        // admins open the setup link from their invite email.
+                        if (widget.admin)
+                          TextButton(
+                            onPressed: _busy
+                                ? null
+                                : () => context.push('/reset'),
+                            child: const Text('Forgot password?'),
+                          )
+                        else ...[
+                          // Staff have no reset: the admin sets a new
+                          // password and creates accounts (D64).
+                          const SizedBox(height: AppSpace.s),
                           Text(
-                            'No account yet? Ask your Hydro Sense provider to create one.',
+                            'Forgot your password? Ask your admin to set a new one.',
                             textAlign: TextAlign.center,
                             style: AppText.note,
                           ),
+                          const SizedBox(height: AppSpace.xs),
+                          Text(
+                            'No account yet? Ask your admin to create one.',
+                            textAlign: TextAlign.center,
+                            style: AppText.note,
+                          ),
+                        ],
                       ],
                     ),
                   ),

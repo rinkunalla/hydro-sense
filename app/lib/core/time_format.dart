@@ -28,12 +28,6 @@ String displayPhone(String? p) {
   return '${local.substring(0, 4)} ${local.substring(4, 7)} ${local.substring(7)}';
 }
 
-/// Masks a mobile number as "0917 ••• 4567".
-String maskedPhone(String? p) {
-  final d = displayPhone(p);
-  return d.length == 13 ? '${d.substring(0, 4)} ••• ${d.substring(9)}' : d;
-}
-
 /// "3:12 PM" today, "Nov 2, 3:12 PM" otherwise, in the phone's local zone.
 String clockTime(DateTime t, DateTime now) {
   final local = t.toLocal();

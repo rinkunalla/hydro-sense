@@ -327,6 +327,18 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
+  testWidgets('staff see every device and no Add device (D62, D63)', (t) async {
+    await phone(t);
+    await t.pumpWidget(
+      harness(Stream.value(Fleet([view('1'), view('2', nickname: 'Tank')]))),
+    );
+    await t.pumpAndSettle();
+    expect(find.text('ALL DEVICES'), findsOneWidget);
+    expect(find.byType(DeviceCard), findsNWidgets(2));
+    expect(find.text('Add device'), findsNothing);
+    expect(find.text('History'), findsOneWidget);
+  });
+
   testWidgets('loading shows skeletons, never a spinner, then the list', (
     t,
   ) async {
@@ -345,7 +357,7 @@ void main() {
     await phone(t);
     await t.pumpWidget(harness(Stream<Fleet>.error(Exception('denied'))));
     await t.pumpAndSettle();
-    expect(find.text("Can't load your devices right now."), findsOneWidget);
+    expect(find.text("Can't load the devices right now."), findsOneWidget);
     expect(find.text('Try again'), findsOneWidget);
   });
 

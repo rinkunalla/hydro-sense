@@ -5,8 +5,8 @@ import 'package:hydro_sense/data/fleet_logic.dart';
 import 'package:hydro_sense/data/models.dart';
 import 'package:hydro_sense/data/providers.dart';
 import 'package:hydro_sense/data/push.dart';
-import 'package:hydro_sense/features/auth/code_entry.dart';
 import 'package:hydro_sense/features/auth/password_rules.dart';
+import 'package:hydro_sense/features/auth/staff_login.dart';
 import 'package:hydro_sense/features/client/device_detail_screen.dart';
 import 'package:hydro_sense/router.dart';
 
@@ -45,20 +45,14 @@ void main() {
       expect(fresh.status, StatusKind.waiting);
     });
 
-    test(
-      'a device assigned before it ever registered is Not set up yet',
-      () {
-        expect(view('1', registered: false).status, StatusKind.notSetUp);
-        expect(
-          const DeviceView(Device(id: 'x', nickname: 'X'), null).status,
-          StatusKind.notSetUp,
-        );
-        expect(
-          view('1', registered: false).freshnessAt(testNow),
-          Freshness.none,
-        );
-      },
-    );
+    test('a device assigned before it ever registered is Not set up yet', () {
+      expect(view('1', registered: false).status, StatusKind.notSetUp);
+      expect(
+        const DeviceView(Device(id: 'x', nickname: 'X'), null).status,
+        StatusKind.notSetUp,
+      );
+      expect(view('1', registered: false).freshnessAt(testNow), Freshness.none);
+    });
 
     test('the banner shows only a live problem, worst first (4.1)', () {
       expect(problemBanner([view('1'), view('2')], testNow), isNull);
@@ -92,40 +86,28 @@ void main() {
       );
     });
 
-    test(
-      'since line: abnormalSince for problems, lastSeen when Offline',
-      () {
-        final start = testNow.subtract(const Duration(minutes: 42));
-        expect(
-          view('1', flowStatus: 'No Flow', abnormalSince: start).since,
-          start,
-        );
-        final seen = testNow.subtract(const Duration(hours: 1));
-        expect(view('1', online: false, lastSeen: seen).since, seen);
-        expect(
-          view('1', abnormalSince: start).since,
-          isNull,
-        ); // Normal: no line
-      },
-    );
+    test('since line: abnormalSince for problems, lastSeen when Offline', () {
+      final start = testNow.subtract(const Duration(minutes: 42));
+      expect(
+        view('1', flowStatus: 'No Flow', abnormalSince: start).since,
+        start,
+      );
+      final seen = testNow.subtract(const Duration(hours: 1));
+      expect(view('1', online: false, lastSeen: seen).since, seen);
+      expect(view('1', abnormalSince: start).since, isNull); // Normal: no line
+    });
 
-    test(
-      'Live while online, no Late stage; Offline from the online flag',
-      () {
-        DeviceView at(int s) =>
-            view('1', lastSeen: testNow.subtract(Duration(seconds: s)));
-        expect(at(45).freshnessAt(testNow), Freshness.live);
-        expect(at(55).freshnessAt(testNow), Freshness.live);
-        expect(
-          at(-30).freshnessAt(testNow),
-          Freshness.live,
-        ); // server clock ahead
-        expect(
-          view('1', online: false).freshnessAt(testNow),
-          Freshness.offline,
-        );
-      },
-    );
+    test('Live while online, no Late stage; Offline from the online flag', () {
+      DeviceView at(int s) =>
+          view('1', lastSeen: testNow.subtract(Duration(seconds: s)));
+      expect(at(45).freshnessAt(testNow), Freshness.live);
+      expect(at(55).freshnessAt(testNow), Freshness.live);
+      expect(
+        at(-30).freshnessAt(testNow),
+        Freshness.live,
+      ); // server clock ahead
+      expect(view('1', online: false).freshnessAt(testNow), Freshness.offline);
+    });
 
     test('a saved token with an unknown or old role is refreshed first', () {
       expect(needsFreshRole('user'), isFalse);
@@ -150,23 +132,15 @@ void main() {
       );
     });
 
-    test('code wording and timers (5.2)', () {
-      expect(mmss(272), '4:32');
-      expect(mmss(-3), '0:00');
+    test('staff username to the hidden sign-in address (D64)', () {
+      // Same form as the server's parseUsername + staffLoginEmail.
+      expect(staffSignInAddress('juan.dc'), 'juan.dc@staff.hydrosense.invalid');
       expect(
-        codeErrorText('RESET_CODE_INVALID', 3),
-        'That code is not right. 3 tries left.',
+        staffSignInAddress('  Juan.DC '),
+        'juan.dc@staff.hydrosense.invalid',
       );
-      expect(
-        codeErrorText('RESET_CODE_INVALID', 1),
-        'That code is not right. 1 try left.',
-      );
-      expect(
-        codeErrorText('RESET_LOCKED', null),
-        'Too many wrong codes. Send a new one.',
-      );
-      expect(maskedPhone('639171234567'), '0917 ••• 4567');
       expect(displayPhone('639171234567'), '0917 123 4567');
+      expect(displayPhone(null), '-');
     });
 
     test('announces only cards that newly entered No Flow', () {

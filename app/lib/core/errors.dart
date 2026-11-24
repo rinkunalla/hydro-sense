@@ -6,11 +6,16 @@ abstract final class Messages {
   static const enterBoth = 'Enter your email and password.';
   static const wrongCredentials =
       'That email or password is not right. Try again.';
-  static const suspended =
-      'This account is suspended. Contact your Hydro Sense provider.';
+  static const suspended = 'This account is turned off. Ask your admin.';
   static const wrongPassword = 'That password is not right.';
   static const tooManyAttempts =
       'Too many tries. Wait a few minutes or reset your password.';
+  // Staff sign in with a username and cannot reset a password (D64).
+  static const staffEnterBoth = 'Enter your username and password.';
+  static const staffWrongCredentials =
+      'That username or password is not right. Try again.';
+  static const staffTooManyAttempts =
+      'Too many tries. Wait a few minutes or ask your admin for a new password.';
   static const noInternet =
       'No internet connection. Check your connection and try again.';
   static const resetSent =
@@ -25,20 +30,23 @@ abstract final class Messages {
   static const renameFailed = "Couldn't save the name. Check your internet.";
   static const nameEmpty = "Name can't be empty.";
   static const saveFailed = "Couldn't save. Check your internet.";
-  static const devicesFailed = "Can't load your devices right now.";
+  static const devicesFailed = "Can't load the devices right now.";
   static const offlineBanner = 'No internet · Showing the last saved readings';
-  static const deviceGone = 'This device is no longer on your account.';
-  static const mapFailed = "Map can't load. Your devices list still works.";
-  static const codeExpired = 'This code has expired. Send a new one.';
-  static const codeLocked = 'Too many wrong codes. Send a new one.';
-  static const dailyLimit =
-      'You have asked for too many codes today. Try again tomorrow.';
+  static const deviceGone = 'This device was removed.';
+  static const mapFailed = "Map can't load. The devices list still works.";
   static const phoneHint =
       'Enter a Philippine mobile number, for example 0917 123 4567.';
   static const phoneInUse = 'Another account already uses this number.';
   static const emailInUse = 'Another account already uses this email.';
-  static const resetExpired = 'This reset has expired. Start again.';
 }
+
+/// The phone app's sign-in wording for staff (5.1): the website's email
+/// replies, reworded for a username and an admin who resets passwords.
+String staffAuthMessage(Object error) => switch (authMessage(error)) {
+  Messages.wrongCredentials => Messages.staffWrongCredentials,
+  Messages.tooManyAttempts => Messages.staffTooManyAttempts,
+  final other => other,
+};
 
 /// Maps a FirebaseAuthException code to the spec wording.
 String authMessage(Object error) {

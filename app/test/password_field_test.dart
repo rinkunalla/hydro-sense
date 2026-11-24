@@ -76,7 +76,8 @@ void main() {
     );
     await t.tap(find.text('Sign in'));
     await t.pump();
-    expect(find.text(Messages.enterBoth), findsOneWidget);
+    // The phone app is the staff's: a username, not an email (D64).
+    expect(find.text(Messages.staffEnterBoth), findsOneWidget);
     // Every password box on the screen has the eye.
     expect(find.byTooltip('Show password'), findsOneWidget);
   });

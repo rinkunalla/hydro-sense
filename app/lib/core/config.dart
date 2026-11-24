@@ -40,9 +40,11 @@ abstract final class AppConfig {
   // Data rules mirrored from the backend
   static const int nicknameMax = 24;
   static const int userNameMax = 60; // USER_NAME_MAX
-  // Staff usernames (D64): USERNAME_MIN / USERNAME_MAX.
+  // Staff usernames (D64): USERNAME_MIN / USERNAME_MAX. Staff sign in with
+  // username@staffLoginDomain behind the scenes (STAFF_LOGIN_DOMAIN).
   static const int usernameMin = 3;
   static const int usernameMax = 20;
+  static const String staffLoginDomain = 'staff.hydrosense.invalid';
   static const int lowBatteryPercent = 20;
   // Starter cutoffs and the admin's limit range are per sensor: SensorType
   // in data/models.dart (D69).
@@ -54,7 +56,6 @@ abstract final class AppConfig {
   );
 
   // History
-  static const int problemNoteMax = 100; // PROBLEM_NOTE_MAX
   static const int problemKeepDays = 365; // PROBLEM_TTL_DAYS
   static const List<int> historyClearMonths = [3, 6, 12];
   // Year dropdowns start here: nothing was recorded before v2 went live.
@@ -87,9 +88,6 @@ abstract final class AppConfig {
   static const int offlineAfterDefaultS = 180;
   static const int offlineCheckS = 5; // how often the app re-checks
   static const int flowChartHours = 24; // FLOW_CHART_HOURS: the status strip
-  static const int resetCodeLength = 6;
-  static const int resetCodeTtlS = 300; // RESET_CODE_TTL_S
-  static const int resetResendS = 60; // RESET_RESEND_S
 
   // Layout and accessibility
   static const double adminMaxContentWidth = 1200;

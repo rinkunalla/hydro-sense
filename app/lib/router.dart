@@ -6,8 +6,6 @@ import 'package:go_router/go_router.dart';
 import 'core/glass.dart';
 import 'data/providers.dart';
 import 'features/auth/login_screen.dart';
-import 'features/auth/sms_reset_screen.dart';
-import 'features/client/phone_change_screen.dart';
 import 'features/client/account_screen.dart';
 import 'features/client/device_detail_screen.dart';
 import 'features/client/devices_screen.dart';
@@ -32,8 +30,8 @@ String? redirectFor({
 }) {
   final uri = Uri.parse(location);
   final path = uri.path;
-  // /setup is the admin website's first-time setup; the phone app has
-  // no such route.
+  // /reset and /setup are the admin website's (emailed reset link, first-time
+  // setup); the phone app has neither route (staff ask the admin, D64).
   final onAuthPage =
       path == '/login' || path == '/reset' || path.startsWith('/setup');
   final carried = uri.queryParameters['next'];
@@ -112,7 +110,6 @@ final routerProvider = Provider<GoRouter>((ref) {
               refused: s.uri.queryParameters['refused'],
             ),
       ),
-      GoRoute(path: '/reset', builder: (_, _) => const SmsResetScreen()),
       GoRoute(
         path: '/loading',
         builder: (_, _) => const AppBackground(
@@ -169,12 +166,6 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/account',
                 builder: (_, _) => const AccountScreen(),
-                routes: [
-                  GoRoute(
-                    path: 'phone',
-                    builder: (_, _) => const PhoneChangeScreen(),
-                  ),
-                ],
               ),
             ],
           ),

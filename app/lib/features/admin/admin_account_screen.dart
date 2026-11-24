@@ -12,8 +12,8 @@ import '../../data/admin_logic.dart';
 import '../../data/admin_providers.dart';
 import '../../data/admin_repository.dart';
 import '../../data/providers.dart';
-import '../client/account_screen.dart' show ChangePasswordDialog;
 import 'admin_widgets.dart';
+import 'change_password_dialog.dart';
 
 /// Account: my profile (with the mobile for SMS alerts, D65) and security on
 /// the left, the admins on the right.

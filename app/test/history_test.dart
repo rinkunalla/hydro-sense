@@ -447,4 +447,50 @@ void main() {
       expect(t.takeException(), isNull);
     },
   );
+
+  testWidgets('History for staff: view only, no menu and no deletes (D63)', (
+    t,
+  ) async {
+    t.view.physicalSize = const Size(360 * 3, 1600 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [
+          fleetProvider.overrideWith(
+            (_) => Stream.value(Fleet([view('1', nickname: 'Garden Line')])),
+          ),
+          isAdminProvider.overrideWithValue(false),
+          clockProvider.overrideWith((_) => Stream.value(now)),
+          monthProblemsProvider.overrideWith(
+            (_, _) => Stream.value([
+              problem(
+                'p1',
+                ProblemType.noFlow,
+                today.add(const Duration(minutes: 1)),
+                today.add(const Duration(minutes: 53)),
+              ),
+            ]),
+          ),
+          todaySeriesProvider.overrideWith((_, _) => Stream.value({})),
+          dayReadingsProvider.overrideWith((_, _) async => {}),
+        ],
+        child: MaterialApp(
+          theme: buildLightTheme(),
+          home: const AppBackground(child: HistoryScreen()),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.text('No water · Garden Line'), findsOneWidget);
+    expect(find.byTooltip('More'), findsNothing);
+    expect(find.text('Delete this day'), findsNothing);
+    // An ended record: still no Delete for staff.
+    await t.tap(find.text('No water · Garden Line'));
+    await t.pumpAndSettle();
+    expect(find.text('Delete'), findsNothing);
+    expect(t.takeException(), isNull);
+  });
 }

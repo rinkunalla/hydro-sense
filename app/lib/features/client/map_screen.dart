@@ -608,10 +608,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                   child: Transform.translate(
                     offset: const Offset(0, -88),
+                    // Only the admin can set a location (D63).
                     child: Text(
-                      missing == 1
-                          ? '1 device has no location yet. Set it in Edit pipeline.'
-                          : '$missing devices have no location yet. Set them in Edit pipeline.',
+                      [
+                        missing == 1
+                            ? '1 device has no location yet.'
+                            : '$missing devices have no location yet.',
+                        if (ref.watch(isAdminProvider))
+                          missing == 1
+                              ? 'Set it in Edit pipeline.'
+                              : 'Set them in Edit pipeline.',
+                      ].join(' '),
                       style: AppText.note.copyWith(color: AppColors.ink),
                     ),
                   ),

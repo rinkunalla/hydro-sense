@@ -1,46 +1,44 @@
-// Reset by SMS (5.2) and Account (4.6) with fake repositories.
-import 'package:cloud_functions/cloud_functions.dart';
+// Staff sign in (5.1) and Account (4.6) with fakes (D64).
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hydro_sense/app.dart';
+import 'package:hydro_sense/core/errors.dart';
 import 'package:hydro_sense/core/theme.dart';
-import 'package:hydro_sense/data/account_repository.dart';
 import 'package:hydro_sense/data/models.dart';
 import 'package:hydro_sense/data/providers.dart';
 import 'package:hydro_sense/data/repository.dart';
-import 'package:hydro_sense/features/auth/sms_reset_screen.dart';
+import 'package:hydro_sense/features/auth/login_screen.dart';
 import 'package:hydro_sense/features/client/account_screen.dart';
 
-import 'test_data.dart';
-
-class FakeAccount implements AccountRepository {
-  final calls = <String>[];
-  Object? verifyError;
-
-  @override
-  Future<int> requestResetCode(String address, {bool byEmail = false}) async {
-    calls.add('code ${byEmail ? 'email ' : ''}$address');
-    return 60;
-  }
+/// Records the address each sign-in used; [error] makes it fail.
+class FakeAuth implements FirebaseAuth {
+  final tried = <String>[];
+  Object? error;
+  int signOuts = 0;
 
   @override
-  Future<String> verifyResetCode(
-    String address,
-    String code, {
-    bool byEmail = false,
+  Future<UserCredential> signInWithEmailAndPassword({
+    required String email,
+    required String password,
   }) async {
-    calls.add('verify $code');
-    if (verifyError != null) throw verifyError!;
-    return 'uid.token';
+    tried.add(email);
+    if (error != null) throw error!;
+    return _Credential();
   }
 
   @override
-  Future<void> setPasswordAndSignIn(
-    String resetToken,
-    String newPassword,
-  ) async => calls.add('set $resetToken');
+  User? get currentUser => null;
 
+  @override
+  Future<void> signOut() async => signOuts++;
+
+  @override
+  dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
+class _Credential implements UserCredential {
   @override
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
@@ -50,135 +48,99 @@ class FakeClient implements ClientRepository {
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
 
-Future<void> phone(WidgetTester t, {double height = 780}) async {
-  t.view.physicalSize = Size(360 * 3, height * 3);
+Future<void> phone(WidgetTester t, {double textScale = 1.0}) async {
+  t.view.physicalSize = const Size(360 * 3, 780 * 3);
   t.view.devicePixelRatio = 3;
+  t.platformDispatcher.textScaleFactorTestValue = textScale;
   t.platformDispatcher.accessibilityFeaturesTestValue =
       const FakeAccessibilityFeatures(disableAnimations: true);
   addTearDown(t.view.reset);
+  addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
   addTearDown(t.platformDispatcher.clearAccessibilityFeaturesTestValue);
 }
 
+Widget signInHarness(FakeAuth auth, {String? refused}) => ProviderScope(
+  overrides: [authProvider.overrideWithValue(auth)],
+  child: MaterialApp(
+    theme: buildLightTheme(),
+    builder: clampTextScale,
+    home: LoginScreen(refused: refused),
+  ),
+);
+
 void main() {
-  testWidgets('reset: 3 steps, masked number, tries left, then saved', (
+  testWidgets('staff sign in with a username, never an email (D64)', (t) async {
+    await phone(t);
+    final auth = FakeAuth();
+    await t.pumpWidget(signInHarness(auth));
+    expect(find.widgetWithText(TextField, 'Username'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Email'), findsNothing);
+    await t.enterText(find.widgetWithText(TextField, 'Username'), ' Juan.DC ');
+    await t.enterText(find.widgetWithText(TextField, 'Password'), 'secret-12');
+    await t.tap(find.text('Sign in'));
+    await t.pump();
+    expect(auth.tried, ['juan.dc@staff.hydrosense.invalid']);
+  });
+
+  testWidgets('staff have no reset: the admin sets a new password', (t) async {
+    await phone(t);
+    await t.pumpWidget(signInHarness(FakeAuth()));
+    expect(find.text('Forgot password?'), findsNothing);
+    expect(
+      find.text('Forgot your password? Ask your admin to set a new one.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('No account yet? Ask your admin to create one.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a wrong username or password gets one reply', (t) async {
+    await phone(t);
+    final auth = FakeAuth()
+      ..error = FirebaseAuthException(code: 'invalid-credential');
+    await t.pumpWidget(signInHarness(auth));
+    await t.enterText(find.widgetWithText(TextField, 'Username'), 'nobody');
+    await t.enterText(find.widgetWithText(TextField, 'Password'), 'x');
+    await t.tap(find.text('Sign in'));
+    await t.pump();
+    expect(find.text(Messages.staffWrongCredentials), findsOneWidget);
+
+    auth.error = FirebaseAuthException(code: 'user-disabled');
+    await t.tap(find.text('Sign in'));
+    await t.pump();
+    expect(find.text(Messages.suspended), findsOneWidget);
+
+    auth.error = FirebaseAuthException(code: 'too-many-requests');
+    await t.tap(find.text('Sign in'));
+    await t.pump();
+    expect(find.text(Messages.staffTooManyAttempts), findsOneWidget);
+  });
+
+  testWidgets('an admin account is refused on the app and signed out', (
     t,
   ) async {
     await phone(t);
-    final account = FakeAccount()
-      ..verifyError = FirebaseFunctionsException(
-        code: 'invalid-argument',
-        message: 'x',
-        details: {'code': 'RESET_CODE_INVALID', 'triesLeft': 4},
-      );
-    await t.pumpWidget(
-      ProviderScope(
-        overrides: [accountRepositoryProvider.overrideWithValue(account)],
-        child: MaterialApp(
-          theme: buildLightTheme(),
-          builder: clampTextScale,
-          home: SmsResetScreen(now: () => testNow),
-        ),
-      ),
-    );
-    expect(find.text('STEP 1 OF 3'), findsOneWidget);
-    expect(find.text('Your email'), findsOneWidget); // email first
-    await t.tap(find.text('Use my mobile number instead'));
+    final auth = FakeAuth();
+    await t.pumpWidget(signInHarness(auth, refused: 'admin'));
     await t.pump();
-    await t.enterText(find.byType(TextField), '0917 12');
-    await t.tap(find.text('Send the code'));
-    await t.pump();
-    expect(
-      find.text('Enter a Philippine mobile number, for example 0917 123 4567.'),
-      findsOneWidget,
-    );
-    await t.enterText(find.byType(TextField), '0917 123 4567');
-    await t.tap(find.text('Send the code'));
-    await t.pump();
-    expect(account.calls, ['code 639171234567']);
-    expect(find.text('STEP 2 OF 3'), findsOneWidget);
-    expect(
-      find.text(
-        'If 0917 ••• 4567 has an account, a 6-digit code is on its way. '
-        'It can take a minute.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Code expires in 5:00'), findsOneWidget);
-    expect(find.text('Send again in 1:00'), findsOneWidget);
-
-    await t.enterText(find.byType(TextField), '123456');
-    await t.pump();
-    await t.tap(find.text('Continue'));
-    await t.pump();
-    expect(find.text('That code is not right. 4 tries left.'), findsOneWidget);
-
-    account.verifyError = null;
-    await t.tap(find.text('Continue'));
-    await t.pump();
-    expect(find.text('STEP 3 OF 3'), findsOneWidget);
-    await t.enterText(
-      find.widgetWithText(TextField, 'New password'),
-      'secret-12',
-    );
-    await t.enterText(
-      find.widgetWithText(TextField, 'Type it again'),
-      'secret-13',
-    );
-    await t.tap(find.text('Save password'));
-    await t.pump();
-    expect(find.text("Passwords don't match."), findsOneWidget);
-    await t.enterText(
-      find.widgetWithText(TextField, 'Type it again'),
-      'secret-12',
-    );
-    await t.tap(find.text('Save password'));
-    await t.pump();
-    expect(account.calls.last, 'set uid.token');
+    expect(find.text(Messages.adminOnPhone), findsOneWidget);
+    expect(auth.signOuts, 1);
   });
 
-  testWidgets('reset by email code: masked address, then the same 3 steps', (
-    t,
-  ) async {
-    await phone(t);
-    final account = FakeAccount();
-    await t.pumpWidget(
-      ProviderScope(
-        overrides: [accountRepositoryProvider.overrideWithValue(account)],
-        child: MaterialApp(
-          theme: buildLightTheme(),
-          home: SmsResetScreen(now: () => testNow),
-        ),
-      ),
-    );
-    expect(find.text('Your email'), findsOneWidget);
-    await t.enterText(find.byType(TextField), 'nobody');
-    await t.tap(find.text('Send the code'));
-    await t.pump();
-    expect(find.text('Enter the email on your account.'), findsOneWidget);
-    await t.enterText(find.byType(TextField), ' Ana@Example.com ');
-    await t.tap(find.text('Send the code'));
-    await t.pump();
-    expect(account.calls, ['code email ana@example.com']);
-    // Same words for any address (no account enumeration), and no link.
-    expect(
-      find.text(
-        'If a•••@example.com has an account, a 6-digit code is on its way. '
-        'It can take a minute.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Not in your inbox? Check spam.'), findsOneWidget);
-    await t.tap(find.text('Wrong email? Go back and try again.'));
-    await t.pump();
-    expect(find.text('Your email'), findsOneWidget);
+  testWidgets('sign in fits a 360 dp phone at 1.5x text', (t) async {
+    await phone(t, textScale: 1.5);
+    await t.pumpWidget(signInHarness(FakeAuth()));
+    await t.pumpAndSettle();
+    expect(t.takeException(), isNull);
   });
 
-  Widget accountHarness(FakeClient client) => ProviderScope(
+  Widget accountHarness() => ProviderScope(
     overrides: [
       uidProvider.overrideWithValue('u1'),
       userProvider.overrideWith((_) => Stream.value(null)),
-      repositoryProvider.overrideWithValue(client),
-      accountRepositoryProvider.overrideWithValue(FakeAccount()),
+      repositoryProvider.overrideWithValue(FakeClient()),
       profileProvider.overrideWith(
         (_) => Stream.value(
           const UserProfile(
@@ -199,15 +161,24 @@ void main() {
 
   testWidgets('account: read-only details, no switches (D64, D65)', (t) async {
     await phone(t);
-    await t.pumpWidget(accountHarness(FakeClient()));
+    await t.pumpWidget(accountHarness());
     await t.pumpAndSettle();
     expect(find.text('JD'), findsOneWidget);
     expect(find.text('juan.dc'), findsOneWidget);
     expect(find.text('0917 123 4567'), findsOneWidget);
     expect(find.text('juan@example.com'), findsOneWidget);
-    // Staff change nothing: no Change buttons, no alert switches.
+    // Staff change nothing: no Change buttons, no alert switches, no deletion.
     expect(find.text('Change'), findsNothing);
     expect(find.widgetWithText(SwitchListTile, 'SMS'), findsNothing);
+    expect(find.textContaining('account deletion'), findsNothing);
     expect(find.textContaining('Ask your admin'), findsOneWidget);
+    expect(find.text('Sign out'), findsOneWidget);
+  });
+
+  testWidgets('account fits a 360 dp phone at 1.5x text', (t) async {
+    await phone(t, textScale: 1.5);
+    await t.pumpWidget(accountHarness());
+    await t.pumpAndSettle();
+    expect(t.takeException(), isNull);
   });
 }

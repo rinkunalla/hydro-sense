@@ -376,10 +376,7 @@ class _EditPipelineState extends ConsumerState<EditPipelineScreen> {
                     if (ordered.isEmpty)
                       Padding(
                         padding: const EdgeInsets.all(AppSpace.s),
-                        child: Text(
-                          'No devices on your account yet.',
-                          style: AppText.note,
-                        ),
+                        child: Text('No devices yet.', style: AppText.note),
                       ),
                     ReorderableListView(
                       shrinkWrap: true,

@@ -50,7 +50,7 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
       if (v.id == widget.deviceId) view = v;
     }
 
-    // Unassigned or removed while open: go back and say so (4.1).
+    // Removed while open: go back and say so (4.1).
     if (fleet != null && view == null) {
       if (!_leaving) {
         _leaving = true;
