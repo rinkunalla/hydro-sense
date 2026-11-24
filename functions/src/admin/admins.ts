@@ -12,12 +12,17 @@ import {
 import { requireAdmin, requireAdminClaim } from "../lib/auth";
 import { C, db, ms, ts } from "../lib/db";
 import { logError } from "../lib/logError";
-import { newOneTimeToken, uidOfToken } from "../lib/otp";
+import { setMember } from "../lib/members";
 import { MAIL_SECRETS, providers } from "../lib/providers";
-import { sha256Hex } from "../lib/tokens";
-import { parseEmail, parseName, parseUid } from "../lib/userInput";
-import { parsePassword } from "../auth/reset";
-import { audit } from "./audit";
+import { newOneTimeToken, sha256Hex, uidOfToken } from "../lib/tokens";
+import {
+  parseEmail,
+  parseName,
+  parseOptionalPhone,
+  parsePassword,
+  parseUid,
+} from "../lib/userInput";
+import { assertPhoneFree, movePhone } from "./staff";
 
 const HOUR_MS = 3_600_000;
 const SOURCE = "admins";
@@ -192,13 +197,13 @@ export const completeAdminSetup = onCall(async (request) => {
  * Removes another active admin. The count check and the delete share one
  * transaction, so two admins removing each other at once cannot leave zero.
  */
-export const removeAdmin = onCall({ secrets: MAIL_SECRETS }, async (request) => {
+export const removeAdmin = onCall(async (request) => {
   const by = await requireAdmin(request);
   const uid = parseUid((request.data as { uid?: unknown } | null)?.uid);
   if (uid === by) {
     throw fail("failed-precondition", "SELF_REMOVE", "Ask another admin to remove you.");
   }
-  const name = await db.runTransaction(async (tx) => {
+  await db.runTransaction(async (tx) => {
     const active = await tx.get(db.collection(C.admins).where("status", "==", "active"));
     const ids = active.docs.map((d) => d.id);
     const target = active.docs.find((d) => d.id === uid);
@@ -211,15 +216,16 @@ export const removeAdmin = onCall({ secrets: MAIL_SECRETS }, async (request) => 
       );
     }
     tx.delete(target.ref);
-    return (target.get("name") as string | undefined) ?? (target.get("email") as string);
+    const held = (target.get("phone") as string | null | undefined) ?? null;
+    if (held) tx.delete(db.collection(C.phoneIndex).doc(held));
   });
+  await setMember(uid, false);
   await getAuth()
     .deleteUser(uid)
     .catch((e: { code?: string }) => {
       if (e.code !== "auth/user-not-found") throw e;
     });
   await tokenRef(uid).delete();
-  await audit({ adminUid: by, action: "admin_removed", targetId: uid, targetName: name });
   return { uid };
 });
 
@@ -243,6 +249,7 @@ export const listAdmins = onCall(async (request) => {
       uid: d.id,
       name: d.get("name") ?? null,
       email: d.get("email") ?? null,
+      phone: d.get("phone") ?? null,
       status: d.get("status"),
       you: d.id === me,
       inviteSentAtMs: sentMs,
@@ -265,6 +272,23 @@ export const updateMyAdminName = onCall(async (request) => {
 });
 
 /**
+ * {mobile}: the admin's own mobile number for SMS alerts (D65); null or ""
+ * removes it. Unique across staff and admins (phone_index).
+ */
+export const updateMyAdminMobile = onCall(async (request) => {
+  const uid = await requireAdmin(request);
+  const phone = parseOptionalPhone((request.data as { mobile?: unknown } | null)?.mobile) ?? null;
+  await assertPhoneFree(uid, phone);
+  await db.runTransaction(async (tx) => {
+    const ref = adminRef(uid);
+    const old = ((await tx.get(ref)).get("phone") as string | null | undefined) ?? null;
+    await movePhone(tx, uid, old, phone);
+    tx.update(ref, { phone });
+  });
+  return { phone };
+});
+
+/**
  * Called by the website after every admin sign-in: marks an invited admin active
  * on the first sign-in, and copies a verified new email into the record.
  */
@@ -284,6 +308,8 @@ export const syncMyAdmin = onCall(async (request) => {
   const authEmail = user.email?.toLowerCase();
   if (authEmail && user.emailVerified && authEmail !== snap.get("email")) update.email = authEmail;
   if (Object.keys(update).length > 0) await ref.update(update);
+  // Active admins read the live channel (D62); this also repairs a missing entry.
+  await setMember(uid, true);
   return { status: (update.status as string | undefined) ?? snap.get("status") };
 });
 

@@ -12,16 +12,20 @@ export const db = getFirestore();
 export const rtdb = getDatabaseWithUrl(DATABASE_URL);
 export const liveRef = (id: string) => rtdb.ref(`live/${id}`);
 export const stateRef = (id: string) => rtdb.ref(`state/${id}`);
+/** /members/{uid} = true for every active staff member and admin: the
+ * Realtime Database rules read it, so a disabled account loses access at once. */
+export const memberRef = (uid: string) => rtdb.ref(`members/${uid}`);
+
+/** The organization's one pipeline (D62). */
+export const PIPELINE_DOC = "main";
 
 // Collection names.
 export const C = {
   users: "users",
   admins: "admins",
-  adminAudit: "admin_audit",
   phoneIndex: "phone_index",
   pipelines: "pipelines",
   pushTokens: "push_tokens",
-  passwordResets: "password_resets",
   adminSetupTokens: "admin_setup_tokens",
   devices: "devices",
   flowLogs: "flow_logs",

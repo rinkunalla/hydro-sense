@@ -32,7 +32,7 @@ export async function flipOfflineIfStale(deviceId: string, nowMs: number): Promi
 async function openOfflineProblem(deviceId: string, sinceMs: number) {
   const state = await readState(deviceId);
   if (state.open.offline) return;
-  const open = await applyProblemOps(deviceId, state.ownerUid, state.open, [
+  const open = await applyProblemOps(deviceId, state.open, [
     { op: "open", type: "offline", startedAt: sinceMs },
   ]);
   await stateRef(deviceId).child("open").set(open);

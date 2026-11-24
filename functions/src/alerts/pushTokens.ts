@@ -4,7 +4,7 @@
 // FID under any other account is removed first, and a phone never gets two
 // people's alerts.
 import { HttpsError, onCall } from "firebase-functions/https";
-import { requireUser } from "../lib/auth";
+import { requireStaff } from "../lib/auth";
 import { C, db, ts } from "../lib/db";
 
 const FID = /^[A-Za-z0-9_:-]{8,4096}$/;
@@ -36,6 +36,6 @@ export async function claimPushTokenFor(
 }
 
 export const claimPushToken = onCall(async (request) => {
-  const uid = await requireUser(request);
+  const uid = await requireStaff(request);
   return claimPushTokenFor(uid, (request.data as { fid?: unknown } | null)?.fid);
 });

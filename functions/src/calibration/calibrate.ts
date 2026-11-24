@@ -7,7 +7,6 @@ import {
   CALIBRATE_WINDOW_H,
   TIME_ZONE,
 } from "../config";
-import { purgeExpired } from "../admin/purge";
 import { alertStateRef } from "../alerts/alertPass";
 import { bucketAverages, enoughData, fallbackCutoffs, flowStats } from "../lib/calibrationMath";
 import { C, db, ms, ts } from "../lib/db";
@@ -49,12 +48,11 @@ export async function calibrateDevice(deviceId: string, nowMs: number): Promise<
   return "updated";
 }
 
-/** Every assigned device that is not removed. */
+/** Every device of the organization. */
 export async function calibrateAll(nowMs = Date.now()) {
-  const devices = await db.collection(C.devices).where("ownerUid", "!=", null).get();
+  const devices = await db.collection(C.devices).get();
   const results: { deviceId: string; result: CalibrationResult }[] = [];
   for (const d of devices.docs) {
-    if (d.get("removedAt")) continue;
     try {
       results.push({ deviceId: d.id, result: await calibrateDevice(d.id, nowMs) });
     } catch (e) {
@@ -73,8 +71,6 @@ export async function calibrateAll(nowMs = Date.now()) {
 export const calibrateFlowThresholdsWeekly = onSchedule(
   { schedule: CALIBRATE_SCHEDULE, timeZone: TIME_ZONE },
   async () => {
-    // Purge first, so a purged device is never calibrated.
-    await purgeExpired();
     await calibrateAll();
   },
 );

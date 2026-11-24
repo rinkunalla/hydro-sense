@@ -1,9 +1,9 @@
 rules_version = '2';
 
-// Access model: Cloud Functions use the Admin SDK and
-// bypass these rules; every write below is the only write a person may make.
-// Firestore rules cannot hide fields, so admins and users read separate
-// collections; admins get device status only through adminListDevices.
+// Access model (v3, D62 to D66): one organization. Every active member (staff
+// and admins) reads every device, its health, History and the one pipeline;
+// only admins write, and only where a rule below allows it. Devices change only
+// through callables. Cloud Functions use the Admin SDK and bypass these rules.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -18,21 +18,19 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.status == 'active';
     }
 
-    function isUser() {
-      return signedIn() && request.auth.token.role == 'user';
+    // Staff have role "user"; a disabled account is refused at once, before its
+    // ID token expires.
+    function isStaff() {
+      return signedIn() && request.auth.token.role == 'user'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
     }
 
-    function isSelf(uid) {
-      return isUser() && request.auth.uid == uid;
+    function isMember() {
+      return isAdmin() || isStaff();
     }
 
-    // ownerUid is null for an unassigned device, so this is false for it.
-    function ownsDoc(data) {
-      return isUser() && data.ownerUid == request.auth.uid;
-    }
-
-    function ownsDevice(deviceId) {
-      return ownsDoc(get(/databases/$(database)/documents/devices/$(deviceId)).data);
+    function isSelfStaff(uid) {
+      return isStaff() && request.auth.uid == uid;
     }
 
     function textOf(s, max) {
@@ -45,33 +43,6 @@ service cloud.firestore {
 
     function validLng(v) {
       return v is number && v >= -180 && v <= 180;
-    }
-
-    // Manual pin: both null, or both valid numbers.
-    function validManualPin(d) {
-      return (d.get('manualLat', null) == null && d.get('manualLng', null) == null)
-        || (validLat(d.get('manualLat', null)) && validLng(d.get('manualLng', null)));
-    }
-
-    // Owner's own "Low flow below X L/min"; null = automatic.
-    // USER_NORMAL_CUTOFF_MIN/MAX in functions/src/config.ts.
-    function validUserCutoff(v) {
-      return v == null || (v is number && v >= 1.0 && v <= 30);
-    }
-
-    function validDeviceUpdate() {
-      let d = request.resource.data;
-      let changed = d.diff(resource.data).affectedKeys();
-      return changed.hasOnly(['nickname', 'manualLat', 'manualLng', 'userNormalCutoff'])
-        && (!changed.hasAny(['nickname']) || textOf(d.nickname, 24))
-        && (!changed.hasAny(['userNormalCutoff']) || validUserCutoff(d.userNormalCutoff))
-        && validManualPin(d);
-    }
-
-    function validAlertPrefs(p) {
-      return p is map && p.keys().hasOnly(['push', 'sms', 'email'])
-        && p.keys().hasAll(['push', 'sms', 'email'])
-        && p.push is bool && p.sms is bool && p.email is bool;
     }
 
     // Pipeline: rules have no loops, so the 10 branches are checked one by one.
@@ -105,15 +76,12 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if isSelf(uid) || isAdmin();
-      allow update: if isSelf(uid)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['alertPrefs'])
-        && validAlertPrefs(request.resource.data.alertPrefs);
+      allow read: if isSelfStaff(uid) || isAdmin();
 
       // Registered only through claimPushToken, which first removes the
-      // phone from any other account; the owner may delete it (Sign out).
+      // phone from any other account; the staff member may delete it (Sign out).
       match /push_tokens/{token} {
-        allow read, delete: if isSelf(uid);
+        allow read, delete: if isSelfStaff(uid);
       }
     }
 
@@ -121,50 +89,43 @@ service cloud.firestore {
       allow read: if isAdmin();
     }
 
-    // Immutable audit log: no person may create, change or delete an entry.
-    match /admin_audit/{id} {
-      allow read: if isAdmin();
-    }
-
+    // Changed only through the admin callables (updateDevice, D63).
     match /devices/{deviceId} {
-      allow read: if ownsDoc(resource.data);
-      allow update: if ownsDoc(resource.data) && validDeviceUpdate();
+      allow read: if isMember();
 
       match /flow_logs/{logId} {
-        allow read: if ownsDevice(deviceId);
+        allow read: if isMember();
       }
     }
 
     match /device_health/{deviceId} {
-      allow read: if ownsDoc(resource.data);
+      allow read: if isMember();
     }
 
-    // History: only the functions create problems. The owner may add or
-    // clear a note (up to 100 characters) and delete a problem that has ended.
+    // History: only the functions create and close problems; an admin may
+    // delete one that has ended.
     match /problems/{id} {
-      allow read: if ownsDoc(resource.data);
-      allow update: if ownsDoc(resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['note'])
-        && (request.resource.data.note == null || textOf(request.resource.data.note, 100));
-      allow delete: if ownsDoc(resource.data) && resource.data.endedAt != null;
+      allow read: if isMember();
+      allow delete: if isAdmin() && resource.data.endedAt != null;
     }
 
     // The History graph: one day of 15-minute flow samples per device.
-    // Read by the owner; written only by the functions.
     match /readings/{id} {
-      allow read: if ownsDoc(resource.data);
+      allow read: if isMember();
     }
 
-    match /pipelines/{uid} {
-      allow read, delete: if isSelf(uid);
-      allow create, update: if isSelf(uid) && validPipeline(request.resource.data);
+    // The organization's one pipeline (pipelines/main); the admin edits it.
+    match /pipelines/{id} {
+      allow read: if isMember() && id == 'main';
+      allow delete: if isAdmin() && id == 'main';
+      allow create, update: if isAdmin() && id == 'main' && validPipeline(request.resource.data);
     }
 
     match /allowed_devices/{deviceId} {
       allow read: if isAdmin();
     }
 
-    // device_secrets, phone_index, password_resets, admin_setup_tokens, alert_state, alert_daily,
+    // device_secrets, phone_index, admin_setup_tokens, alert_state, alert_daily,
     // rate_limits, error_logs (Firebase console only) and every unlisted path:
     // no person may read or write them (no matching allow rule means deny).
   }

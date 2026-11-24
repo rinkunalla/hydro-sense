@@ -41,14 +41,40 @@ export const BATTERY_SMOOTH_SAMPLES = 9;
 export const CHARGING_RISE_PER_CELL_V = 0.03;
 export const CHARGING_FULL_PER_CELL_V = 4.15;
 
-// Flow classification (starter cutoffs, L/min) and payload clamps
-export const STARTER_LOW_FLOW_CUTOFF = 0.2;
-export const STARTER_NORMAL_FLOW_CUTOFF = 2.0;
-// Owner's own "Low flow below X L/min". The YF-S201 reads about 1 to 30
-// L/min reliably, so X stays inside that range. Mirrored in firestore.rules.
-export const USER_NORMAL_CUTOFF_MIN = 1.0;
-export const USER_NORMAL_CUTOFF_MAX = 30;
-export const FLOW_RATE_MAX = 40;
+// Flow sensors (D69). Each device has one; the server sends its pulse factor,
+// window and starter cutoffs in every reply (firmware 0.4.0 uses them).
+// pulsesPerLpm: pulse frequency in Hz for 1 L/min (F = k x Q).
+// The admin's own "Low flow below X L/min" stays inside userCutoffMin..Max
+// (the sensor's reliable range). Mirrored in the website's validation.
+export const SENSORS = {
+  yf_s201: {
+    label: "YF-S201",
+    pulsesPerLpm: 7.5,
+    flowWindowS: 5,
+    starterLow: 0.2,
+    starterNormal: 2.0,
+    userCutoffMin: 1.0,
+    userCutoffMax: 30,
+  },
+  // Listings give F = 0.2 x Q and 10 to 200 L/min; confirmed by a bucket test in stage V4.
+  // Below about 10 L/min the rotor may not turn, so the No Flow line sits under it.
+  zj_dn50: {
+    label: "ZJ-DN50",
+    pulsesPerLpm: 0.2,
+    flowWindowS: 15,
+    starterLow: 5,
+    starterNormal: 20,
+    userCutoffMin: 10,
+    userCutoffMax: 150,
+  },
+} as const;
+export type SensorType = keyof typeof SENSORS;
+export const SENSOR_TYPES = Object.keys(SENSORS) as SensorType[];
+export const DEFAULT_SENSOR: SensorType = "yf_s201";
+// Kept for the YF-S201 paths and old callers.
+export const STARTER_LOW_FLOW_CUTOFF = SENSORS.yf_s201.starterLow;
+export const STARTER_NORMAL_FLOW_CUTOFF = SENSORS.yf_s201.starterNormal;
+export const FLOW_RATE_MAX = 250;
 
 // Alerts
 // A flow problem alerts once it has lasted this long (checked at each
@@ -58,7 +84,7 @@ export const RECOVERY_CONFIRM_S = 600;
 export const ALERT_LOCK_S = 21600;
 export const ALERT_MAX_REMINDERS = 2;
 export const ALERT_DAILY_CAP = 10;
-export const SMS_PROJECT_DAILY_CAP = 50;
+export const SMS_PROJECT_DAILY_CAP = 100;
 export const ALERT_SEND_LEASE_S = 120;
 export const SMS_MAX_CHARS = 160;
 
@@ -77,7 +103,6 @@ export const ERROR_LOG_MESSAGE_MAX = 300;
 
 // Outbound providers
 export const SEMAPHORE_URL = "https://api.semaphore.co/api/v4/messages";
-export const SEMAPHORE_OTP_URL = "https://api.semaphore.co/api/v4/otp"; // 2 credits per SMS
 export const PROVIDER_TIMEOUT_MS = 10000;
 /** Android notification channel with high importance, made by the app. */
 export const ALERT_CHANNEL_ID = "alerts";
@@ -101,37 +126,27 @@ export const REGISTER_MAX_PER_HOUR = 20;
 export const NICKNAME_MAX = 24;
 export const DEVICE_ID_PATTERN = /^[0-9A-F]{12}$/;
 
-// Users, devices and admin actions
+// Staff, admins and devices
 export const USER_NAME_MAX = 60;
-export const LABEL_MAX = 24;
 export const PH_MOBILE_PATTERN = /^(?:09|\+639|639)(\d{9})$/;
-export const RESTORE_WINDOW_DAYS = 30;
-export const AUDIT_TTL_DAYS = 365;
+export const USERNAME_MIN = 3;
+export const USERNAME_MAX = 20;
+/** Staff sign in with a username; Firebase Auth needs an email, so the
+ * account's sign-in address is username@STAFF_LOGIN_DOMAIN. Never sent mail. */
+export const STAFF_LOGIN_DOMAIN = "staff.hydrosense.invalid";
 // History
 export const PROBLEM_TTL_DAYS = 365;
-export const PROBLEM_NOTE_MAX = 100;
 // The History graph: the 15-minute flow samples, one doc per device per
 // Manila day (96 slots), kept a year. Asia/Manila has no daylight saving.
 export const READINGS_TTL_DAYS = 365;
 export const READING_SLOT_MIN = 15;
 export const MANILA_UTC_OFFSET_MIN = 480;
-export const AUDIT_LIST_LIMIT = 100; // one Activity page
-export const AUDIT_PAGE_MAX = 200;
 export const PIPELINE_MAX_BRANCHES = 10;
 export const PIPELINE_MAX_DEVICES_PER_BRANCH = 50;
 
-// Sign-in codes and admin setup
-export const RESET_CODE_LENGTH = 6;
-export const RESET_CODE_TTL_S = 300;
-export const RESET_MAX_ATTEMPTS = 5;
-export const RESET_RESEND_S = 60;
-export const RESET_MAX_PER_PHONE_DAY = 5;
-export const RESET_TOKEN_TTL_S = 600;
-export const OTP_PROJECT_DAILY_CAP = 30;
-/** Reset codes by email for the whole project per day; Gmail's own
- * sending limit is far higher, this keeps a runaway caller cheap. */
-export const EMAIL_CODE_PROJECT_DAILY_CAP = 100;
+// Passwords and admin setup
 export const MIN_PASSWORD_LENGTH = 8;
+export const PASSWORD_MAX_LENGTH = 128;
 export const ADMIN_SETUP_MAX_PER_HOUR = 10;
 export const ADMIN_SETUP_TOKEN_TTL_S = 3600;
 export const ADMIN_RECOMMENDED_MIN = 2;
@@ -149,7 +164,7 @@ export const PLACES_LANGUAGE = "en";
 export const PLACES_INPUT_MIN = 3;
 export const PLACES_INPUT_MAX = 100;
 export const PLACES_BIAS_RADIUS_M = 50000; // API maximum
-// Calls (suggestions + picks) per day: one user, and the whole project
+// Calls (suggestions + picks) per day: one admin, and the whole project
 // (300 a day stays under the 10,000 free a month).
 export const PLACES_USER_DAILY_CAP = 150;
 export const PLACES_PROJECT_DAILY_CAP = 300;

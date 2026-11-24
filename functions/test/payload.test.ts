@@ -40,7 +40,7 @@ describe("parseIngestPayload", () => {
 
   it("clamps flow rate and rssi", () => {
     const r = parse({ flowRate: 500, rssi: 20 });
-    expect(r.ok && r.value.flowRate).toBe(40);
+    expect(r.ok && r.value.flowRate).toBe(250); // FLOW_RATE_MAX covers the ZJ-DN50
     expect(r.ok && r.value.rssi).toBe(0);
   });
 

@@ -43,61 +43,15 @@
       ]
     },
     {
-      "collectionGroup": "users",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "purgeAfter",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "problems",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "ownerUid",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "startedAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "problems",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "ownerUid",
-          "order": "ASCENDING"
-        },
         {
           "fieldPath": "deviceId",
           "order": "ASCENDING"
         },
         {
           "fieldPath": "startedAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "admin_audit",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "targetId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "at",
           "order": "DESCENDING"
         }
       ]
@@ -118,12 +72,6 @@
     },
     {
       "collectionGroup": "rate_limits",
-      "fieldPath": "expireAt",
-      "ttl": true,
-      "indexes": []
-    },
-    {
-      "collectionGroup": "admin_audit",
       "fieldPath": "expireAt",
       "ttl": true,
       "indexes": []

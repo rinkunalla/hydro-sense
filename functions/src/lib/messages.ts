@@ -75,7 +75,8 @@ export function byDevice(items: readonly AlertItem[]): AlertItem[] {
 
 /**
  * One SMS for everything due in a pass; never longer than SMS_MAX_CHARS. Alert SMS
- * carry only No Flow, so a batch reads "No water at {n} areas:...".
+ * carry No Flow, Low Flow and Offline (D65); an all-No-Flow batch reads
+ * "No water at {n} areas:...". Admins have no app, so the tail names Hydro Sense.
  */
 export function buildSms(items: readonly AlertItem[]): string {
   const list = byDevice(items);
@@ -88,10 +89,10 @@ export function buildSms(items: readonly AlertItem[]): string {
   for (let k = list.length; k >= 1; k--) {
     const shown = list.slice(0, k).map(name).join(", ");
     const more = k < list.length ? `, +${list.length - k} more` : "";
-    const text = `${head}${shown}${more}. Open the app.`;
+    const text = `${head}${shown}${more}. Open Hydro Sense.`;
     if (text.length <= SMS_MAX_CHARS) return text;
   }
-  return `HydroSense: ${list.length} areas need attention. Open the app.`;
+  return `HydroSense: ${list.length} areas need attention. Open Hydro Sense.`;
 }
 
 export interface PushMessage {
@@ -143,7 +144,7 @@ export const DIGEST_PUSH: PushMessage = {
   data: { kind: "batch" },
 };
 
-export const DIGEST_SMS = "HydroSense: More alerts today. Open the app for live status.";
+export const DIGEST_SMS = "HydroSense: More alerts today. Open Hydro Sense for live status.";
 
 function sentence(i: AlertItem): string {
   const n = i.nickname;
@@ -182,12 +183,12 @@ export function buildEmail(items: readonly AlertItem[]): { subject: string; text
     "",
     WHAT_TO_CHECK,
     "",
-    "Open the Hydro Sense app for live status.",
+    "Open the Hydro Sense app or website for live status.",
   ].join("\n");
   return { subject, text };
 }
 
 export const DIGEST_EMAIL = {
   subject: "Hydro Sense alert: more alerts today",
-  text: "Hydro Sense has sent today's maximum number of alerts.\n\nOpen the Hydro Sense app for live status.",
+  text: "Hydro Sense has sent today's maximum number of alerts.\n\nOpen the Hydro Sense app or website for live status.",
 };

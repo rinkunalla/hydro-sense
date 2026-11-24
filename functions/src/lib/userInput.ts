@@ -1,7 +1,16 @@
 // Pure validation of admin input. Each parser throws
 // an HttpsError with a stable code the website maps to its own wording.
 import { HttpsError } from "firebase-functions/https";
-import { LABEL_MAX, PH_MOBILE_PATTERN, USER_NAME_MAX } from "../config";
+import {
+  MIN_PASSWORD_LENGTH,
+  NICKNAME_MAX,
+  PASSWORD_MAX_LENGTH,
+  PH_MOBILE_PATTERN,
+  STAFF_LOGIN_DOMAIN,
+  USER_NAME_MAX,
+  USERNAME_MAX,
+  USERNAME_MIN,
+} from "../config";
 import { normalizeDeviceId } from "./payload";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -41,16 +50,58 @@ export function parsePhone(v: unknown): string {
   return phone;
 }
 
-/** null clears the label; otherwise 1 to LABEL_MAX characters after trimming. */
-export function parseLabel(v: unknown): string | null {
-  if (v === undefined || v === null) return null;
-  const label = typeof v === "string" ? v.trim() : "";
-  if (label === "") return null;
-  if (label.length > LABEL_MAX) {
-    throw invalid("LABEL_INVALID", `Label must be at most ${LABEL_MAX} characters.`);
-  }
-  return label;
+/** An optional contact: undefined = unchanged, null or "" = none. */
+export function parseOptionalPhone(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || (typeof v === "string" && v.trim() === "")) return null;
+  return parsePhone(v);
 }
+
+export function parseOptionalEmail(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || (typeof v === "string" && v.trim() === "")) return null;
+  return parseEmail(v);
+}
+
+/** A device name: 1 to NICKNAME_MAX characters after trimming. */
+export function parseDeviceName(v: unknown): string {
+  const name = typeof v === "string" ? v.trim().replace(/\s+/g, " ") : "";
+  if (name.length < 1 || name.length > NICKNAME_MAX) {
+    throw invalid("NAME_INVALID", `Name must be 1 to ${NICKNAME_MAX} characters.`);
+  }
+  return name;
+}
+
+export function parsePassword(v: unknown): string {
+  if (typeof v !== "string" || v.length < MIN_PASSWORD_LENGTH || v.length > PASSWORD_MAX_LENGTH) {
+    throw invalid("PASSWORD_WEAK", `Use at least ${MIN_PASSWORD_LENGTH} characters.`);
+  }
+  return v;
+}
+
+/**
+ * A staff username (D64): what staff type on the app's Sign in screen.
+ * Returns the stored form, or throws USERNAME_INVALID.
+ * USERNAME_MIN and USERNAME_MAX bound the length.
+ */
+export function parseUsername(v: unknown): string {
+  const username = typeof v === "string" ? v.trim().toLowerCase() : "";
+  if (username.length < USERNAME_MIN || username.length > USERNAME_MAX) {
+    throw invalid("USERNAME_INVALID", `Use ${USERNAME_MIN} to ${USERNAME_MAX} characters.`);
+  }
+  // Each allowed character is also valid before the @ of the hidden sign-in
+  // address; a dot may not start or end it or come twice in a row.
+  if (!/^[a-z0-9._-]+$/.test(username) || /^\.|\.$|\.\./.test(username)) {
+    throw invalid(
+      "USERNAME_INVALID",
+      "Use letters, numbers, dots, dashes or underscores, with no spaces.",
+    );
+  }
+  return username;
+}
+
+/** The hidden Firebase Auth address behind a username. */
+export const staffLoginEmail = (username: string) => `${username}@${STAFF_LOGIN_DOMAIN}`;
 
 export function parseDeviceId(v: unknown): string {
   const id = normalizeDeviceId(v);

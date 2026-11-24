@@ -2,19 +2,19 @@
   "rules": {
     ".read": false,
     ".write": false,
+    "members": {
+      ".read": false,
+      ".write": false
+    },
     "live": {
-      "$deviceId": {
-        ".read": "auth != null && auth.token.role == 'user' && data.child('ownerUid').val() == auth.uid"
-      }
+      ".read": "auth != null && root.child('members').child(auth.uid).val() === true"
     },
     "state": {
       ".read": false,
       ".write": false
     },
     "series": {
-      "$deviceId": {
-        ".read": "auth != null && auth.token.role == 'user' && root.child('live').child($deviceId).child('ownerUid').val() == auth.uid"
-      }
+      ".read": "auth != null && root.child('members').child(auth.uid).val() === true"
     }
   }
 }

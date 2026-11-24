@@ -10,6 +10,7 @@ import {
 import { manilaDateKey, manilaMinute, manilaSlot } from "../lib/time";
 import { C, db, rtdb, ts } from "../lib/db";
 import { uploadPace } from "../lib/decisions";
+import { sensorReply } from "../lib/sensors";
 import { bearerToken, header, sendError, sendOk } from "../lib/http";
 import { applyUpload, minutePeak, type Live } from "../lib/live";
 import { mirrorDevice, readLive, readState } from "../lib/liveStore";
@@ -26,6 +27,7 @@ type Outcome =
       kind: "ok";
       lowFlowCutoff: number;
       normalFlowCutoff: number;
+      reply: ReturnType<typeof sensorReply>;
       wrote: string[];
       live: Live;
     }
@@ -57,7 +59,7 @@ export async function ingest(
   const r = applyUpload(prev, state, p, nowMs);
   const wrote: string[] = ["live"];
 
-  const open = await applyProblemOps(deviceId, state.ownerUid, state.open, r.problems);
+  const open = await applyProblemOps(deviceId, state.open, r.problems);
   if (r.problems.length > 0) wrote.push("problems");
 
   const deviceRef = db.collection(C.devices).doc(deviceId);
@@ -70,24 +72,21 @@ export async function ingest(
       expireAt: ts(nowMs + FLOW_LOG_TTL_DAYS * DAY_MS),
     });
     wrote.push("flow_logs");
-    // The History graph: the same sample in the owner's day record.
-    if (state.ownerUid) {
-      const day = manilaDateKey(nowMs);
-      await db
-        .collection(C.readings)
-        .doc(`${deviceId}_${day}`)
-        .set(
-          {
-            ownerUid: state.ownerUid,
-            deviceId,
-            day,
-            rates: { [String(manilaSlot(nowMs))]: p.flowRate },
-            expireAt: ts(nowMs + READINGS_TTL_DAYS * DAY_MS),
-          },
-          { merge: true },
-        );
-      wrote.push("readings");
-    }
+    // The History graph: the same sample in the device's day record.
+    const day = manilaDateKey(nowMs);
+    await db
+      .collection(C.readings)
+      .doc(`${deviceId}_${day}`)
+      .set(
+        {
+          deviceId,
+          day,
+          rates: { [String(manilaSlot(nowMs))]: p.flowRate },
+          expireAt: ts(nowMs + READINGS_TTL_DAYS * DAY_MS),
+        },
+        { merge: true },
+      );
+    wrote.push("readings");
   }
   if (r.gpsMoved) {
     await deviceRef.update({ gpsLat: p.lat, gpsLng: p.lng });
@@ -144,6 +143,7 @@ export async function ingest(
     live: r.live,
     lowFlowCutoff: state.lowFlowCutoff,
     normalFlowCutoff: state.normalFlowCutoff,
+    reply: sensorReply(state.sensorType),
   };
 }
 
@@ -153,7 +153,6 @@ export async function ingest(
  * for this device, instead of at the next once-a-minute monitor pass.
  */
 export function alertMayBeDue(l: Live, nowMs: number): boolean {
-  if (!l.ownerUid || l.removed) return false;
   const flow =
     (l.flowStatus === "No Flow" || l.flowStatus === "Low Flow") &&
     l.abnormalSince !== null &&
@@ -220,6 +219,7 @@ export const deviceIngest = onRequest(
       return sendOk(res, {
         lowFlowCutoff: out.lowFlowCutoff,
         normalFlowCutoff: out.normalFlowCutoff,
+        ...out.reply,
         ...uploadPace(),
       });
     } catch (e) {

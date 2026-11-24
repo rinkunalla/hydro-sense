@@ -1,37 +1,37 @@
-// The starting shape of a device's two docs. Shared by
-// registerDevice (first registration) and assignDevice (assigned before it).
+// The starting shape of a device's two docs, made when the admin adds its ID
+// (v3: every device belongs to the organization, D62). registeredAt null
+// means "Not set up yet" until the device first registers.
 import type { Timestamp } from "firebase-admin/firestore";
-import { STARTER_LOW_FLOW_CUTOFF, STARTER_NORMAL_FLOW_CUTOFF } from "../config";
+import type { SensorType } from "../config";
+import { starterCutoffs } from "./sensors";
 import { defaultNickname } from "./userInput";
 
-export function newDeviceDoc(deviceId: string, ownerUid: string | null, now: Timestamp) {
+export function newDeviceDoc(
+  deviceId: string,
+  now: Timestamp,
+  opts: { name?: string | null; sensorType: SensorType },
+) {
   return {
-    ownerUid,
-    nickname: defaultNickname(deviceId),
+    nickname: opts.name ?? defaultNickname(deviceId),
+    sensorType: opts.sensorType,
     flowStatus: null,
     flowRate: null,
     gpsLat: null,
     gpsLng: null,
     manualLat: null,
     manualLng: null,
-    lowFlowCutoff: STARTER_LOW_FLOW_CUTOFF,
-    normalFlowCutoff: STARTER_NORMAL_FLOW_CUTOFF,
+    ...starterCutoffs(opts.sensorType),
     userNormalCutoff: null,
     calibratedAt: null,
     abnormalSince: null,
     statusChangedAt: null,
+    addedAt: now,
     updatedAt: now,
   };
 }
 
-/** registeredAt null means "Not set up yet" until the device first registers. */
-export function newHealthDoc(
-  ownerUid: string | null,
-  registeredAt: Timestamp | null,
-  firmware: string | null,
-) {
+export function newHealthDoc(registeredAt: Timestamp | null, firmware: string | null) {
   return {
-    ownerUid,
     online: false,
     lastSeen: null,
     batteryVoltage: null,
@@ -45,18 +45,5 @@ export function newHealthDoc(
     registeredAt,
     firmware,
     rssi: null,
-  };
-}
-
-/** What a new owner gets: everything the old owner set or caused is reset. */
-export function ownerResetFields(deviceId: string) {
-  return {
-    nickname: defaultNickname(deviceId),
-    manualLat: null,
-    manualLng: null,
-    lowFlowCutoff: STARTER_LOW_FLOW_CUTOFF,
-    normalFlowCutoff: STARTER_NORMAL_FLOW_CUTOFF,
-    userNormalCutoff: null,
-    calibratedAt: null,
   };
 }

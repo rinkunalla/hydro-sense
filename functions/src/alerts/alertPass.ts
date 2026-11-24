@@ -13,6 +13,7 @@ import {
 import { C, db, ms, ts } from "../lib/db";
 import { logError } from "../lib/logError";
 import {
+  type AlertType,
   DIGEST_EMAIL,
   DIGEST_PUSH,
   DIGEST_SMS,
@@ -36,9 +37,9 @@ interface Claimed {
 
 type Channel = "push" | "sms" | "email";
 
-/** "off": switched off by the user; "none": nothing for this channel (no No Flow item
- *  for SMS, or no app installation registered for push). Neither counts as a failure. */
-export type ChannelResult = "sent" | "digest" | "capped" | "failed" | "off" | "none";
+/** "none": nothing for this channel (no SMS item, no contact, or no app
+ *  installation registered for push). It never counts as a failure. */
+export type ChannelResult = "sent" | "digest" | "capped" | "failed" | "none";
 
 export interface UserAlertResult {
   sent: AlertItem[];
@@ -47,27 +48,41 @@ export interface UserAlertResult {
   email: ChannelResult;
 }
 
-export interface AlertPrefs {
-  push: boolean;
-  sms: boolean;
-  email: boolean;
-}
+/** Alert types that go by SMS (D65); low battery never does. */
+export const SMS_TYPES: ReadonlySet<AlertType> = new Set(["flow_none", "flow_low", "offline"]);
 
-/** Defaults: push on, SMS on, email off. */
-export function prefsOf(user: FirebaseFirestore.DocumentSnapshot): AlertPrefs {
-  const p = (user.get("alertPrefs") ?? {}) as Partial<AlertPrefs>;
-  return { push: p.push !== false, sms: p.sms !== false, email: p.email === true };
-}
-
-/** What each channel carries: push and email everything, SMS only No Flow. */
+/** What each channel carries: push and email everything, SMS all but low battery. */
 export function itemsFor(channel: Channel, items: readonly AlertItem[]): AlertItem[] {
-  return channel === "sms" ? items.filter((i) => i.type === "flow_none") : [...items];
+  return channel === "sms" ? items.filter((i) => SMS_TYPES.has(i.type)) : [...items];
+}
+
+/** Someone who receives alerts: an active staff member or an active admin. */
+export interface Recipient {
+  uid: string;
+  kind: "staff" | "admin";
+  phone: string | null;
+  email: string | null;
+}
+
+/** Every active member with the contacts the admin entered (D65). */
+export async function alertRecipients(): Promise<Recipient[]> {
+  const [staff, admins] = await Promise.all([
+    db.collection(C.users).where("role", "==", "user").where("status", "==", "active").get(),
+    db.collection(C.admins).where("status", "==", "active").get(),
+  ]);
+  const of = (d: FirebaseFirestore.QueryDocumentSnapshot, kind: Recipient["kind"]): Recipient => ({
+    uid: d.id,
+    kind,
+    phone: (d.get("phone") as string | null | undefined) || null,
+    email: (d.get("email") as string | null | undefined) || null,
+  });
+  return [...staff.docs.map((d) => of(d, "staff")), ...admins.docs.map((d) => of(d, "admin"))];
 }
 
 export interface AlertPassResult {
-  /** Every item handled in this pass, across users. */
+  /** Every item handled in this pass. */
   sent: AlertItem[];
-  /** Only users who had something due. */
+  /** Per recipient, only when something was due. */
   users: Record<string, UserAlertResult>;
 }
 
@@ -232,10 +247,7 @@ async function deliver(
   nowMs: number,
 ): Promise<ChannelResult> {
   const code = channel === "sms" ? "SMS_FAILED" : "EMAIL_FAILED";
-  if (!to) {
-    await logError({ source: SOURCE, code, message: "no recipient", nowMs });
-    return "failed";
-  }
+  if (!to) return "none";
   const claim = await claimCap(channel, uid, nowMs);
   if (claim === "project_capped") {
     await logError({ source: SOURCE, code: "SMS_PROJECT_CAP_REACHED", message: "sms", nowMs });
@@ -306,10 +318,11 @@ async function evaluateDevice(
 }
 
 /**
- * Evaluates every assigned device and sends what is due as one SMS and one email
- * per owner. Unassigned and removed devices and suspended users send nothing.
- * Reads the live nodes the monitor already has; Firestore is read only for
- * owners and the nicknames of devices with something due.
+ * Evaluates every device and sends what is due as one push, one SMS and one
+ * email per recipient (D65): every active staff member and admin, on the
+ * channels they have contacts for. Each device's lock is claimed once, not per
+ * recipient. Reads the live nodes the monitor already has; Firestore is read
+ * only for the names of devices with something due and for the recipients.
  */
 export async function runAlertPass(
   nowMs = Date.now(),
@@ -323,61 +336,48 @@ export async function runAlertPass(
   // Only active states can change without a fault, so healthy devices cost no reads.
   const activeIds = new Set(active.docs.map((d) => d.id));
 
-  const byOwner = new Map<string, { id: string; l: Live; due: ReturnType<typeof dueFamilies> }[]>();
-  for (const [id, l] of live) {
-    if (!l.ownerUid || l.removed) continue;
-    const due = dueFamilies(id, l, activeIds, nowMs);
-    if (due.length === 0) continue;
-    byOwner.set(l.ownerUid, [...(byOwner.get(l.ownerUid) ?? []), { id, l, due }]);
+  const due = [...live]
+    .map(([id, l]) => ({ id, l, due: dueFamilies(id, l, activeIds, nowMs) }))
+    .filter((d) => d.due.length > 0);
+  if (due.length === 0) return result;
+  const devices = await db.getAll(...due.map((d) => db.collection(C.devices).doc(d.id)));
+
+  const claimed: Claimed[] = [];
+  for (const [k, { id, l, due: families }] of due.entries()) {
+    const dev = devices[k]!;
+    // A removed device has no record any more; its live node is about to go.
+    if (!dev.exists) continue;
+    claimed.push(...(await evaluateDevice(id, l, families, dev.get("nickname") as string, nowMs)));
   }
-  if (byOwner.size === 0) return result;
-  const owners = [...byOwner.keys()];
-  const dueIds = [...byOwner.values()].flat().map((d) => d.id);
-  const [users, devices] = await Promise.all([
-    db.getAll(...owners.map((u) => db.collection(C.users).doc(u))),
-    db.getAll(...dueIds.map((id) => db.collection(C.devices).doc(id))),
-  ]);
-  const deviceById = new Map(devices.map((d) => [d.id, d]));
+  if (claimed.length === 0) return result;
 
-  for (const user of users) {
-    if (!user.exists || user.get("status") !== "active") continue;
-    const claimed: Claimed[] = [];
-    for (const { id, l, due } of byOwner.get(user.id)!) {
-      const dev = deviceById.get(id);
-      // Firestore is the source of truth for owner and removal; /live is a mirror.
-      if (!dev?.exists || dev.get("ownerUid") !== user.id || dev.get("removedAt")) continue;
-      claimed.push(...(await evaluateDevice(id, l, due, dev.get("nickname") as string, nowMs)));
-    }
-    if (claimed.length === 0) continue;
-
-    const items = claimed.map((c) => c.item);
-    const prefs = prefsOf(user);
+  const items = claimed.map((c) => c.item);
+  const tried: ChannelResult[] = [];
+  for (const r of await alertRecipients()) {
     const run = (channel: Channel, send: (list: AlertItem[]) => Promise<ChannelResult>) => {
-      if (!prefs[channel]) return Promise.resolve<ChannelResult>("off");
       const list = itemsFor(channel, items);
       return list.length === 0 ? Promise.resolve<ChannelResult>("none") : send(list);
     };
     // Channels are independent (rule 9): one failing never blocks another.
     const [push, sms, email] = await Promise.all([
-      run("push", (list) => deliverPush(user.id, list, nowMs)),
-      run("sms", (list) =>
-        deliver("sms", user.id, (user.get("phone") as string | undefined) ?? null, list, nowMs),
-      ),
-      run("email", (list) =>
-        deliver("email", user.id, (user.get("email") as string | undefined) ?? null, list, nowMs),
-      ),
+      r.kind === "staff"
+        ? run("push", (list) => deliverPush(r.uid, list, nowMs))
+        : Promise.resolve<ChannelResult>("none"),
+      run("sms", (list) => deliver("sms", r.uid, r.phone, list, nowMs)),
+      run("email", (list) => deliver("email", r.uid, r.email, list, nowMs)),
     ]);
-    // Only a send that failed on every channel it tried leaves the lock unset (rule 9),
-    // so the next pass retries. All channels off: nothing is sent and the lock is set.
-    const tried = [push, sms, email].filter((r) => r !== "off" && r !== "none");
-    const handled = tried.length === 0 || tried.some((r) => r !== "failed");
-    await Promise.all(
-      claimed.map((c) =>
-        handled ? c.ref.set(fromState(c.next)) : c.ref.update({ sendingUntil: null }),
-      ),
-    );
-    result.users[user.id] = { sent: handled ? items : [], push, sms, email };
-    if (handled) result.sent.push(...items);
+    result.users[r.uid] = { sent: items, push, sms, email };
+    tried.push(...[push, sms, email].filter((x) => x !== "none"));
   }
+  // Only a send that failed on every channel it tried leaves the locks unset
+  // (rule 9), so the next pass retries. Nobody to tell: the locks are set.
+  const handled = tried.length === 0 || tried.some((x) => x !== "failed");
+  await Promise.all(
+    claimed.map((c) =>
+      handled ? c.ref.set(fromState(c.next)) : c.ref.update({ sendingUntil: null }),
+    ),
+  );
+  if (!handled) for (const u of Object.values(result.users)) u.sent = [];
+  if (handled) result.sent.push(...items);
   return result;
 }

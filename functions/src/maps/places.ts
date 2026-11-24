@@ -13,7 +13,7 @@ import {
   PLACES_USER_DAILY_CAP,
   PROVIDER_TIMEOUT_MS,
 } from "../config";
-import { requireUser } from "../lib/auth";
+import { requireAdmin } from "../lib/auth";
 import { C, db, ts } from "../lib/db";
 import { logError } from "../lib/logError";
 import {
@@ -176,11 +176,11 @@ export async function locatePlace(
 }
 
 export const placeSuggest = onCall({ secrets: [GOOGLE_PLACES_KEY] }, async (request) => {
-  const uid = await requireUser(request);
+  const uid = await requireAdmin(request);
   return { suggestions: await suggestPlaces(uid, request.data, GOOGLE_PLACES_KEY.value()) };
 });
 
 export const placeLocation = onCall({ secrets: [GOOGLE_PLACES_KEY] }, async (request) => {
-  const uid = await requireUser(request);
+  const uid = await requireAdmin(request);
   return locatePlace(uid, request.data, GOOGLE_PLACES_KEY.value());
 });

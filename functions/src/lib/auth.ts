@@ -29,13 +29,16 @@ export async function requireAdminClaim(request: CallableRequest): Promise<strin
   return auth.uid;
 }
 
-/** Signed-in user whose account is active (not suspended). Returns the uid. */
-export async function requireUser(request: CallableRequest): Promise<string> {
+/**
+ * Signed-in staff member (role "user", D64) whose account is active, not
+ * disabled. Returns the uid.
+ */
+export async function requireStaff(request: CallableRequest): Promise<string> {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in first.", { code: "NOT_USER" });
-  if (auth.token.role !== "user") throw denied("NOT_USER", "Users only.");
+  if (auth.token.role !== "user") throw denied("NOT_USER", "Staff only.");
   const user = await db.collection(C.users).doc(auth.uid).get();
-  if (user.get("status") !== "active") throw denied("NOT_USER", "Users only.");
+  if (user.get("status") !== "active") throw denied("NOT_USER", "Staff only.");
   return auth.uid;
 }
 

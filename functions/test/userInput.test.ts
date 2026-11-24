@@ -5,10 +5,16 @@ import {
   e164,
   normalizePhMobile,
   parseDeviceId,
+  parseDeviceName,
   parseEmail,
-  parseLabel,
   parseName,
+  parseOptionalEmail,
+  parseOptionalPhone,
+  parsePassword,
+  parseUsername,
+  staffLoginEmail,
 } from "../src/lib/userInput";
+import { newOneTimeToken, uidOfToken } from "../src/lib/tokens";
 
 describe("admin input", () => {
   it("normalizes Philippine mobile numbers", () => {
@@ -34,11 +40,28 @@ describe("admin input", () => {
       expect(() => parseEmail(bad)).toThrow();
   });
 
-  it("labels are optional, trimmed, at most 24 characters", () => {
-    expect(parseLabel(undefined)).toBeNull();
-    expect(parseLabel("  ")).toBeNull();
-    expect(parseLabel(" Unit 1 ")).toBe("Unit 1");
-    expect(() => parseLabel("x".repeat(25))).toThrow();
+  it("device names are trimmed, 1 to 24 characters", () => {
+    expect(parseDeviceName("  Main   pipe ")).toBe("Main pipe");
+    expect(() => parseDeviceName("  ")).toThrow();
+    expect(() => parseDeviceName("x".repeat(25))).toThrow();
+  });
+
+  it("optional contacts: undefined keeps, null or blank removes, else validated", () => {
+    expect(parseOptionalPhone(undefined)).toBeUndefined();
+    expect(parseOptionalPhone(null)).toBeNull();
+    expect(parseOptionalPhone("  ")).toBeNull();
+    expect(parseOptionalPhone("0917 123 4567")).toBe("639171234567");
+    expect(() => parseOptionalPhone("12345")).toThrow();
+    expect(parseOptionalEmail("")).toBeNull();
+    expect(parseOptionalEmail(" Ana@X.ph ")).toBe("ana@x.ph");
+    expect(() => parseOptionalEmail("ana@")).toThrow();
+  });
+
+  it("passwords are 8 to 128 characters", () => {
+    expect(parsePassword("12345678")).toBe("12345678");
+    expect(() => parsePassword("1234567")).toThrow();
+    expect(() => parsePassword("x".repeat(129))).toThrow();
+    expect(() => parsePassword(12345678)).toThrow();
   });
 
   it("normalizes device IDs", () => {
@@ -56,67 +79,38 @@ describe("admin input", () => {
   });
 });
 
-describe("sign-in code helpers", () => {
-  it("makes 6-digit codes, keeps leading zeros, binds hashes to the account", async () => {
-    const { generateCode, codeHash } = await import("../src/lib/otp");
-    for (let i = 0; i < 200; i++) expect(generateCode()).toMatch(/^\d{6}$/);
-    expect(codeHash("u1", "123456")).not.toBe(codeHash("u2", "123456"));
+describe("staff usernames (D64)", () => {
+  const code = (v: unknown) => {
+    try {
+      parseUsername(v);
+      return "ok";
+    } catch (e) {
+      return (e as { details?: { code?: string } }).details?.code;
+    }
+  };
+
+  it("accepts a plain name and stores it in one form, whatever the case or spaces", () => {
+    expect(parseUsername("juan")).toBe("juan");
+    expect(parseUsername("  Juan ")).toBe(parseUsername("juan"));
   });
 
-  it("one-time tokens carry their uid and hash differently from the token", async () => {
-    const { newOneTimeToken, uidOfToken } = await import("../src/lib/otp");
-    const { token, hash } = newOneTimeToken("abc");
-    expect(uidOfToken(token)).toBe("abc");
-    expect(hash).not.toContain(token.split(".")[1]);
-    expect(uidOfToken("no-dot")).toBeNull();
-    expect(uidOfToken(42)).toBeNull();
+  it("refuses too short, too long, spaces inside and non-strings with USERNAME_INVALID", () => {
+    for (const bad of ["ab", "x".repeat(21), "juan dela", "", null, 42]) {
+      expect(code(bad)).toBe("USERNAME_INVALID");
+    }
   });
 
-  it("masks a mobile as 0917 ••• 4567", async () => {
-    const { maskPhone } = await import("../src/lib/otp");
-    expect(maskPhone("639171234567")).toBe("0917 ••• 4567");
+  it("the hidden sign-in address is never a real mailbox", () => {
+    expect(staffLoginEmail("juan")).toBe("juan@staff.hydrosense.invalid");
   });
+});
 
-  it("checks the resend gap before the daily limits", async () => {
-    const { sendDecision } = await import("../src/lib/otp");
-    const now = 1_000_000;
-    expect(
-      sendDecision({ lastSentMs: now - 10_000, phoneToday: 5, projectToday: 30 }, now),
-    ).toEqual({
-      kind: "cooldown",
-      retryAfterSeconds: 50,
-    });
-    expect(
-      sendDecision({ lastSentMs: now - 60_000, phoneToday: 5, projectToday: 0 }, now).kind,
-    ).toBe("phone_limit");
-    expect(sendDecision({ lastSentMs: null, phoneToday: 4, projectToday: 30 }, now).kind).toBe(
-      "project_limit",
-    );
-    expect(sendDecision({ lastSentMs: null, phoneToday: 0, projectToday: 0 }, now).kind).toBe(
-      "send",
-    );
-  });
-
-  it("codeVerdict: right, wrong with tries left, expired, locked", async () => {
-    const { codeVerdict } = await import("../src/lib/otp");
-    const now = 1_000_000;
-    const live = now + 60_000;
-    expect(codeVerdict({ attempts: 0, expiresAtMs: live, matches: true }, now)).toEqual({
-      kind: "ok",
-    });
-    expect(codeVerdict({ attempts: 0, expiresAtMs: live, matches: false }, now)).toEqual({
-      kind: "invalid",
-      triesLeft: 4,
-    });
-    expect(codeVerdict({ attempts: 4, expiresAtMs: live, matches: false }, now)).toEqual({
-      kind: "invalid",
-      triesLeft: 0,
-    });
-    expect(codeVerdict({ attempts: 5, expiresAtMs: live, matches: true }, now)).toEqual({
-      kind: "locked",
-    });
-    expect(codeVerdict({ attempts: 0, expiresAtMs: now - 1, matches: true }, now)).toEqual({
-      kind: "expired",
-    });
+describe("one-time tokens", () => {
+  it("carry their uid and hash differently from the token", () => {
+    const { token, hash } = newOneTimeToken("uid123");
+    expect(uidOfToken(token)).toBe("uid123");
+    expect(hash).not.toBe(token);
+    expect(uidOfToken("nodot")).toBeNull();
+    expect(uidOfToken(5)).toBeNull();
   });
 });

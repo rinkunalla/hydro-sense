@@ -1,10 +1,6 @@
 import { onRequest } from "firebase-functions/https";
 import { defineSecret } from "firebase-functions/params";
-import {
-  REGISTER_MAX_PER_HOUR,
-  STARTER_LOW_FLOW_CUTOFF,
-  STARTER_NORMAL_FLOW_CUTOFF,
-} from "../config";
+import { REGISTER_MAX_PER_HOUR } from "../config";
 import { effectiveCutoffs } from "../lib/cutoffs";
 import { uploadPace } from "../lib/decisions";
 import { C, db, ts } from "../lib/db";
@@ -13,12 +9,20 @@ import { mirrorDevice, readLive } from "../lib/liveStore";
 import { header, sendError, sendOk } from "../lib/http";
 import { logError } from "../lib/logError";
 import { parseRegisterBody } from "../lib/payload";
+import { sensorOf, sensorReply } from "../lib/sensors";
 import { generateToken, safeEqual, sha256Hex } from "../lib/tokens";
 
 export const PROVISIONING_KEY = defineSecret("PROVISIONING_KEY");
 
 type Outcome =
-  | { kind: "ok"; token: string; lowFlowCutoff: number; normalFlowCutoff: number; created: boolean }
+  | {
+      kind: "ok";
+      token: string;
+      lowFlowCutoff: number;
+      normalFlowCutoff: number;
+      reply: ReturnType<typeof sensorReply>;
+      created: boolean;
+    }
   | { kind: "not_allowed" | "active" | "rate_limited" };
 
 const HOUR_MS = 3_600_000;
@@ -52,8 +56,8 @@ export async function register(deviceId: string, firmware: string | null, nowMs:
     });
 
     if (device.exists) {
-      // Records made by assignDevice before the first registration keep their owner
-      // and nickname; only the registration time and firmware are filled in.
+      // Records made when the admin added the ID keep their name and sensor;
+      // only the registration time and firmware are filled in.
       tx.set(
         db.collection(C.deviceHealth).doc(deviceId),
         {
@@ -67,21 +71,25 @@ export async function register(deviceId: string, firmware: string | null, nowMs:
         token,
         created: false,
         ...effectiveCutoffs((f) => device.get(f)),
+        reply: sensorReply(sensorOf(device.get("sensorType"))),
       };
     }
 
-    // A device never assigned registers unassigned; the admin assigns it (superseded).
-    tx.create(db.collection(C.devices).doc(deviceId), newDeviceDoc(deviceId, null, now));
-    tx.create(db.collection(C.deviceHealth).doc(deviceId), newHealthDoc(null, now, firmware));
+    // An ID listed before v3 without records: they are made now (YF-S201 by default).
+    const sensorType = sensorOf(null);
+    const doc = newDeviceDoc(deviceId, now, { sensorType });
+    tx.create(db.collection(C.devices).doc(deviceId), doc);
+    tx.create(db.collection(C.deviceHealth).doc(deviceId), newHealthDoc(now, firmware));
     return {
       kind: "ok",
       token,
       created: true,
-      lowFlowCutoff: STARTER_LOW_FLOW_CUTOFF,
-      normalFlowCutoff: STARTER_NORMAL_FLOW_CUTOFF,
+      lowFlowCutoff: doc.lowFlowCutoff,
+      normalFlowCutoff: doc.normalFlowCutoff,
+      reply: sensorReply(sensorType),
     };
   });
-  // The new token hash and the device's owner and cutoffs reach the live channel.
+  // The new token hash, sensor and cutoffs reach the live channel.
   if (out.kind === "ok") await mirrorDevice(deviceId);
   return out;
 }
@@ -112,6 +120,7 @@ export const registerDevice = onRequest(
             token: out.token,
             lowFlowCutoff: out.lowFlowCutoff,
             normalFlowCutoff: out.normalFlowCutoff,
+            ...out.reply,
             ...uploadPace(),
           });
         case "not_allowed":

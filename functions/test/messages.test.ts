@@ -61,7 +61,7 @@ describe("batched SMS", () => {
       item({ deviceId: "C", nickname: "Garden Line", type: "flow_none" }),
     ]);
     expect(text).toBe(
-      "HydroSense: 3 areas need attention: Garden Line (no flow), Kitchen (low flow), Orchard (low battery). Open the app.",
+      "HydroSense: 3 areas need attention: Garden Line (no flow), Kitchen (low flow), Orchard (low battery). Open Hydro Sense.",
     );
   });
 
@@ -71,7 +71,9 @@ describe("batched SMS", () => {
     );
     const text = buildSms(items);
     expect(text.length).toBeLessThanOrEqual(160);
-    expect(text).toMatch(/^HydroSense: 5 areas need attention: .+, \+\d more\. Open the app\.$/);
+    expect(text).toMatch(
+      /^HydroSense: 5 areas need attention: .+, \+\d more\. Open Hydro Sense\.$/,
+    );
   });
 
   it("counts each device once, by its worst issue", () => {
@@ -90,7 +92,7 @@ describe("email", () => {
     expect(mail.subject).toBe("Hydro Sense alert: Garden Line - No flow");
     expect(mail.text).toContain("No water is flowing at Garden Line. Since Nov 2, 3:12 PM.");
     expect(mail.text).toContain("What to check:");
-    expect(mail.text).toContain("Open the Hydro Sense app for live status.");
+    expect(mail.text).toContain("Open the Hydro Sense app or website for live status.");
     expect(mail.text).not.toMatch(/16\.0|120\.3|L\/min/);
   });
 

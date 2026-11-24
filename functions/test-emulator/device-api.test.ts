@@ -1,4 +1,4 @@
-// Phase 2 acceptance tests against the Auth, Firestore and Functions emulators.
+// Device endpoint tests (v3: no owners) against the Auth, Firestore, Database and Functions emulators.
 // Run with `npm run test:emulator` from the repo root. Time-based rules are tested
 // by back-dating stored timestamps, since the server clock cannot be fast-forwarded.
 import { readFileSync } from "node:fs";
@@ -6,9 +6,9 @@ import { getAuth } from "firebase-admin/auth";
 import { Timestamp } from "firebase-admin/firestore";
 import type { CallableRequest } from "firebase-functions/https";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { addAllowedDevice, removeDevice, restoreDevice } from "../src/admin/devices";
-import { setOwner } from "../src/admin/ownership";
+import { addAllowedDevice, removeDevice, updateDevice } from "../src/admin/devices";
 import { C, db, liveRef, rtdb, stateRef } from "../src/lib/db";
+import { mirrorDevice } from "../src/lib/liveStore";
 import { flipOfflineIfStale, runMonitorPass } from "../src/monitor/monitorDevices";
 
 const PROJECT = process.env.GCLOUD_PROJECT ?? "hydro-sense-dc836";
@@ -67,14 +67,8 @@ const problems = (id = ID) => db.collection(C.problems).where("deviceId", "==", 
 const setLastSeen = (secondsAgo: number, id = ID) =>
   liveRef(id).update({ lastSeen: Date.now() - secondsAgo * S });
 
-/** Waits for the devices trigger to mirror a change to /state. */
-async function mirrored(check: (st: Json) => boolean) {
-  for (let i = 0; i < 50; i++) {
-    if (check(await state())) return;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error("the devices trigger did not mirror the change");
-}
+const admin = <T>(data: T) =>
+  ({ auth: { uid: "admin1", token: { role: "admin" } }, data }) as unknown as CallableRequest<T>;
 
 async function allow(id = ID) {
   await db.collection(C.allowedDevices).doc(id).set({ addedAt: Timestamp.now() });
@@ -118,30 +112,36 @@ describe("registerDevice", () => {
     expect(r.body.code).toBe("DEVICE_NOT_ALLOWED");
   });
 
-  it("creates the device with ownerUid null, default nickname and starter cutoffs", async () => {
+  it("an ID listed before v3 without records gets YF-S201 records at its first registration", async () => {
     await allow();
     const r = await register();
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ ok: true, lowFlowCutoff: 0.2, normalFlowCutoff: 2.0 });
-    expect(await get(dev())).toMatchObject({
-      ownerUid: null,
-      nickname: "Device E5F6",
+    expect(r.body).toMatchObject({
+      ok: true,
+      lowFlowCutoff: 0.2,
+      normalFlowCutoff: 2.0,
+      pulsesPerLpm: 7.5,
+      flowWindowS: 5,
     });
-    expect(await get(dev())).not.toHaveProperty("pausedUntil");
-    expect(await get(health())).toMatchObject({ ownerUid: null, online: false, firmware: "1.0.0" });
+    expect(await get(dev())).toMatchObject({ nickname: "Device E5F6", sensorType: "yf_s201" });
+    expect(await get(dev())).not.toHaveProperty("ownerUid");
+    expect(await get(health())).toMatchObject({ online: false, firmware: "1.0.0" });
     expect((await get(db.collection(C.deviceSecrets).doc(ID))).tokenHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("keeps the owner and nickname of a device assigned before it registered", async () => {
-    await allow();
-    await setOwner(ID, "userA");
-    expect(await get(health())).toMatchObject({ ownerUid: "userA", registeredAt: null });
-    await dev().update({ nickname: "Garden Line" });
-    expect((await register()).status).toBe(200);
-    expect(await get(dev())).toMatchObject({ ownerUid: "userA", nickname: "Garden Line" });
-    const h = await get(health());
-    expect(h.ownerUid).toBe("userA");
-    expect(h.registeredAt).not.toBeNull();
+  it("a device the admin added keeps its name and sensor; the reply carries the DN50 factor", async () => {
+    await addAllowedDevice.run(admin({ deviceId: ID, name: "Main pipe", sensorType: "zj_dn50" }));
+    expect(await get(health())).toMatchObject({ registeredAt: null });
+    const r = await register();
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({
+      lowFlowCutoff: 5,
+      normalFlowCutoff: 20,
+      pulsesPerLpm: 0.2,
+      flowWindowS: 15,
+    });
+    expect(await get(dev())).toMatchObject({ nickname: "Main pipe", sensorType: "zj_dn50" });
+    expect((await get(health())).registeredAt).not.toBeNull();
   });
 
   it("refuses re-registration while online (409); allows it offline with a new token", async () => {
@@ -171,17 +171,22 @@ describe("registerDevice", () => {
 });
 
 describe("deviceIngest", () => {
-  it("returns the owner's own Low flow limit while it is set", async () => {
+  it("returns the admin's own Low flow limit while it is set, and a sensor change at once", async () => {
     const token = await registered();
-    await dev().update({ normalFlowCutoff: 4, lowFlowCutoff: 1.2 });
-    await mirrored((st) => st.normalFlowCutoff === 4);
+    await dev().update({ normalFlowCutoff: 4, lowFlowCutoff: 1.2 }); // what calibration writes
+    await mirrorDevice(ID);
     expect((await ingest(token)).body).toMatchObject({ lowFlowCutoff: 1.2, normalFlowCutoff: 4 });
-    await dev().update({ userNormalCutoff: 6.5 });
-    await mirrored((st) => st.normalFlowCutoff === 6.5);
+    await updateDevice.run(admin({ deviceId: ID, userNormalCutoff: 6.5 }));
     expect((await ingest(token)).body).toMatchObject({ lowFlowCutoff: 0.2, normalFlowCutoff: 6.5 });
-    await dev().update({ userNormalCutoff: null });
-    await mirrored((st) => st.normalFlowCutoff === 4);
+    await updateDevice.run(admin({ deviceId: ID, userNormalCutoff: null }));
     expect((await ingest(token)).body).toMatchObject({ lowFlowCutoff: 1.2, normalFlowCutoff: 4 });
+    await updateDevice.run(admin({ deviceId: ID, sensorType: "zj_dn50" }));
+    expect((await ingest(token)).body).toMatchObject({
+      lowFlowCutoff: 5,
+      normalFlowCutoff: 20,
+      pulsesPerLpm: 0.2,
+      flowWindowS: 15,
+    });
   });
 
   it("rejects a bad token (401) and a bad payload (400)", async () => {
@@ -203,6 +208,8 @@ describe("deviceIngest", () => {
       ok: true,
       lowFlowCutoff: 0.2,
       normalFlowCutoff: 2.0,
+      pulsesPerLpm: 7.5,
+      flowWindowS: 5,
       heartbeatS: 20,
       rateMinIntervalS: 5,
     });
@@ -215,7 +222,8 @@ describe("deviceIngest", () => {
       heartbeatS: 30,
     });
     expect(Math.abs(Date.now() - (l.lastSeen as number))).toBeLessThan(10 * S);
-    expect(l).not.toHaveProperty("rssi"); // the owner sees no radio data
+    expect(l).not.toHaveProperty("rssi"); // members see no radio data
+    expect(l).not.toHaveProperty("ownerUid");
     expect((await state()).recentVoltages).toEqual([7.9]);
   });
 
@@ -262,44 +270,30 @@ describe("deviceIngest", () => {
     await rtdb.ref(`series/${ID}/2020-01-01`).set({ 1: 3 });
     await stateRef(ID).update({ seriesDay: "2020-01-02" });
     await ingest(token);
-    expect(((await rtdb.ref(`series/${ID}/2020-01-01`).get()).val())).toBeNull();
+    expect((await rtdb.ref(`series/${ID}/2020-01-01`).get()).val()).toBeNull();
   });
 
-  it("keeps each 15-minute sample in the owner's day record, kept a year", async () => {
+  it("keeps each 15-minute sample in the device's day record, kept a year", async () => {
     const token = await registered();
-    await ingest(token); // unassigned: no day record
-    expect(await count(db.collection(C.readings))).toBe(0);
-    await setOwner(ID, "userA");
-    await stateRef(ID).update({ lastSampleAt: Date.now() - 901 * S });
     await ingest(token, { flowRate: 6.5 });
     const days = (await db.collection(C.readings).where("deviceId", "==", ID).get()).docs;
     expect(days).toHaveLength(1);
     const day = days[0]!.data();
-    expect(day).toMatchObject({ ownerUid: "userA", deviceId: ID });
+    expect(day).toMatchObject({ deviceId: ID });
+    expect(day).not.toHaveProperty("ownerUid");
     expect(Object.values(day.rates as Record<string, number>)).toEqual([6.5]);
     expect((day.expireAt as Timestamp).toMillis()).toBeGreaterThan(Date.now() + 360 * 86_400_000);
-    // Reassigning deletes it with the rest of the history.
-    await setOwner(ID, "userB");
-    expect(await count(db.collection(C.readings))).toBe(0);
   });
 
-  it("opens and closes problem records on status changes, owner only", async () => {
+  it("opens and closes problem records on status changes for every device", async () => {
     const token = await registered();
-    await ingest(token, { trigger: "status_change" });
-    await ingest(token, { flowStatus: "No Flow", flowRate: 0, trigger: "status_change" });
-    expect(await count(problems())).toBe(0); // unassigned: nobody could read it
-
-    await setOwner(ID, "userA");
     await ingest(token, { trigger: "status_change" });
     await ingest(token, { flowStatus: "No Flow", flowRate: 0, trigger: "status_change" });
     const open = (await problems().get()).docs;
     expect(open).toHaveLength(1);
-    expect(open[0]!.data()).toMatchObject({
-      ownerUid: "userA",
-      type: "no_flow",
-      endedAt: null,
-      note: null,
-    });
+    expect(open[0]!.data()).toMatchObject({ deviceId: ID, type: "no_flow", endedAt: null });
+    expect(open[0]!.data()).not.toHaveProperty("ownerUid");
+    expect(open[0]!.data()).not.toHaveProperty("note");
     expect(open[0]!.get("expireAt")).toBeInstanceOf(Timestamp);
 
     // Ended within 60 s: a blip, dropped.
@@ -385,8 +379,6 @@ describe("alerts at the upload", () => {
     const { alertMayBeDue } = await import("../src/device/deviceIngest");
     const now = Date.now();
     const base = {
-      ownerUid: "u1",
-      removed: false,
       online: true,
       lastSeen: now,
       flowStatus: "Normal Flow" as const,
@@ -404,9 +396,6 @@ describe("alerts at the upload", () => {
     expect(alertMayBeDue(dry, now)).toBe(false); // not yet 30 s
     expect(alertMayBeDue({ ...dry, abnormalSince: now - 30_000 }, now)).toBe(true);
     expect(alertMayBeDue({ ...base, batteryPercent: 15 }, now)).toBe(true);
-    expect(alertMayBeDue({ ...dry, abnormalSince: now - 30_000, ownerUid: null }, now)).toBe(
-      false,
-    );
   });
 });
 
@@ -414,7 +403,6 @@ describe("monitorDevices", () => {
   it("flips a silent device offline after two missed heartbeats and opens Offline", async () => {
     const token = await registered();
     const token2 = await registered(ID2);
-    await setOwner(ID, "userA");
     await ingest(token, { heartbeatS: 30 });
     await ingest(token2, { heartbeatS: 30 }, ID2);
 
@@ -452,34 +440,26 @@ describe("monitorDevices", () => {
 });
 
 describe("removeDevice", () => {
-  const admin = <T>(data: T) =>
-    ({ auth: { uid: "admin1", token: { role: "admin" } }, data }) as unknown as CallableRequest<T>;
-
-  it("a removed device gets 403 and keeps its data; restoring lets it back in", async () => {
-    await allow();
-    const token = await registered();
+  it("a removed device gets 401 and 403, and its data is gone at once", async () => {
+    await addAllowedDevice.run(admin({ deviceId: ID, name: "Tank" }));
+    const token = (await register()).body.token as string;
     expect((await ingest(token)).status).toBe(200);
-    await liveRef(ID).update({ online: false });
-
-    await removeDevice.run(admin({ deviceId: ID.toLowerCase(), confirmLabel: ID }));
-    expect((await get(dev())).removedAt).toBeTruthy();
+    await removeDevice.run(admin({ deviceId: ID.toLowerCase(), confirmName: "Tank" }));
+    expect((await dev().get()).exists).toBe(false);
     expect((await db.collection(C.allowedDevices).doc(ID).get()).exists).toBe(false);
+    expect(await live()).toEqual({});
     expect((await ingest(token)).status).toBe(401); // its token is gone
     const blocked = await register();
     expect(blocked.status).toBe(403);
     expect(blocked.body.code).toBe("DEVICE_NOT_ALLOWED");
-
-    await restoreDevice.run(admin({ deviceId: ID }));
-    expect(await get(dev())).not.toHaveProperty("removedAt");
-    expect((await register()).status).toBe(200);
   });
 
-  it("re-adding a removed ID restores it the same way", async () => {
-    await allow();
-    await registered();
-    await removeDevice.run(admin({ deviceId: ID, confirmLabel: ID }));
-    const r = await addAllowedDevice.run(admin({ deviceId: ID }));
-    expect(r).toEqual({ deviceId: ID, restored: true });
+  it("re-adding the ID starts fresh, and the device registers again", async () => {
+    await addAllowedDevice.run(admin({ deviceId: ID, name: "Tank" }));
+    await register();
+    await removeDevice.run(admin({ deviceId: ID, confirmName: "Tank" }));
+    expect(await addAllowedDevice.run(admin({ deviceId: ID }))).toEqual({ deviceId: ID });
+    expect(await get(dev())).toMatchObject({ nickname: "Device E5F6" });
     expect((await register()).status).toBe(200);
   });
 });
@@ -513,11 +493,11 @@ describe("addAllowedDevice", () => {
 
   it("lets an admin add a normalized ID", async () => {
     const r = await call(await idToken("admin1", "admin"), { deviceId: "a1:b2:c3:d4:e5:f6" });
-    expect(r.result).toEqual({ deviceId: ID, restored: false });
+    expect(r.result).toEqual({ deviceId: ID });
     expect((await db.collection(C.allowedDevices).doc(ID).get()).exists).toBe(true);
   });
 
-  it("refuses a user and an invalid ID", async () => {
+  it("refuses staff and an invalid ID", async () => {
     const client = await call(await idToken("userA", "user"), { deviceId: ID });
     expect(client.error?.status).toBe("PERMISSION_DENIED");
     expect(client.error?.details?.code).toBe("NOT_ADMIN");

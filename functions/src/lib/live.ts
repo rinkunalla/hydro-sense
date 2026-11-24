@@ -5,14 +5,13 @@ import { ABNORMAL_CONFIRM_S, BATTERY_REARM_PERCENT, FLOW_LOG_SAMPLE_S, LOW_BATTE
 import { appendVoltage, batteryPercent, chargingTrend, smoothedVoltage, type ChargingStatus } from "./battery";
 import { nextAbnormalSince, sampleDue } from "./decisions";
 import type { FlowStatus, IngestPayload } from "./payload";
+import type { SensorType } from "../config";
 
 export const PROBLEM_TYPES = ["no_flow", "low_flow", "offline", "battery_low"] as const;
 export type ProblemType = (typeof PROBLEM_TYPES)[number];
 
-/** Owner-readable live node: /live/{id}. Times are epoch milliseconds. */
+/** Member-readable live node: /live/{id}. Times are epoch milliseconds. */
 export interface Live {
-  ownerUid: string | null;
-  removed: boolean;
   online: boolean;
   lastSeen: number | null;
   flowStatus: FlowStatus | null;
@@ -28,8 +27,7 @@ export interface Live {
 
 /** Server-only node: /state/{id}. Nobody but the functions reads it. */
 export interface State {
-  ownerUid: string | null;
-  removed: boolean;
+  sensorType: SensorType;
   tokenHash: string | null;
   lowFlowCutoff: number;
   normalFlowCutoff: number;
@@ -79,9 +77,7 @@ export function minutePeak(
   return prevMinute === minute && prevPeak !== null ? Math.max(prevPeak, rate) : rate;
 }
 
-export const emptyLive =(ownerUid: string | null = null): Live => ({
-  ownerUid,
-  removed: false,
+export const emptyLive = (): Live => ({
   online: false,
   lastSeen: null,
   flowStatus: null,
@@ -149,8 +145,6 @@ export function applyUpload(
 
   return {
     live: {
-      ownerUid: state.ownerUid,
-      removed: state.removed,
       online: true,
       lastSeen: nowMs,
       flowStatus: p.flowStatus,
