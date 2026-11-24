@@ -129,6 +129,22 @@ void main() {
     expect(auth.signOuts, 1);
   });
 
+  testWidgets('the logo stays a 64 px square on any width', (t) async {
+    await phone(t);
+    await t.pumpWidget(signInHarness(FakeAuth()));
+    expect(
+      t.getSize(find.byKey(const ValueKey('app-logo'))),
+      const Size(64, 64),
+    );
+    t.view.physicalSize = const Size(1100 * 3, 760 * 3);
+    await t.pumpWidget(signInHarness(FakeAuth()));
+    await t.pump();
+    expect(
+      t.getSize(find.byKey(const ValueKey('app-logo'))),
+      const Size(64, 64),
+    );
+  });
+
   testWidgets('sign in fits a 360 dp phone at 1.5x text', (t) async {
     await phone(t, textScale: 1.5);
     await t.pumpWidget(signInHarness(FakeAuth()));

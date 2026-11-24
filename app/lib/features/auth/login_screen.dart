@@ -104,22 +104,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Container(
-                          width: 64,
-                          height: 64,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(
-                              AppSpace.tileRadius + 4,
+                        // Center: the stretched column would otherwise widen
+                        // the 64 px tile to the card's full width.
+                        Center(
+                          child: Container(
+                            key: const ValueKey('app-logo'),
+                            width: 64,
+                            height: 64,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(
+                                AppSpace.tileRadius + 4,
+                              ),
+                              gradient: const LinearGradient(
+                                colors: AppColors.buttonStops,
+                              ),
                             ),
-                            gradient: const LinearGradient(
-                              colors: AppColors.buttonStops,
+                            child: const Icon(
+                              Icons.water_drop_rounded,
+                              size: 34,
+                              color: Colors.white,
                             ),
-                          ),
-                          child: const Icon(
-                            Icons.water_drop_rounded,
-                            size: 34,
-                            color: Colors.white,
                           ),
                         ),
                         const SizedBox(height: AppSpace.m),
