@@ -26,9 +26,12 @@ Widget harness(
   Map<int, double> today = const {},
   Map<int, double> series = const {},
   bool solid = false,
+  bool admin = false,
 }) => ProviderScope(
   overrides: [
     fleetProvider.overrideWith((_) => fleet),
+    // Staff by default; the admin sees the editing controls (D63).
+    isAdminProvider.overrideWithValue(admin),
     phoneOfflineProvider.overrideWith((_) => Stream.value(phoneOffline)),
     clockProvider.overrideWith((_) => Stream.value(testNow)),
     profileProvider.overrideWith(
@@ -198,9 +201,7 @@ void main() {
     );
   });
 
-  testWidgets('Live while online, Offline replaces it, no Late', (
-    t,
-  ) async {
+  testWidgets('Live while online, Offline replaces it, no Late', (t) async {
     await phone(t);
     await t.pumpWidget(
       harness(
@@ -276,27 +277,26 @@ void main() {
     );
   });
 
-  testWidgets(
-    'Not set up yet: Wi-Fi steps in the card, How? opens details',
-    (t) async {
-      await phone(t);
-      await t.pumpWidget(
-        harness(
-          Stream.value(
-            Fleet([view('1', nickname: 'Pump house', registered: false)]),
-          ),
+  testWidgets('Not set up yet: Wi-Fi steps in the card, How? opens details', (
+    t,
+  ) async {
+    await phone(t);
+    await t.pumpWidget(
+      harness(
+        Stream.value(
+          Fleet([view('1', nickname: 'Pump house', registered: false)]),
         ),
-      );
-      await t.pumpAndSettle();
-      expect(find.text('Not set up yet'), findsOneWidget);
-      expect(find.text('CONNECT IT TO WI-FI'), findsOneWidget);
-      expect(find.textContaining('192.168.4.1'), findsNothing);
-      await t.tap(find.text('How?'));
-      await t.pumpAndSettle();
-      expect(find.textContaining('192.168.4.1'), findsOneWidget);
-      expect(find.byType(DeviceCard), findsNothing);
-    },
-  );
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.text('Not set up yet'), findsOneWidget);
+    expect(find.text('CONNECT IT TO WI-FI'), findsOneWidget);
+    expect(find.textContaining('192.168.4.1'), findsNothing);
+    await t.tap(find.text('How?'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('192.168.4.1'), findsOneWidget);
+    expect(find.byType(DeviceCard), findsNothing);
+  });
 
   testWidgets('a Not set up yet card turns into live readings by itself', (
     t,
@@ -320,9 +320,10 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('No devices yet'), findsOneWidget);
     expect(
-      find.textContaining('registered to your account before delivery'),
+      find.textContaining('as soon as the admin adds them'),
       findsOneWidget,
     );
+    expect(find.text('Add device'), findsNothing);
     expect(t.takeException(), isNull);
   });
 
@@ -395,29 +396,45 @@ void main() {
     expect(t.hasRunningAnimations, isTrue);
   });
 
-  testWidgets('Details: Show on map, or Set its location without one', (
-    t,
-  ) async {
-    await phone(t);
-    await t.pumpWidget(
-      harness(
-        Stream.value(Fleet([view('1')])),
-        home: const DeviceDetailScreen(deviceId: '1'),
-      ),
-    );
-    await t.pumpAndSettle();
-    expect(find.text('Show on map'), findsOneWidget);
-    await t.pumpWidget(const SizedBox());
-    await t.pumpWidget(
-      harness(
-        Stream.value(Fleet([view('1', lat: null)])),
-        home: const DeviceDetailScreen(deviceId: '1'),
-      ),
-    );
-    await t.pumpAndSettle();
-    expect(find.text('Show on map'), findsNothing);
-    expect(find.text('Set its location'), findsOneWidget);
-  });
+  testWidgets(
+    'Details: Show on map; only the admin can set a missing location',
+    (t) async {
+      await phone(t);
+      await t.pumpWidget(
+        harness(
+          Stream.value(Fleet([view('1')])),
+          home: const DeviceDetailScreen(deviceId: '1'),
+        ),
+      );
+      await t.pumpAndSettle();
+      expect(find.text('Show on map'), findsOneWidget);
+      await t.pumpWidget(const SizedBox());
+      await t.pumpWidget(
+        harness(
+          Stream.value(Fleet([view('1', lat: null)])),
+          home: const DeviceDetailScreen(deviceId: '1'),
+        ),
+      );
+      await t.pumpAndSettle();
+      expect(find.text('Show on map'), findsNothing);
+      // Staff: no edit controls at all (D63).
+      expect(find.text('Set its location'), findsNothing);
+      expect(find.byTooltip('Rename'), findsNothing);
+      expect(find.text('Advanced'), findsNothing);
+      await t.pumpWidget(const SizedBox());
+      await t.pumpWidget(
+        harness(
+          Stream.value(Fleet([view('1', lat: null)])),
+          home: const DeviceDetailScreen(deviceId: '1'),
+          admin: true,
+        ),
+      );
+      await t.pumpAndSettle();
+      expect(find.text('Set its location'), findsOneWidget);
+      expect(find.byTooltip('Rename'), findsOneWidget);
+      expect(find.text('Advanced'), findsOneWidget);
+    },
+  );
 
   testWidgets('under reduce motion nothing animates on Details', (t) async {
     await phone(t);

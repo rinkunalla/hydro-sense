@@ -3,58 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/errors.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
-import '../../data/admin_logic.dart';
-
-/// The admin site shows only connection states, never flow or battery colours.
-/// Icon + word, never colour alone.
-class StateBadge extends StatelessWidget {
-  const StateBadge(this.state, {super.key, this.detail});
-
-  final AdminState state;
-
-  /// Extra words after the state, for example "since 3:42 PM".
-  final String? detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final (icon, color, word) = switch (state) {
-      AdminState.online => (
-        Icons.wifi_rounded,
-        const Color(0xFF17845A),
-        'Online',
-      ),
-      AdminState.offline => (
-        Icons.cloud_off_rounded,
-        const Color(0xFF5B6B80),
-        'Offline',
-      ),
-      AdminState.notSetUp => (
-        Icons.hourglass_empty_rounded,
-        const Color(0xFFB87A00),
-        'Not set up yet',
-      ),
-      AdminState.removed => (
-        Icons.block_rounded,
-        AppColors.errorText,
-        'Removed',
-      ),
-    };
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            detail == null ? word : '$word · $detail',
-            overflow: TextOverflow.ellipsis,
-            style: AppText.body.copyWith(fontSize: 14),
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 /// Page title with its main action on the right.
 class AdminPageHeader extends StatelessWidget {
@@ -100,16 +48,11 @@ class FilterPill extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     button: true,
     selected: selected,
+    // Selected: pale tint with dark text (D68).
     child: Material(
-      color: selected ? null : const Color(0xE6FFFFFF),
+      color: selected ? AppColors.actionTint : const Color(0xE6FFFFFF),
       shape: const StadiumBorder(),
       child: Ink(
-        decoration: selected
-            ? const ShapeDecoration(
-                shape: StadiumBorder(),
-                gradient: LinearGradient(colors: AppColors.buttonStops),
-              )
-            : null,
         child: InkWell(
           customBorder: const StadiumBorder(),
           onTap: onTap,
@@ -119,7 +62,7 @@ class FilterPill extends StatelessWidget {
               label,
               style: AppText.strong.copyWith(
                 fontSize: 14,
-                color: selected ? Colors.white : AppColors.ink,
+                color: selected ? AppColors.onActionTint : AppColors.ink,
               ),
             ),
           ),
@@ -380,23 +323,23 @@ class ErrorLine extends StatelessWidget {
 /// The admin wording for a failed admin call.
 String adminErrorText(Object e) => switch (callableDetails(e).code) {
   'EMAIL_IN_USE' => 'Another account already uses this email.',
-  'PHONE_IN_USE' => 'Another user already has this mobile number.',
+  'PHONE_IN_USE' => 'Another account already uses this mobile number.',
   'PHONE_INVALID' => Messages.phoneHint,
   'EMAIL_INVALID' => 'Enter a valid email address.',
   'NAME_INVALID' => 'Enter a name (1 to 60 characters).',
-  'LABEL_INVALID' => 'Use a label of 1 to 24 characters.',
   'DEVICE_ID_INVALID' =>
     'Enter the 12-character ID shown on the device label or setup page.',
   'DEVICE_EXISTS' => 'This device is already added.',
   'DEVICE_NOT_FOUND' => 'This device is not on the list any more.',
-  'USER_NOT_FOUND' => 'That user no longer exists.',
-  'USER_SUSPENDED' => 'This user is deleted. Restore them first.',
+  'USER_NOT_FOUND' => 'That account no longer exists.',
+  'SENSOR_INVALID' => 'Choose the sensor fitted to this device.',
+  'CUTOFF_INVALID' => 'That limit is outside what this sensor can read.',
+  'PIN_INVALID' => 'Place the pin on the map.',
   'CONFIRM_MISMATCH' => "The typed name doesn't match.",
   'LAST_ADMIN' => 'You are the only admin. Invite another admin first.',
   'SELF_REMOVE' => 'Ask another admin to remove you.',
   'INVITE_NOT_PENDING' => 'This admin has already signed in.',
   'COOLDOWN' => 'Too many setup links this hour. Try again later.',
-  'RESTORE_EXPIRED' => 'The 30 days to restore have passed.',
   _ => callableMessage(e),
 };
 

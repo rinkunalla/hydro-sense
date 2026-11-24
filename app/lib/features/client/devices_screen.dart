@@ -12,6 +12,7 @@ import '../../data/models.dart';
 import '../../data/providers.dart';
 import 'live_trend.dart';
 import 'history_providers.dart';
+import '../admin/add_device_dialog.dart';
 import 'widgets.dart';
 
 /// Devices (home): is water flowing to every area?
@@ -85,6 +86,7 @@ class _FleetBodyState extends ConsumerState<_FleetBody> {
     final fleet = widget.fleet;
     final phoneOffline = widget.phoneOffline;
     final firstName = widget.firstName;
+    final isAdmin = ref.watch(isAdminProvider);
     final now = ref.watch(clockProvider).valueOrNull ?? DateTime.now();
     if (fleet.views.isEmpty) return const NoDevicesYet();
     final all = sortForHome(fleet.views);
@@ -111,19 +113,30 @@ class _FleetBodyState extends ConsumerState<_FleetBody> {
               child: Semantics(
                 header: true,
                 child: Text(
-                  firstName.isEmpty
+                  isAdmin
+                      ? 'Devices'
+                      : firstName.isEmpty
                       ? 'Welcome back'
                       : 'Welcome back, $firstName',
                   style: AppText.title(26),
                 ),
               ),
             ),
-            // History for the whole account: labelled, not a bare icon.
+            // History for every device: labelled, not a bare icon.
             SecondaryButton(
               label: 'History',
               icon: Icons.history_rounded,
               onPressed: () => context.push('/devices/history'),
             ),
+            // Admin only (D63): add a device by its ID.
+            if (isAdmin) ...[
+              const SizedBox(width: AppSpace.s),
+              PrimaryButton(
+                label: 'Add device',
+                icon: Icons.add_rounded,
+                onPressed: () => showAddDeviceDialog(context),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: AppSpace.l),
@@ -467,36 +480,49 @@ class _WifiStepsState extends State<WifiSteps> {
 }
 
 /// Shown only when no device is assigned to the user.
-class NoDevicesYet extends StatelessWidget {
+class NoDevicesYet extends ConsumerWidget {
   const NoDevicesYet({super.key});
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpace.xl),
-      child: GlassPanel(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(isAdminProvider);
+    return Center(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSpace.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const DeviceIllustration(ring: AppColors.deepCyan, size: 88),
-            const SizedBox(height: AppSpace.l),
-            Text(
-              'No devices yet',
-              textAlign: TextAlign.center,
-              style: AppText.title(22),
-            ),
-            const SizedBox(height: AppSpace.s),
-            Text(
-              'Devices you buy are registered to your account before delivery and appear here.',
-              textAlign: TextAlign.center,
-              style: AppText.body.copyWith(color: AppColors.steel),
-            ),
-          ],
+        child: GlassPanel(
+          padding: const EdgeInsets.all(AppSpace.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const DeviceIllustration(ring: AppColors.deepCyan, size: 88),
+              const SizedBox(height: AppSpace.l),
+              Text(
+                'No devices yet',
+                textAlign: TextAlign.center,
+                style: AppText.title(22),
+              ),
+              const SizedBox(height: AppSpace.s),
+              Text(
+                isAdmin
+                    ? 'Add each device by the ID on its sticker. Staff see it at once.'
+                    : 'Devices appear here as soon as the admin adds them.',
+                textAlign: TextAlign.center,
+                style: AppText.body.copyWith(color: AppColors.steel),
+              ),
+              if (isAdmin) ...[
+                const SizedBox(height: AppSpace.l),
+                PrimaryButton(
+                  label: 'Add device',
+                  icon: Icons.add_rounded,
+                  onPressed: () => showAddDeviceDialog(context),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _Skeletons extends StatelessWidget {

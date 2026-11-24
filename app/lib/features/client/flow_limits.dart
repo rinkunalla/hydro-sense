@@ -102,11 +102,11 @@ class _FlowLimitSheetState extends ConsumerState<FlowLimitSheet> {
     _value = _snap(start);
   }
 
-  static double _snap(double v) {
+  double _snap(double v) {
     const step = AppConfig.userCutoffStep;
     return ((v / step).round() * step).clamp(
-      AppConfig.userCutoffMin,
-      AppConfig.userCutoffMax,
+      widget.device.sensorType.cutoffMin,
+      widget.device.sensorType.cutoffMax,
     );
   }
 
@@ -134,8 +134,8 @@ class _FlowLimitSheetState extends ConsumerState<FlowLimitSheet> {
     final next = _value + delta;
     final ok =
         !_busy &&
-        next >= AppConfig.userCutoffMin &&
-        next <= AppConfig.userCutoffMax;
+        next >= widget.device.sensorType.cutoffMin &&
+        next <= widget.device.sensorType.cutoffMax;
     return IconButton.filledTonal(
       tooltip: label,
       iconSize: 28,
@@ -183,9 +183,9 @@ class _FlowLimitSheetState extends ConsumerState<FlowLimitSheet> {
               ),
               const SizedBox(height: AppSpace.s),
               Text(
-                'Between ${AppConfig.userCutoffMin.toStringAsFixed(0)} and '
-                '${AppConfig.userCutoffMax.toStringAsFixed(0)} L/min. Below '
-                '${AppConfig.starterLowCutoff} L/min always counts as No flow.',
+                'Between ${widget.device.sensorType.cutoffMin.toStringAsFixed(0)} and '
+                '${widget.device.sensorType.cutoffMax.toStringAsFixed(0)} L/min. Below '
+                '${widget.device.sensorType.starterLow} L/min always counts as No flow.',
                 textAlign: TextAlign.center,
                 style: AppText.note,
               ),

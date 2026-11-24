@@ -9,6 +9,7 @@ import '../../core/theme.dart';
 import '../../core/time_format.dart';
 import '../../data/models.dart';
 import '../../data/providers.dart';
+import '../admin/device_admin_card.dart';
 import 'flow_limits.dart';
 import 'history_providers.dart';
 import 'status_strip.dart';
@@ -43,6 +44,7 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
   Widget build(BuildContext context) {
     final fleet = ref.watch(fleetProvider).valueOrNull;
     final now = ref.watch(clockProvider).valueOrNull ?? DateTime.now();
+    final isAdmin = ref.watch(isAdminProvider);
     DeviceView? view;
     for (final v in fleet?.views ?? const <DeviceView>[]) {
       if (v.id == widget.deviceId) view = v;
@@ -128,22 +130,23 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
               ],
             ),
             const SizedBox(height: AppSpace.m),
-            // Where it is: the Map tab centred on this device, or setting its
-            // location when it has none yet.
-            Align(
-              alignment: Alignment.centerLeft,
-              child: v.hasLocation
-                  ? SecondaryButton(
-                      label: 'Show on map',
-                      icon: Icons.map_rounded,
-                      onPressed: () => context.go('/map?device=${v.id}'),
-                    )
-                  : SecondaryButton(
-                      label: 'Set its location',
-                      icon: Icons.add_location_alt_rounded,
-                      onPressed: () => context.go('/map/edit'),
-                    ),
-            ),
+            // Where it is: the map centred on this device, or (admin only,
+            // D63) setting its location when it has none yet.
+            if (v.hasLocation || isAdmin)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: v.hasLocation
+                    ? SecondaryButton(
+                        label: 'Show on map',
+                        icon: Icons.map_rounded,
+                        onPressed: () => context.go('/map?device=${v.id}'),
+                      )
+                    : SecondaryButton(
+                        label: 'Set its location',
+                        icon: Icons.add_location_alt_rounded,
+                        onPressed: () => context.go('/map/edit'),
+                      ),
+              ),
             const SizedBox(height: AppSpace.l),
             GlassPanel(
               child: Column(
@@ -219,20 +222,30 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: AppSpace.m),
-            // Most owners never change these: tucked away, one tap to open.
-            Theme(
-              data: Theme.of(
-                context,
-              ).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                tilePadding: const EdgeInsets.symmetric(horizontal: 4),
-                childrenPadding: EdgeInsets.zero,
-                title: Text('Advanced', style: AppText.strong),
-                subtitle: Text('Flow limits', style: AppText.note),
-                children: [FlowLimitsCard(device: v.device, now: now)],
+            // Admin only (D63): flow limits, sensor and Remove device,
+            // tucked away, one tap to open.
+            if (isAdmin) ...[
+              const SizedBox(height: AppSpace.m),
+              Theme(
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+                  childrenPadding: EdgeInsets.zero,
+                  title: Text('Advanced', style: AppText.strong),
+                  subtitle: Text(
+                    'Flow limits, sensor, remove',
+                    style: AppText.note,
+                  ),
+                  children: [
+                    FlowLimitsCard(device: v.device, now: now),
+                    const SizedBox(height: AppSpace.m),
+                    DeviceAdminCard(view: v),
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -301,15 +314,16 @@ class _NicknameState extends ConsumerState<_Nickname> {
               ),
             ),
           ),
-          IconButton(
-            tooltip: 'Rename',
-            icon: const Icon(Icons.edit_rounded, color: AppColors.deepCyan),
-            onPressed: () => setState(() {
-              _c.text = widget.view.nickname;
-              _error = null;
-              _editing = true;
-            }),
-          ),
+          if (ref.watch(isAdminProvider))
+            IconButton(
+              tooltip: 'Rename',
+              icon: const Icon(Icons.edit_rounded, color: AppColors.deepCyan),
+              onPressed: () => setState(() {
+                _c.text = widget.view.nickname;
+                _error = null;
+                _editing = true;
+              }),
+            ),
         ],
       );
     }

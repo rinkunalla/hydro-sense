@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart' hide Pipeline;
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/config.dart';
 import 'models.dart';
 import 'pipeline.dart';
 import 'push.dart';
@@ -28,8 +30,11 @@ Future<void> signOut(WidgetRef ref) async {
 }
 
 final repositoryProvider = Provider<ClientRepository>(
-  (ref) =>
-      FirestoreClientRepository(FirebaseFirestore.instance, liveDatabase()),
+  (ref) => FirestoreClientRepository(
+    FirebaseFirestore.instance,
+    liveDatabase(),
+    FirebaseFunctions.instanceFor(region: AppConfig.functionsRegion),
+  ),
 );
 
 /// The signed-in user (null when signed out).
@@ -63,23 +68,32 @@ final roleProvider = FutureProvider<String?>((ref) async {
 /// Only the roles this app knows are trusted from a saved token.
 bool needsFreshRole(String? role) => role != 'user' && role != 'admin';
 
+/// A staff member's own record (null for an admin).
 final profileProvider = StreamProvider<UserProfile?>((ref) {
   final uid = ref.watch(uidProvider);
-  if (uid == null) return Stream.value(null);
+  if (uid == null || ref.watch(isAdminProvider)) return Stream.value(null);
   return ref.watch(repositoryProvider).profile(uid);
 });
 
+/// Every device of the organization (D62), for any signed-in member.
 final fleetProvider = StreamProvider<Fleet>((ref) {
   final uid = ref.watch(uidProvider);
   if (uid == null) return const Stream.empty();
-  return ref.watch(repositoryProvider).fleet(uid);
+  return ref.watch(repositoryProvider).fleet();
 });
 
+/// The organization's one pipeline.
 final pipelineProvider = StreamProvider<Pipeline?>((ref) {
   final uid = ref.watch(uidProvider);
   if (uid == null) return Stream.value(null);
-  return ref.watch(repositoryProvider).pipeline(uid);
+  return ref.watch(repositoryProvider).pipeline();
 });
+
+/// True for an admin: only admins change devices, limits, the pipeline and
+/// History (D63). Staff see the same screens without those controls.
+final isAdminProvider = Provider<bool>(
+  (ref) => ref.watch(roleProvider).valueOrNull == 'admin',
+);
 
 /// True when the phone has no network connection at all.
 final phoneOfflineProvider = StreamProvider<bool>((ref) async* {

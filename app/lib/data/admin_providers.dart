@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,33 +10,12 @@ final adminRepositoryProvider = Provider<AdminRepository>(
   ),
 );
 
-/// adminListDevices now and every ADMIN_DEVICES_REFRESH_S after (a callable has
-/// no live stream). Screens call ref.invalidate after an action to refresh at once.
-final adminDevicesProvider = StreamProvider<List<AdminDevice>>((ref) async* {
-  final repo = ref.watch(adminRepositoryProvider);
-  yield await repo.devices();
-  yield* Stream.periodic(
-    const Duration(seconds: AppConfig.adminDevicesRefreshS),
-  ).asyncMap((_) => repo.devices());
-});
-
-/// adminListUsers; screens invalidate it after a change.
-final adminUsersProvider = FutureProvider<List<AdminUser>>(
-  (ref) => ref.watch(adminRepositoryProvider).users(),
+/// adminListStaff; screens invalidate it after a change.
+final staffProvider = FutureProvider<List<StaffMember>>(
+  (ref) => ref.watch(adminRepositoryProvider).staff(),
 );
 
 final adminsProvider =
     FutureProvider<({List<AdminInfo> admins, bool belowRecommended})>(
       (ref) => ref.watch(adminRepositoryProvider).admins(),
-    );
-
-final adminAuditProvider = FutureProvider<List<AuditEntry>>(
-  (ref) => ref.watch(adminRepositoryProvider).audit(),
-);
-
-/// One user's or device's own activity, for its side panel.
-final targetAuditProvider = FutureProvider.autoDispose
-    .family<List<AuditEntry>, String>(
-      (ref, id) =>
-          ref.watch(adminRepositoryProvider).audit(targetId: id, limit: 10),
     );

@@ -15,8 +15,8 @@ import '../../data/providers.dart';
 import '../client/account_screen.dart' show ChangePasswordDialog;
 import 'admin_widgets.dart';
 
-/// Account: my profile and security on the
-/// left, the admins on the right, the activity log under both.
+/// Account: my profile (with the mobile for SMS alerts, D65) and security on
+/// the left, the admins on the right.
 class AdminAccountScreen extends ConsumerWidget {
   const AdminAccountScreen({super.key});
 
@@ -68,6 +68,7 @@ class _Profile extends ConsumerStatefulWidget {
 
 class _ProfileState extends ConsumerState<_Profile> {
   final _name = TextEditingController();
+  final _mobile = TextEditingController();
   final _newEmail = TextEditingController();
   final _password = TextEditingController();
   bool _nameLoaded = false;
@@ -79,6 +80,7 @@ class _ProfileState extends ConsumerState<_Profile> {
   @override
   void dispose() {
     _name.dispose();
+    _mobile.dispose();
     _newEmail.dispose();
     _password.dispose();
     super.dispose();
@@ -95,6 +97,29 @@ class _ProfileState extends ConsumerState<_Profile> {
       await ref.read(adminRepositoryProvider).updateMyAdminName(name);
       ref.invalidate(adminsProvider);
       if (mounted) showToast(context, 'Name saved');
+    } catch (e) {
+      if (mounted) showToast(context, adminErrorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// The admin's own number for SMS alerts; empty removes it (D65).
+  Future<void> _saveMobile() async {
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(adminRepositoryProvider)
+          .updateMyAdminMobile(_mobile.text.trim());
+      ref.invalidate(adminsProvider);
+      if (mounted) {
+        showToast(
+          context,
+          _mobile.text.trim().isEmpty
+              ? 'Mobile removed. Alerts reach you by email only.'
+              : 'Mobile saved. SMS alerts go to this number.',
+        );
+      }
     } catch (e) {
       if (mounted) showToast(context, adminErrorText(e));
     } finally {
@@ -146,6 +171,7 @@ class _ProfileState extends ConsumerState<_Profile> {
     if (!_nameLoaded && me != null) {
       _nameLoaded = true;
       _name.text = name;
+      _mobile.text = me.phone == null ? '' : displayPhone(me.phone);
     }
     return AdminCard(
       title: 'My profile',
@@ -194,6 +220,32 @@ class _ProfileState extends ConsumerState<_Profile> {
                 child: SecondaryButton(
                   label: 'Save',
                   onPressed: _busy ? null : _saveName,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.s),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _mobile,
+                  enabled: !_busy,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Mobile number for SMS alerts',
+                    helperText: 'Empty: alerts by email only',
+                  ),
+                  onSubmitted: (_) => _saveMobile(),
+                ),
+              ),
+              const SizedBox(width: AppSpace.s),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: SecondaryButton(
+                  label: 'Save',
+                  onPressed: _busy ? null : _saveMobile,
                 ),
               ),
             ],
@@ -356,7 +408,6 @@ class _AdminsState extends ConsumerState<_Admins> {
     try {
       await f();
       ref.invalidate(adminsProvider);
-      ref.invalidate(adminAuditProvider);
       if (mounted) showToast(context, done);
     } catch (e) {
       if (mounted) setState(() => _error = adminErrorText(e));

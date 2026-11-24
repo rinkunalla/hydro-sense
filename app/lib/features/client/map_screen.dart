@@ -454,20 +454,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       const SizedBox(width: AppSpace.s),
                       // Labelled, not a bare pencil: owners didn't read the icon.
                       // Shrinks instead of overflowing with large text sizes.
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 170),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: SecondaryButton(
-                            // One way in: "Draw" until there is a pipeline.
-                            label: p == null
-                                ? 'Draw pipeline'
-                                : 'Edit pipeline',
-                            icon: Icons.edit_rounded,
-                            onPressed: () => context.go('/map/edit'),
+                      // Admin only (D63): staff see the pipeline, never edit it.
+                      if (ref.watch(isAdminProvider))
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 170),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: SecondaryButton(
+                              // One way in: "Draw" until there is a pipeline.
+                              label: p == null
+                                  ? 'Draw pipeline'
+                                  : 'Edit pipeline',
+                              icon: Icons.edit_rounded,
+                              onPressed: () => context.go('/map/edit'),
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -651,15 +653,13 @@ class _ViewToggle extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: AppSpace.l),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(AppSpace.pill),
-                  gradient: v == value
-                      ? const LinearGradient(colors: AppColors.buttonStops)
-                      : null,
+                  color: v == value ? AppColors.actionTint : null,
                 ),
                 child: Text(
                   v == MapView.map ? 'Map' : 'Satellite',
                   style: AppText.strong.copyWith(
                     fontSize: 14,
-                    color: v == value ? Colors.white : AppColors.ink,
+                    color: v == value ? AppColors.onActionTint : AppColors.ink,
                   ),
                 ),
               ),

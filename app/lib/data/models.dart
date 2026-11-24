@@ -1,11 +1,59 @@
 import '../core/config.dart';
 import '../core/theme.dart';
 
+/// A device's flow sensor (D69); mirrors SENSORS in functions/src/config.ts.
+enum SensorType {
+  yfS201(
+    'yf_s201',
+    'YF-S201',
+    starterLow: 0.2,
+    starterNormal: 2.0,
+    cutoffMin: 1.0,
+    cutoffMax: 30,
+  ),
+  zjDn50(
+    'zj_dn50',
+    'ZJ-DN50',
+    starterLow: 5,
+    starterNormal: 20,
+    cutoffMin: 10,
+    cutoffMax: 150,
+  );
+
+  const SensorType(
+    this.wire,
+    this.label, {
+    required this.starterLow,
+    required this.starterNormal,
+    required this.cutoffMin,
+    required this.cutoffMax,
+  });
+
+  /// The value stored in `devices/{id}.sensorType`.
+  final String wire;
+  final String label;
+  final double starterLow;
+  final double starterNormal;
+
+  /// The range the admin's own limit must stay in (the sensor's reliable range).
+  final double cutoffMin;
+  final double cutoffMax;
+
+  /// A stored value; devices made before v3 have a YF-S201.
+  static SensorType fromWire(Object? v) {
+    for (final t in values) {
+      if (t.wire == v) return t;
+    }
+    return yfS201;
+  }
+}
+
 /// `devices/{id}`.
 class Device {
   const Device({
     required this.id,
     required this.nickname,
+    this.sensorType = SensorType.yfS201,
     this.flowStatus,
     this.flowRate,
     this.lat,
@@ -22,7 +70,10 @@ class Device {
   });
 
   final String id;
+
+  /// The device's name, set by the admin (D63).
   final String nickname;
+  final SensorType sensorType;
   final String?
   flowStatus; // "Normal Flow" | "Low Flow" | "No Flow" | null (no reading yet)
   final double? flowRate;
@@ -40,30 +91,25 @@ class Device {
   final double lowFlowCutoff;
   final double normalFlowCutoff;
 
-  /// The owner's own "Low flow below X L/min"; null = automatic.
+  /// The admin's own "Low flow below X L/min"; null = automatic.
   final double? userNormalCutoff;
   final DateTime? calibratedAt;
 
-  /// The owner set the limit (a value the server would accept).
+  /// The admin set the limit (a value the server would accept for this sensor).
   bool get ownLimit {
     final u = userNormalCutoff;
-    return u != null &&
-        u >= AppConfig.userCutoffMin &&
-        u <= AppConfig.userCutoffMax;
+    return u != null && u >= sensorType.cutoffMin && u <= sensorType.cutoffMax;
   }
 
   /// The limits the device classifies with; mirrors the server's
   /// effectiveCutoffs (functions/src/lib/cutoffs.ts).
   ({double low, double normal}) get limits {
     if (ownLimit) {
-      return (low: AppConfig.starterLowCutoff, normal: userNormalCutoff!);
+      return (low: sensorType.starterLow, normal: userNormalCutoff!);
     }
     return lowFlowCutoff < normalFlowCutoff
         ? (low: lowFlowCutoff, normal: normalFlowCutoff)
-        : (
-            low: AppConfig.starterLowCutoff,
-            normal: AppConfig.starterNormalCutoff,
-          );
+        : (low: sensorType.starterLow, normal: sensorType.starterNormal);
   }
 
   final DateTime? statusChangedAt;
@@ -168,38 +214,14 @@ class DeviceView {
 
 enum Freshness { live, offline, none }
 
-class AlertPrefs {
-  const AlertPrefs({this.push = true, this.sms = true, this.email = false});
-
-  final bool push;
-  final bool sms;
-  final bool email;
-
-  AlertPrefs copyWith({bool? push, bool? sms, bool? email}) => AlertPrefs(
-    push: push ?? this.push,
-    sms: sms ?? this.sms,
-    email: email ?? this.email,
-  );
-
-  Map<String, bool> toMap() => {'push': push, 'sms': sms, 'email': email};
-}
-
+/// `users/{uid}` of a staff member (D64). Read only: the admin changes it.
 class UserProfile {
-  const UserProfile({
-    this.email,
-    this.phone,
-    this.displayName,
-    this.deviceCount = 0,
-    this.alertPrefs = const AlertPrefs(),
-    this.deletionRequested = false,
-  });
+  const UserProfile({this.email, this.phone, this.displayName, this.username});
 
   final String? email;
   final String? phone;
   final String? displayName;
-  final int deviceCount;
-  final AlertPrefs alertPrefs;
-  final bool deletionRequested;
+  final String? username;
 
   /// "Juan" from "Juan Dela Cruz", for "Welcome back, {first name}".
   String get firstName =>
@@ -234,7 +256,6 @@ class Problem {
     required this.type,
     required this.startedAt,
     this.endedAt,
-    this.note,
   });
 
   final String id;
@@ -244,7 +265,6 @@ class Problem {
 
   /// Null while the problem is still going on.
   final DateTime? endedAt;
-  final String? note;
 
   bool get ongoing => endedAt == null;
 
@@ -256,7 +276,7 @@ class Problem {
       startedAt.isBefore(to) && endOr(now).isAfter(from);
 }
 
-/// The client's fleet, with whether it came from the offline cache.
+/// Every device of the organization, with whether it came from the offline cache.
 class Fleet {
   const Fleet(this.views, {this.fromCache = false});
 

@@ -161,7 +161,6 @@ class _EditPipelineState extends ConsumerState<EditPipelineScreen> {
         );
       }
       await repo.savePipeline(
-        uid,
         Pipeline(
           name: _cut(name),
           source: PipePoint(

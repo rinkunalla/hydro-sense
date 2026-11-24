@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/config.dart';
+import '../../core/file_save.dart';
+import '../../data/admin_logic.dart' show problemsCsv;
 import '../../core/errors.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
@@ -122,6 +124,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final now = ref.watch(clockProvider).valueOrNull ?? DateTime.now();
     final views = ref.watch(fleetProvider).valueOrNull?.views ?? const [];
     final names = {for (final v in views) v.id: v.nickname};
+    final isAdmin = ref.watch(isAdminProvider);
     final all = ref.watch(monthProblemsProvider(_month));
     final thisMonth = DateTime(now.year, now.month);
 
@@ -174,17 +177,27 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         child: Text('History', style: AppText.title(24)),
                       ),
                     ),
-                    PopupMenuButton<int>(
-                      tooltip: 'More',
-                      icon: const Icon(Icons.more_vert_rounded),
-                      onSelected: (_) => _clearOlder(),
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(
-                          value: 0,
-                          child: Text('Clear older records'),
-                        ),
-                      ],
-                    ),
+                    if (isAdmin)
+                      PopupMenuButton<int>(
+                        tooltip: 'More',
+                        icon: const Icon(Icons.more_vert_rounded),
+                        onSelected: (v) => v == 1
+                            ? saveTextFile(
+                                'hydro-sense-history-${DateFormat('yyyy-MM').format(_month)}.csv',
+                                problemsCsv(shown, names),
+                              )
+                            : _clearOlder(),
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: 1,
+                            child: Text('Download CSV (shown records)'),
+                          ),
+                          PopupMenuItem(
+                            value: 0,
+                            child: Text('Clear older records'),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
                 const SizedBox(height: AppSpace.s),
@@ -334,7 +347,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         DateFormat('EEE, MMM d', 'en_US').format(_day),
                       ),
                     ),
-                    if (ofDay.any((p) => !p.ongoing))
+                    if (isAdmin && ofDay.any((p) => !p.ongoing))
                       TextButton(
                         onPressed: () => _deleteMany(
                           ofDay.where((p) => !p.ongoing).toList(),
@@ -440,18 +453,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     if (months == null || !mounted) return;
     final ok = await _confirm(
       'Delete records older than $months months?',
-      'Every ended problem before then is deleted for all your devices. '
+      'Every ended problem before then is deleted for every device. '
           'This can\'t be undone.',
       'Delete',
     );
-    final uid = ref.read(uidProvider);
-    if (!ok || uid == null || !mounted) return;
+    if (!ok || !mounted) return;
     final now = DateTime.now();
     try {
       final n = await ref
           .read(repositoryProvider)
           .deleteProblemsBefore(
-            uid,
             DateTime(now.year, now.month - months, now.day),
           );
       if (mounted) {
@@ -761,14 +772,7 @@ class _ProblemTile extends StatelessWidget {
         title: Text('${st.word} · $deviceName', style: AppText.strong),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(problemTimeText(problem, now), style: AppText.note),
-            if (problem.note != null)
-              Text(
-                problem.note!,
-                style: AppText.note.copyWith(fontStyle: FontStyle.italic),
-              ),
-          ],
+          children: [Text(problemTimeText(problem, now), style: AppText.note)],
         ),
         trailing: const Icon(Icons.chevron_right_rounded),
       ),
@@ -776,8 +780,8 @@ class _ProblemTile extends StatelessWidget {
   }
 }
 
-/// One problem: its times, a note to add or change, and Delete once it ended.
-class _ProblemSheet extends ConsumerStatefulWidget {
+/// One problem: its times, and for an admin Delete once it ended (D63).
+class _ProblemSheet extends ConsumerWidget {
   const _ProblemSheet({
     required this.problem,
     required this.deviceName,
@@ -789,49 +793,13 @@ class _ProblemSheet extends ConsumerStatefulWidget {
   final Future<void> Function() onDelete;
 
   @override
-  ConsumerState<_ProblemSheet> createState() => _ProblemSheetState();
-}
-
-class _ProblemSheetState extends ConsumerState<_ProblemSheet> {
-  late final _note = TextEditingController(text: widget.problem.note ?? '');
-  bool _busy = false;
-
-  @override
-  void dispose() {
-    _note.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final text = _note.text.trim();
-    setState(() => _busy = true);
-    try {
-      await ref
-          .read(repositoryProvider)
-          .setProblemNote(widget.problem.id, text.isEmpty ? null : text);
-      if (mounted) {
-        Navigator.pop(context);
-        showToast(context, text.isEmpty ? 'Note removed' : 'Note saved');
-      }
-    } catch (_) {
-      if (mounted) showToast(context, Messages.saveFailed);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = widget.problem;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = problem;
     final st = problemStyle(p.type);
     final now = DateTime.now();
+    final isAdmin = ref.watch(isAdminProvider);
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        AppSpace.l,
-        0,
-        AppSpace.l,
-        AppSpace.l + MediaQuery.viewInsetsOf(context).bottom,
-      ),
+      padding: const EdgeInsets.fromLTRB(AppSpace.l, 0, AppSpace.l, AppSpace.l),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -842,7 +810,7 @@ class _ProblemSheetState extends ConsumerState<_ProblemSheet> {
               const SizedBox(width: AppSpace.s),
               Expanded(
                 child: Text(
-                  '${st.word} · ${widget.deviceName}',
+                  '${st.word} · $deviceName',
                   style: AppText.title(18),
                 ),
               ),
@@ -850,41 +818,24 @@ class _ProblemSheetState extends ConsumerState<_ProblemSheet> {
           ),
           const SizedBox(height: AppSpace.s),
           Text(problemTimeText(p, now), style: AppText.body),
-          const SizedBox(height: AppSpace.l),
-          TextField(
-            controller: _note,
-            enabled: !_busy,
-            maxLength: AppConfig.problemNoteMax,
-            decoration: const InputDecoration(
-              labelText: 'Note',
-              hintText: 'For example: Valve was closed for repair',
-            ),
-          ),
-          const SizedBox(height: AppSpace.s),
-          Row(
-            children: [
-              if (!p.ongoing)
-                SecondaryButton(
+          if (isAdmin) ...[
+            const SizedBox(height: AppSpace.l),
+            if (p.ongoing)
+              Text(
+                'This problem is still going on, so it can\'t be deleted yet.',
+                style: AppText.note,
+              )
+            else
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SecondaryButton(
                   label: 'Delete',
                   icon: Icons.delete_outline_rounded,
                   destructive: true,
-                  onPressed: _busy ? null : widget.onDelete,
+                  onPressed: onDelete,
                 ),
-              const Spacer(),
-              FilledButton(
-                onPressed: _busy ? null : _save,
-                child: const Text('Save note'),
               ),
-            ],
-          ),
-          if (p.ongoing)
-            Padding(
-              padding: const EdgeInsets.only(top: AppSpace.s),
-              child: Text(
-                'This problem is still going on, so it can\'t be deleted yet.',
-                style: AppText.note,
-              ),
-            ),
+          ],
         ],
       ),
     );

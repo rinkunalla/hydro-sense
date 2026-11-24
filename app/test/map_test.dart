@@ -25,8 +25,11 @@ Widget harness(
   List<DeviceView> views = const [],
   Pipeline? pipeline,
   MyLocation? location,
+  bool admin = true,
 }) => ProviderScope(
   overrides: [
+    // The pipeline editor is the admin's (D63); staff only view the map.
+    isAdminProvider.overrideWithValue(admin),
     fleetProvider.overrideWith((_) => Stream.value(Fleet(views))),
     pipelineProvider.overrideWith((_) => Stream.value(pipeline)),
     clockProvider.overrideWith((_) => Stream.value(testNow)),
@@ -129,6 +132,17 @@ void main() {
     expect(find.text('Draw pipeline'), findsOneWidget, reason: 'Back exits');
   });
 
+  testWidgets('staff see the map but never the pipeline editor (D63)', (
+    t,
+  ) async {
+    await t.pumpWidget(
+      harness(const MapScreen(), views: [at('Garden', 16.041)], admin: false),
+    );
+    await t.pumpAndSettle();
+    expect(find.text('Draw pipeline'), findsNothing);
+    expect(find.text('Edit pipeline'), findsNothing);
+  });
+
   testWidgets('no pipeline yet: device pins and one Draw pipeline button', (
     t,
   ) async {
@@ -227,9 +241,7 @@ void main() {
     expect(find.text('Placed on the map'), findsOneWidget);
   });
 
-  testWidgets('edit: no device GPS option while the module is off', (
-    t,
-  ) async {
+  testWidgets('edit: no device GPS option while the module is off', (t) async {
     await phone(t);
     await t.pumpWidget(
       harness(

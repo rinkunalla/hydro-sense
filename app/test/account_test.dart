@@ -46,15 +46,6 @@ class FakeAccount implements AccountRepository {
 }
 
 class FakeClient implements ClientRepository {
-  final saved = <AlertPrefs>[];
-  bool fail = false;
-
-  @override
-  Future<void> setAlertPrefs(String uid, AlertPrefs prefs) async {
-    if (fail) throw Exception('offline');
-    saved.add(prefs);
-  }
-
   @override
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
@@ -145,43 +136,42 @@ void main() {
     expect(account.calls.last, 'set uid.token');
   });
 
-  testWidgets(
-    'reset by email code: masked address, then the same 3 steps',
-    (t) async {
-      await phone(t);
-      final account = FakeAccount();
-      await t.pumpWidget(
-        ProviderScope(
-          overrides: [accountRepositoryProvider.overrideWithValue(account)],
-          child: MaterialApp(
-            theme: buildLightTheme(),
-            home: SmsResetScreen(now: () => testNow),
-          ),
+  testWidgets('reset by email code: masked address, then the same 3 steps', (
+    t,
+  ) async {
+    await phone(t);
+    final account = FakeAccount();
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [accountRepositoryProvider.overrideWithValue(account)],
+        child: MaterialApp(
+          theme: buildLightTheme(),
+          home: SmsResetScreen(now: () => testNow),
         ),
-      );
-      expect(find.text('Your email'), findsOneWidget);
-      await t.enterText(find.byType(TextField), 'nobody');
-      await t.tap(find.text('Send the code'));
-      await t.pump();
-      expect(find.text('Enter the email on your account.'), findsOneWidget);
-      await t.enterText(find.byType(TextField), ' Ana@Example.com ');
-      await t.tap(find.text('Send the code'));
-      await t.pump();
-      expect(account.calls, ['code email ana@example.com']);
-      // Same words for any address (no account enumeration), and no link.
-      expect(
-        find.text(
-          'If a•••@example.com has an account, a 6-digit code is on its way. '
-          'It can take a minute.',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Not in your inbox? Check spam.'), findsOneWidget);
-      await t.tap(find.text('Wrong email? Go back and try again.'));
-      await t.pump();
-      expect(find.text('Your email'), findsOneWidget);
-    },
-  );
+      ),
+    );
+    expect(find.text('Your email'), findsOneWidget);
+    await t.enterText(find.byType(TextField), 'nobody');
+    await t.tap(find.text('Send the code'));
+    await t.pump();
+    expect(find.text('Enter the email on your account.'), findsOneWidget);
+    await t.enterText(find.byType(TextField), ' Ana@Example.com ');
+    await t.tap(find.text('Send the code'));
+    await t.pump();
+    expect(account.calls, ['code email ana@example.com']);
+    // Same words for any address (no account enumeration), and no link.
+    expect(
+      find.text(
+        'If a•••@example.com has an account, a 6-digit code is on its way. '
+        'It can take a minute.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Not in your inbox? Check spam.'), findsOneWidget);
+    await t.tap(find.text('Wrong email? Go back and try again.'));
+    await t.pump();
+    expect(find.text('Your email'), findsOneWidget);
+  });
 
   Widget accountHarness(FakeClient client) => ProviderScope(
     overrides: [
@@ -195,7 +185,7 @@ void main() {
             displayName: 'Juan Dela Cruz',
             phone: '639171234567',
             email: 'juan@example.com',
-            deviceCount: 5,
+            username: 'juan.dc',
           ),
         ),
       ),
@@ -207,55 +197,17 @@ void main() {
     ),
   );
 
-  testWidgets('account: profile rows and the alert defaults', (t) async {
+  testWidgets('account: read-only details, no switches (D64, D65)', (t) async {
     await phone(t);
     await t.pumpWidget(accountHarness(FakeClient()));
     await t.pumpAndSettle();
     expect(find.text('JD'), findsOneWidget);
-    expect(find.text('5 devices'), findsOneWidget);
+    expect(find.text('juan.dc'), findsOneWidget);
     expect(find.text('0917 123 4567'), findsOneWidget);
-    expect(find.text('Change'), findsNWidgets(4));
-    final sms = t.widget<SwitchListTile>(
-      find.widgetWithText(SwitchListTile, 'SMS'),
-    );
-    expect(sms.value, isTrue);
-    final email = t.widget<SwitchListTile>(
-      find.widgetWithText(SwitchListTile, 'Email'),
-    );
-    expect(email.value, isFalse);
+    expect(find.text('juan@example.com'), findsOneWidget);
+    // Staff change nothing: no Change buttons, no alert switches.
+    expect(find.text('Change'), findsNothing);
+    expect(find.widgetWithText(SwitchListTile, 'SMS'), findsNothing);
+    expect(find.textContaining('Ask your admin'), findsOneWidget);
   });
-
-  testWidgets(
-    'account: a switch saves; a failed save flips back with a toast',
-    (t) async {
-      await phone(
-        t,
-        height: 1600,
-      ); // the whole page, so every switch is on screen
-      final client = FakeClient();
-      await t.pumpWidget(accountHarness(client));
-      await t.pumpAndSettle();
-      final email = find.widgetWithText(SwitchListTile, 'Email');
-      await t.tap(email);
-      await t.pumpAndSettle();
-      expect(client.saved.single.toMap(), {
-        'push': true,
-        'sms': true,
-        'email': true,
-      });
-
-      client.fail = true;
-      await t.tap(find.widgetWithText(SwitchListTile, 'SMS'));
-      await t.pump();
-      await t.pump();
-      expect(find.text("Couldn't save. Check your internet."), findsOneWidget);
-      // The profile stream still says SMS on, so the switch shows on again.
-      expect(
-        t
-            .widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'SMS'))
-            .value,
-        isTrue,
-      );
-    },
-  );
 }

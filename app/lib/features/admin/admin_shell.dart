@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/config.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
+import '../../data/admin_logic.dart';
 import '../../data/admin_providers.dart';
 import '../../data/providers.dart';
 import 'admin_widgets.dart';
@@ -17,16 +18,19 @@ class _Dest {
   final IconData icon;
 }
 
+/// The website menu (D67).
 const _destinations = [
-  _Dest('/users', 'Users', Icons.people_alt_rounded),
-  _Dest('/devices', 'Devices', Icons.memory_rounded),
-  _Dest('/activity', 'Activity', Icons.history_rounded),
+  _Dest('/dashboard', 'Dashboard', Icons.dashboard_rounded),
+  _Dest('/map', 'Map', Icons.map_rounded),
+  _Dest('/devices', 'Devices', Icons.water_drop_rounded),
+  _Dest('/history', 'History', Icons.history_rounded),
+  _Dest('/staff', 'Staff', Icons.people_alt_rounded),
   _Dest('/account', 'Account', Icons.person_rounded),
 ];
 
-/// Glass top bar on every admin page: logo + "Admin", the three tabs, and the
-/// admin's avatar. Under 800 px the tabs move
-/// into a drawer. Content is at most 1200 px wide.
+/// Glass top bar on every admin page: logo + "Admin", the menu, and the
+/// admin's avatar; under it the alert banner while something needs attention.
+/// Under 800 px the menu moves into a drawer. Content is at most 1200 px wide.
 class AdminShell extends ConsumerStatefulWidget {
   const AdminShell({super.key, required this.location, required this.child});
 
@@ -41,16 +45,17 @@ class _AdminShellState extends ConsumerState<AdminShell> {
   @override
   void initState() {
     super.initState();
-    // Marks an invited admin active on the first sign-in and picks up a
-    // verified email change; the lists reload once it is done.
+    // Marks an invited admin active on the first sign-in, picks up a verified
+    // email change and lets the account read the live channel (/members);
+    // the lists and live data reload once it is done.
     ref
         .read(adminRepositoryProvider)
         .syncMyAdmin()
         .then((_) {
           if (!mounted) return;
           ref.invalidate(adminsProvider);
-          ref.invalidate(adminUsersProvider);
-          ref.invalidate(adminDevicesProvider);
+          ref.invalidate(staffProvider);
+          ref.invalidate(fleetProvider);
         })
         .catchError((Object _) {});
   }
@@ -59,7 +64,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
     final i = _destinations.indexWhere(
       (d) => widget.location.startsWith(d.path),
     );
-    return i < 0 ? 1 : i;
+    return i < 0 ? 0 : i;
   }
 
   @override
@@ -79,7 +84,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
           height: 36,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
-            gradient: const LinearGradient(colors: AppColors.buttonStops),
+            color: AppColors.action,
           ),
           child: const Icon(Icons.water_drop_rounded, color: Colors.white),
         ),
@@ -89,14 +94,14 @@ class _AdminShellState extends ConsumerState<AdminShell> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(
-            color: AppColors.tint,
+            color: AppColors.actionTint,
             borderRadius: BorderRadius.circular(AppSpace.pill),
           ),
           child: Text(
             'Admin',
             style: AppText.strong.copyWith(
               fontSize: 12,
-              color: AppColors.deepCyan,
+              color: AppColors.onActionTint,
             ),
           ),
         ),
@@ -110,40 +115,21 @@ class _AdminShellState extends ConsumerState<AdminShell> {
         button: true,
         selected: selected,
         child: Material(
-          color: Colors.transparent,
+          // Selected: pale tint with dark text (D68).
+          color: selected ? AppColors.actionTint : Colors.transparent,
           shape: const StadiumBorder(),
-          child: Ink(
-            decoration: selected
-                ? const ShapeDecoration(
-                    shape: StadiumBorder(),
-                    gradient: LinearGradient(colors: AppColors.buttonStops),
-                  )
-                : null,
-            child: InkWell(
-              customBorder: const StadiumBorder(),
-              onTap: () => context.go(d.path),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 10,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      d.icon,
-                      size: 20,
-                      color: selected ? Colors.white : AppColors.steel,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      d.label,
-                      style: AppText.strong.copyWith(
-                        fontSize: 15,
-                        color: selected ? Colors.white : AppColors.ink,
-                      ),
-                    ),
-                  ],
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: () => context.go(d.path),
+            // Text only: six items with icons overflowed the bar at 1280 px.
+            // The drawer under 800 px keeps the icons.
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Text(
+                d.label,
+                style: AppText.strong.copyWith(
+                  fontSize: 15,
+                  color: selected ? AppColors.onActionTint : AppColors.ink,
                 ),
               ),
             ),
@@ -168,14 +154,26 @@ class _AdminShellState extends ConsumerState<AdminShell> {
                 ),
               ),
             logo,
-            const Spacer(),
-            if (wide) ...[
-              for (var i = 0; i < _destinations.length; i++) ...[
-                tab(i),
-                const SizedBox(width: 4),
-              ],
+            if (wide)
+              // Scrolls sideways instead of overflowing on a narrow window.
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < _destinations.length; i++) ...[
+                          tab(i),
+                          const SizedBox(width: 2),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
               const Spacer(),
-            ],
             Tooltip(
               message: me,
               child: InkWell(
@@ -207,6 +205,8 @@ class _AdminShellState extends ConsumerState<AdminShell> {
                           leading: Icon(_destinations[i].icon),
                           title: Text(_destinations[i].label),
                           selected: i == _index,
+                          selectedColor: AppColors.onActionTint,
+                          selectedTileColor: AppColors.actionTint,
                           onTap: () {
                             Navigator.pop(context);
                             context.go(_destinations[i].path);
@@ -220,6 +220,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
           child: Column(
             children: [
               bar,
+              AlertBanner(onDashboard: widget.location == '/dashboard'),
               Expanded(
                 child: Align(
                   alignment: Alignment.topCenter,
@@ -232,6 +233,61 @@ class _AdminShellState extends ConsumerState<AdminShell> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The website's on-screen alert (D65): while the site is open, every device
+/// that has no water, low flow or is offline, worst first. It follows the
+/// live data, so it shows as soon as the device reports the problem.
+class AlertBanner extends ConsumerWidget {
+  const AlertBanner({super.key, this.onDashboard = false});
+
+  /// The Dashboard lists the same devices, so the banner drops its link there.
+  final bool onDashboard;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final views = ref.watch(fleetProvider).valueOrNull?.views ?? const [];
+    final items = needAttention(views);
+    if (items.isEmpty) return const SizedBox.shrink();
+    final worst = StatusStyle.of(items.first.status);
+    final shown = items
+        .take(3)
+        .map((v) => '${v.nickname} (${StatusStyle.of(v.status).word})')
+        .join(', ');
+    final more = items.length > 3 ? ', +${items.length - 3} more' : '';
+    final text = items.length == 1
+        ? '$shown needs attention.'
+        : '${items.length} areas need attention: $shown$more.';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpace.l, AppSpace.s, AppSpace.l, 0),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: AppConfig.adminMaxContentWidth,
+        ),
+        child: Semantics(
+          liveRegion: true,
+          child: GlassPanel(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpace.m,
+              vertical: AppSpace.s,
+            ),
+            child: Row(
+              children: [
+                Icon(worst.icon, color: worst.strong),
+                const SizedBox(width: AppSpace.s),
+                Expanded(child: Text(text, style: AppText.strong)),
+                if (!onDashboard)
+                  TextButton(
+                    onPressed: () => context.go('/dashboard'),
+                    child: const Text('Open Dashboard'),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

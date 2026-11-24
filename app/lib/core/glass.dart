@@ -231,13 +231,11 @@ class PrimaryButton extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppSpace.pill),
-            gradient: const LinearGradient(
-              colors: AppColors.buttonStops,
-              stops: [0, 0.55, 1],
-            ),
+            // One solid steel teal since D68 (no gradient).
+            color: AppColors.action,
             boxShadow: const [
               BoxShadow(
-                color: Color(0x404F46E5),
+                color: Color(0x402E6B82),
                 blurRadius: 18,
                 offset: Offset(0, 8),
               ),

@@ -54,6 +54,13 @@ void main() {
       atLeast('white on button stop $i', Colors.white, c, 4.5);
     }
     atLeast('white on the danger button', Colors.white, AppColors.danger, 4.5);
+    // D68: a selected menu item, chip or tab is dark text on the pale tint.
+    atLeast(
+      'selected text on the action tint',
+      AppColors.onActionTint,
+      AppColors.actionTint,
+      4.5,
+    );
   });
 
   group('icons are at least 3:1', () {

@@ -1,23 +1,8 @@
 import 'package:intl/intl.dart';
 
+import '../core/theme.dart';
 import 'admin_repository.dart';
-
-/// The only statuses the admin sees: no flow, GPS or battery.
-enum AdminState { online, offline, notSetUp, removed }
-
-AdminState stateOf(AdminDevice d) {
-  if (d.removed) return AdminState.removed;
-  if (!d.registered) return AdminState.notSetUp;
-  return d.online ? AdminState.online : AdminState.offline;
-}
-
-/// Sort key for the devices table; `column` matches the table's column order.
-Comparable<Object> sortKey(AdminDevice d, int column) => switch (column) {
-  0 => d.id,
-  1 => (d.label ?? '').toLowerCase(),
-  2 => (d.ownerName ?? '').toLowerCase(),
-  _ => stateOf(d).index,
-};
+import 'models.dart';
 
 /// "Nov 13" (admin tables and notes).
 String dayMonth(DateTime d) => DateFormat('MMM d').format(d.toLocal());
@@ -26,132 +11,115 @@ String dayMonth(DateTime d) => DateFormat('MMM d').format(d.toLocal());
 String dayMonthYear(DateTime d) =>
     DateFormat('MMM d, yyyy').format(d.toLocal());
 
-/// Users page filter pills.
-enum UserFilter { all, noPassword, deletionRequested, suspended }
-
 bool _has(String? field, String q) => (field ?? '').toLowerCase().contains(q);
 
-/// Users page: the pill and a search over name, mobile and email.
-bool userMatches(AdminUser u, UserFilter f, String query) {
-  final q = query.trim().toLowerCase();
-  final digits = q.replaceAll(RegExp(r'[^0-9]'), '');
-  final found =
-      q.isEmpty ||
-      _has(u.name, q) ||
-      _has(u.email, q) ||
-      // "0917 123" finds 639171234567: compare from the 9 after 63 or 0.
-      (digits.length >= 3 &&
-          u.phone.contains(digits.replaceFirst(RegExp(r'^(63|0)'), '')));
-  return found &&
-      switch (f) {
-        UserFilter.all => true,
-        UserFilter.noPassword => !u.passwordSet && !u.suspended,
-        UserFilter.deletionRequested =>
-          u.deletionRequestedAt != null && !u.suspended,
-        UserFilter.suspended => u.suspended,
-      };
-}
-
-/// Devices page: a search over the device ID, label and owner name.
-bool deviceMatches(AdminDevice d, String query) {
-  final q = query.trim().toLowerCase().replaceAll(RegExp(r'[\s:-]'), '');
-  return q.isEmpty ||
-      d.id.toLowerCase().contains(q) ||
-      _has(d.label?.replaceAll(' ', ''), q) ||
-      _has(d.ownerName?.replaceAll(' ', ''), q);
-}
-
-/// Activity log groups: the log itself is never edited or deleted.
-enum AuditGroup { all, users, devices, admins, requests }
-
-bool auditMatches(AuditEntry e, AuditGroup g, String? adminEmail) {
-  final group = switch (g) {
-    AuditGroup.all => true,
-    AuditGroup.users => e.action.startsWith('user_'),
-    AuditGroup.devices => e.action.startsWith('device_'),
-    AuditGroup.admins => e.action.startsWith('admin_'),
-    AuditGroup.requests => e.action == 'deletion_requested',
-  };
-  return group && (adminEmail == null || e.adminEmail == adminEmail);
-}
-
-/// Users table order: active by name, then suspended (soonest purge first).
-List<AdminUser> sortUsers(List<AdminUser> users) => [...users]
-  ..sort((a, b) {
-    if (a.suspended != b.suspended) return a.suspended ? 1 : -1;
-    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-  });
-
-/// One activity entry in words, as the Activity page and panels show it.
-String auditSentence(AuditEntry e) {
-  final who = e.adminEmail ?? 'An admin';
-  final what = e.targetName ?? e.targetId ?? '';
-  return switch (e.action) {
-    'user_deleted' => '$who deleted the user $what',
-    'user_restored' => '$who restored the user $what',
-    'device_removed' => '$who removed $what',
-    'device_restored' => '$who restored $what',
-    'device_reassigned' => '$who reassigned $what',
-    'admin_removed' => '$who removed the admin $what',
-    'deletion_requested' => '$what asked to delete their account',
-    _ => '$who: ${e.action} $what',
-  };
-}
-
-/// Search over what the entry says: names, IDs and the admin's email.
-bool auditSearch(AuditEntry e, String query) {
+/// Staff page: a search over name, username, mobile and email.
+bool staffMatches(StaffMember s, String query) {
   final q = query.trim().toLowerCase();
   if (q.isEmpty) return true;
-  return [
-    auditSentence(e),
-    e.targetId,
-    e.adminEmail,
-  ].any((s) => (s ?? '').toLowerCase().contains(q));
+  final digits = q.replaceAll(RegExp(r'[^0-9]'), '');
+  return _has(s.name, q) ||
+      _has(s.username, q) ||
+      _has(s.email, q) ||
+      // "0917 123" finds 639171234567: compare from the 9 after 63 or 0.
+      (digits.length >= 3 &&
+          (s.phone ?? '').contains(
+            digits.replaceFirst(RegExp(r'^(63|0)'), ''),
+          ));
 }
 
-/// Keeps entries from [from] (inclusive) to [to] (exclusive); null = open end.
-bool auditInRange(AuditEntry e, DateTime? from, DateTime? to) {
-  final at = e.at;
-  if (at == null) return from == null && to == null;
-  return (from == null || !at.isBefore(from)) &&
-      (to == null || at.isBefore(to));
+/// Staff table order: active by name, then disabled by name.
+List<StaffMember> sortStaff(List<StaffMember> staff) =>
+    [...staff]..sort((a, b) {
+      if (a.disabled != b.disabled) return a.disabled ? 1 : -1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+
+/// The Dashboard's counts (D67): how many devices are in each state now.
+class StatusCounts {
+  const StatusCounts({
+    this.normal = 0,
+    this.lowFlow = 0,
+    this.noFlow = 0,
+    this.offline = 0,
+    this.other = 0,
+  });
+
+  final int normal;
+  final int lowFlow;
+  final int noFlow;
+  final int offline;
+
+  /// Not set up yet, or waiting for a first reading.
+  final int other;
+
+  int get total => normal + lowFlow + noFlow + offline + other;
 }
 
-/// The shown entries as a CSV file (Download CSV): one header row, then one
-/// row per entry, with quotes doubled inside quoted fields.
-String auditCsv(List<AuditEntry> entries) {
+StatusCounts countStatuses(Iterable<DeviceView> views) {
+  var n = 0, low = 0, no = 0, off = 0, other = 0;
+  for (final v in views) {
+    switch (v.status) {
+      case StatusKind.normal:
+        n++;
+      case StatusKind.lowFlow:
+        low++;
+      case StatusKind.noFlow:
+        no++;
+      case StatusKind.offline:
+        off++;
+      default:
+        other++;
+    }
+  }
+  return StatusCounts(
+    normal: n,
+    lowFlow: low,
+    noFlow: no,
+    offline: off,
+    other: other,
+  );
+}
+
+/// The devices that need attention now, worst first (No water, Low flow,
+/// Offline), then by name: the Dashboard list and the website's banner.
+List<DeviceView> needAttention(Iterable<DeviceView> views) {
+  int rank(StatusKind k) => switch (k) {
+    StatusKind.noFlow => 0,
+    StatusKind.lowFlow => 1,
+    StatusKind.offline => 2,
+    _ => 9,
+  };
+  return views.where((v) => rank(v.status) < 9).toList()..sort((a, b) {
+    final r = rank(a.status).compareTo(rank(b.status));
+    return r != 0
+        ? r
+        : a.nickname.toLowerCase().compareTo(b.nickname.toLowerCase());
+  });
+}
+
+/// History as a CSV file (Download CSV): one header row, then one row per
+/// problem, with quotes doubled inside quoted fields.
+String problemsCsv(List<Problem> problems, Map<String, String> names) {
   String cell(String? v) => '"${(v ?? '').replaceAll('"', '""')}"';
-  final rows = <String>[
-    '"When","Admin","Action","Target","Target ID","What happened"',
-  ];
-  for (final e in entries) {
+  String time(DateTime? t) =>
+      t == null ? '' : DateFormat('yyyy-MM-dd HH:mm').format(t.toLocal());
+  final rows = <String>['"Device","Device ID","Problem","Started","Ended"'];
+  for (final p in problems) {
     rows.add(
       [
-        cell(
-          e.at == null
-              ? ''
-              : DateFormat('yyyy-MM-dd HH:mm').format(e.at!.toLocal()),
-        ),
-        cell(e.adminEmail),
-        cell(e.action),
-        cell(e.targetName),
-        cell(e.targetId),
-        cell(auditSentence(e)),
+        cell(names[p.deviceId] ?? p.deviceId),
+        cell(p.deviceId),
+        cell(switch (p.type) {
+          ProblemType.noFlow => 'No water',
+          ProblemType.lowFlow => 'Low flow',
+          ProblemType.offline => 'Offline',
+          ProblemType.batteryLow => 'Low battery',
+        }),
+        cell(time(p.startedAt)),
+        cell(p.ongoing ? 'Ongoing' : time(p.endedAt)),
       ].join(','),
     );
   }
-  return '${rows.join('\r\n')}\r\n';
+  return rows.join('\r\n');
 }
-
-/// The Activity date dropdowns: a year, optionally a month (1 to 12),
-/// optionally a day of that month. Returns [from, to) in local time.
-({DateTime from, DateTime to}) calendarWindow(int year, int? month, int? day) {
-  if (month == null) return (from: DateTime(year), to: DateTime(year + 1));
-  if (day == null) {
-    return (from: DateTime(year, month), to: DateTime(year, month + 1));
-  }
-  return (from: DateTime(year, month, day), to: DateTime(year, month, day + 1));
-}
-
-/// Days in [month] of [year] (for the Day dropdown).
-int daysInMonth(int year, int month) => DateTime(year, month + 1, 0).day;

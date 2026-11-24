@@ -3,14 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/config.dart';
 import 'data/providers.dart';
-import 'features/admin/activity_screen.dart';
 import 'features/admin/admin_account_screen.dart';
 import 'features/admin/admin_setup_screen.dart';
 import 'features/admin/admin_shell.dart';
-import 'features/admin/devices_admin_screen.dart';
-import 'features/admin/users_screen.dart';
+import 'features/admin/dashboard_screen.dart';
+import 'features/admin/staff_screen.dart';
 import 'features/auth/login_screen.dart';
+import 'features/client/device_detail_screen.dart';
+import 'features/client/devices_screen.dart';
+import 'features/client/edit_pipeline_screen.dart';
+import 'features/client/history_screen.dart';
+import 'features/client/map_screen.dart';
 import 'features/auth/reset_password_screen.dart';
 import 'router.dart' show redirectFor;
 
@@ -21,7 +26,19 @@ class _AuthRefresh extends ChangeNotifier {
   }
 }
 
-/// The web build: admin only.
+/// The app's History calendar was laid out for a phone; on a wide screen its
+/// day cells stretch into a very tall grid, so the website keeps it narrow.
+Widget _readable(Widget child) => Align(
+  alignment: Alignment.topCenter,
+  child: ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: AppConfig.adminReadableWidth),
+    child: child,
+  ),
+);
+
+/// The web build: admin only (D63, D67). The monitoring pages are the app's
+/// own screens on the same paths (/devices, /devices/:id, /devices/history,
+/// /map, /map/edit), so their links work unchanged inside the admin shell.
 final adminRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _AuthRefresh(ref);
   ref.onDispose(refresh.dispose);
@@ -30,7 +47,7 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
     pageBuilder: (_, _) => NoTransitionPage(child: child),
   );
   return GoRouter(
-    initialLocation: '/users',
+    initialLocation: '/dashboard',
     refreshListenable: refresh,
     redirect: (context, state) {
       final role = ref.read(roleProvider);
@@ -43,7 +60,7 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         role: role.valueOrNull,
         profileLoaded: true,
         requiredRole: 'admin',
-        home: '/users',
+        home: '/dashboard',
       );
     },
     routes: [
@@ -75,9 +92,50 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, state, child) =>
             AdminShell(location: state.uri.path, child: child),
         routes: [
-          page('/users', const UsersScreen()),
-          page('/devices', const DevicesAdminScreen()),
-          page('/activity', const ActivityScreen()),
+          page('/dashboard', const DashboardScreen()),
+          GoRoute(
+            path: '/map',
+            pageBuilder: (_, s) => NoTransitionPage(
+              child: MapScreen(
+                focusProblem: s.uri.queryParameters['focus'] == 'problem',
+                focusDevice: s.uri.queryParameters['device'],
+              ),
+            ),
+            routes: [
+              GoRoute(
+                path: 'edit',
+                builder: (_, _) => const EditPipelineScreen(),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/devices',
+            pageBuilder: (_, _) =>
+                const NoTransitionPage(child: DevicesScreen()),
+            routes: [
+              // Before ':id', so /devices/history is not read as a device ID.
+              GoRoute(
+                path: 'history',
+                builder: (_, s) => _readable(
+                  HistoryScreen(deviceId: s.uri.queryParameters['device']),
+                ),
+              ),
+              GoRoute(
+                path: ':id',
+                builder: (_, s) =>
+                    DeviceDetailScreen(deviceId: s.pathParameters['id']!),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/history',
+            pageBuilder: (_, s) => NoTransitionPage(
+              child: _readable(
+                HistoryScreen(deviceId: s.uri.queryParameters['device']),
+              ),
+            ),
+          ),
+          page('/staff', const StaffScreen()),
           page('/account', const AdminAccountScreen()),
         ],
       ),

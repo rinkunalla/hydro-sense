@@ -16,10 +16,10 @@ final deviceProblemsProvider = StreamProvider.autoDispose
       final since = DateTime.now().subtract(
         const Duration(hours: AppConfig.flowChartHours),
       );
-      return ref.watch(repositoryProvider).deviceProblems(uid, deviceId, since);
+      return ref.watch(repositoryProvider).deviceProblems(deviceId, since);
     });
 
-/// The account's problems touching one month (History). The key is the
+/// Every problem touching one month (History, all devices). The key is the
 /// first day of the month.
 final monthProblemsProvider = StreamProvider.autoDispose
     .family<List<Problem>, DateTime>((ref, month) {
@@ -27,7 +27,7 @@ final monthProblemsProvider = StreamProvider.autoDispose
       if (uid == null) return Stream.value(const []);
       final first = DateTime(month.year, month.month);
       final next = DateTime(month.year, month.month + 1);
-      return ref.watch(repositoryProvider).problems(uid, first, next);
+      return ref.watch(repositoryProvider).problems(first, next);
     });
 
 /// One device's day of 15-minute flow samples for the History graph.

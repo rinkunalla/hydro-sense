@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart' hide Pipeline;
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_database/firebase_database.dart';
 
 import '../core/config.dart';
@@ -8,53 +9,52 @@ import 'fleet_logic.dart';
 import 'models.dart';
 import 'pipeline.dart';
 
-/// Everything the client app reads and writes. Widget tests use a fake.
+/// Everything the app and the website read about the organization's devices
+/// (v3: every active member reads every device, D62), and the admin's device
+/// changes (D63). Widget tests use a fake.
 abstract class ClientRepository {
-  /// The client's devices (Firestore, filtered by ownerUid as the rules
-  /// require) joined with each device's live node (Realtime Database).
-  Stream<Fleet> fleet(String uid);
+  /// Every device (Firestore) joined with its live node (Realtime Database).
+  Stream<Fleet> fleet();
+
+  /// A staff member's own record; null for an admin (no users doc).
   Stream<UserProfile?> profile(String uid);
 
-  /// The user's problems that overlap [from, to), newest first (History).
-  Stream<List<Problem>> problems(String uid, DateTime from, DateTime to);
+  /// Every problem that overlaps [from, to), newest first (History).
+  Stream<List<Problem>> problems(DateTime from, DateTime to);
 
   /// One device's problems overlapping the time since [since], newest first
   /// (the Details status strip).
-  Stream<List<Problem>> deviceProblems(
-    String uid,
-    String deviceId,
-    DateTime since,
-  );
+  Stream<List<Problem>> deviceProblems(String deviceId, DateTime since);
 
   /// One day of 15-minute flow samples for the History graph: slot
   /// (0 to 95) to L/min. Empty when the day has no record.
   Future<Map<int, double>> dayReadings(String deviceId, String day);
 
-  /// Adds, changes or (null) clears a problem's note.
-  Future<void> setProblemNote(String problemId, String? note);
-
-  /// Deletes ended problems by ID (the rules refuse an ongoing one).
+  /// Admin: deletes ended problems by ID (the rules refuse an ongoing one).
   Future<void> deleteProblems(List<String> problemIds);
 
-  /// Deletes every problem that ended before [before]; returns how many.
-  Future<int> deleteProblemsBefore(String uid, DateTime before);
+  /// Admin: deletes every problem that ended before [before]; returns how many.
+  Future<int> deleteProblemsBefore(DateTime before);
 
-  /// The three alert switches on the user's own doc.
-  Future<void> setAlertPrefs(String uid, AlertPrefs prefs);
+  /// Admin: the device's name.
+  Future<void> rename(String deviceId, String name);
 
-  Future<void> rename(String deviceId, String nickname);
-
-  /// Sets or (with nulls) clears the manual pin, which overrides GPS.
+  /// Admin: sets or (with nulls) clears the manual pin, which overrides GPS.
   Future<void> setManualPin(String deviceId, double? lat, double? lng);
 
-  /// Sets the owner's own Low flow limit, or (null) goes back to automatic.
-  /// The device gets it in its next upload's reply, within about 30 s.
+  /// Admin: the own Low flow limit, or (null) back to automatic. The device
+  /// gets it in its next upload's reply, within about 30 s.
   Future<void> setFlowLimit(String deviceId, double? normalCutoff);
 
-  /// The user's own pipeline, or null before the first save.
-  Stream<Pipeline?> pipeline(String uid);
+  /// Admin: the flow sensor fitted to the device (D69). The limits start over
+  /// from that sensor's starter values.
+  Future<void> setSensorType(String deviceId, SensorType type);
 
-  Future<void> savePipeline(String uid, Pipeline pipeline);
+  /// The organization's one pipeline, or null before the first save.
+  Stream<Pipeline?> pipeline();
+
+  /// Admin: saves the pipeline (the rules allow only admins).
+  Future<void> savePipeline(Pipeline pipeline);
 }
 
 DateTime? _time(Object? v) => v is Timestamp ? v.toDate() : null;
@@ -65,30 +65,33 @@ double? _num(Object? v) => v is num ? v.toDouble() : null;
 /// A GPS coordinate, or null while device GPS is switched off.
 double? _gps(Object? v) => AppConfig.deviceGpsEnabled ? _num(v) : null;
 
-AlertPrefs _prefs(Object? v) {
-  final m = v is Map ? v : const {};
-  return AlertPrefs(
-    push: m['push'] != false,
-    sms: m['sms'] != false,
-    email: m['email'] == true,
-  );
-}
-
 typedef _Raw = Map<Object?, Object?>;
 
 class FirestoreClientRepository implements ClientRepository {
-  FirestoreClientRepository(this._db, [this._live]);
+  FirestoreClientRepository(this._db, [this._live, this._functions]);
 
   final FirebaseFirestore _db;
 
   /// The live channel; null only where nothing reads it.
   final FirebaseDatabase? _live;
 
+  /// The admin callables; null only where nothing changes a device.
+  final FirebaseFunctions? _functions;
+
+  static const _pipelineDoc = 'pipelines/main';
+
+  Future<void> _updateDevice(String deviceId, Map<String, Object?> fields) =>
+      _functions!.httpsCallable('updateDevice').call<Object?>({
+        'deviceId': deviceId,
+        ...fields,
+      });
+
   static Device _device(DocumentSnapshot<Map<String, dynamic>> d, _Raw live) {
     final m = d.data() ?? const {};
     return Device(
       id: d.id,
       nickname: (m['nickname'] as String?) ?? d.id,
+      sensorType: SensorType.fromWire(m['sensorType']),
       flowStatus: live['flowStatus'] as String?,
       flowRate: _num(live['flowRate']),
       // Effective location: the user's manual pin, else the GPS fix
@@ -145,20 +148,17 @@ class FirestoreClientRepository implements ClientRepository {
       type: type,
       startedAt: started,
       endedAt: _time(m['endedAt']),
-      note: m['note'] as String?,
     );
   }
 
   @override
-  Stream<Fleet> fleet(String uid) {
+  Stream<Fleet> fleet() {
     final devices = _db
         .collection('devices')
-        .where('ownerUid', isEqualTo: uid)
         .snapshots(includeMetadataChanges: true);
     // Only registration and firmware are read here; they change rarely.
     final health = _db
         .collection('device_health')
-        .where('ownerUid', isEqualTo: uid)
         .snapshots(includeMetadataChanges: true);
 
     late StreamController<Fleet> out;
@@ -192,7 +192,7 @@ class FirestoreClientRepository implements ClientRepository {
       );
     }
 
-    // One live listener per owned device, added and dropped as the list changes.
+    // One live listener per device, added and dropped as the list changes.
     var want = <String>{};
     final retries = <String, Timer>{};
 
@@ -209,10 +209,9 @@ class FirestoreClientRepository implements ClientRepository {
               emit();
             },
             onError: (Object _) {
-              // The rules refuse a node that does not exist yet (no owner on
-              // it before the device's first upload) or whose new owner is
-              // still being mirrored. Try again shortly, never give up
-              // while the device is still in the list.
+              // A refused read (for example a member entry still being
+              // written): try again shortly, never give up while the device
+              // is still in the list.
               live[id] = const {};
               liveSubs.remove(id);
               emit();
@@ -293,9 +292,7 @@ class FirestoreClientRepository implements ClientRepository {
           email: m['email'] as String?,
           phone: m['phone'] as String?,
           displayName: m['name'] as String?,
-          deviceCount: (m['deviceCount'] as num?)?.toInt() ?? 0,
-          alertPrefs: _prefs(m['alertPrefs']),
-          deletionRequested: m['deletionRequestedAt'] != null,
+          username: m['username'] as String?,
         );
       });
 
@@ -313,9 +310,8 @@ class FirestoreClientRepository implements ClientRepository {
   }
 
   @override
-  Stream<List<Problem>> problems(String uid, DateTime from, DateTime to) => _db
+  Stream<List<Problem>> problems(DateTime from, DateTime to) => _db
       .collection('problems')
-      .where('ownerUid', isEqualTo: uid)
       .where('startedAt', isLessThan: Timestamp.fromDate(to))
       .orderBy('startedAt', descending: true)
       .limit(AppConfig.problemQueryLimit)
@@ -323,13 +319,8 @@ class FirestoreClientRepository implements ClientRepository {
       .map((s) => _overlapping(s, from, to));
 
   @override
-  Stream<List<Problem>> deviceProblems(
-    String uid,
-    String deviceId,
-    DateTime since,
-  ) => _db
+  Stream<List<Problem>> deviceProblems(String deviceId, DateTime since) => _db
       .collection('problems')
-      .where('ownerUid', isEqualTo: uid)
       .where('deviceId', isEqualTo: deviceId)
       .orderBy('startedAt', descending: true)
       .limit(AppConfig.stripProblemLimit)
@@ -348,17 +339,13 @@ class FirestoreClientRepository implements ClientRepository {
             if (e.value is num) slot: (e.value as num).toDouble(),
       };
     } on FirebaseException catch (e) {
-      // A day with no record is refused by the rules (no owner to check).
+      // A day with no record reads as empty.
       if (e.code == 'permission-denied' || e.code == 'not-found') {
         return const {};
       }
       rethrow;
     }
   }
-
-  @override
-  Future<void> setProblemNote(String problemId, String? note) =>
-      _db.doc('problems/$problemId').update({'note': note});
 
   @override
   Future<void> deleteProblems(List<String> problemIds) async {
@@ -372,10 +359,9 @@ class FirestoreClientRepository implements ClientRepository {
   }
 
   @override
-  Future<int> deleteProblemsBefore(String uid, DateTime before) async {
+  Future<int> deleteProblemsBefore(DateTime before) async {
     final s = await _db
         .collection('problems')
-        .where('ownerUid', isEqualTo: uid)
         .where('startedAt', isLessThan: Timestamp.fromDate(before))
         .get();
     final ids = [
@@ -389,29 +375,28 @@ class FirestoreClientRepository implements ClientRepository {
   }
 
   @override
-  Future<void> rename(String deviceId, String nickname) =>
-      _db.doc('devices/$deviceId').update({'nickname': nickname});
-
-  @override
-  Future<void> setAlertPrefs(String uid, AlertPrefs prefs) =>
-      _db.doc('users/$uid').update({'alertPrefs': prefs.toMap()});
+  Future<void> rename(String deviceId, String name) =>
+      _updateDevice(deviceId, {'name': name});
 
   @override
   Future<void> setManualPin(String deviceId, double? lat, double? lng) =>
-      _db.doc('devices/$deviceId').update({'manualLat': lat, 'manualLng': lng});
+      _updateDevice(deviceId, {'manualLat': lat, 'manualLng': lng});
 
   @override
   Future<void> setFlowLimit(String deviceId, double? normalCutoff) =>
-      _db.doc('devices/$deviceId').update({'userNormalCutoff': normalCutoff});
+      _updateDevice(deviceId, {'userNormalCutoff': normalCutoff});
 
   @override
-  Stream<Pipeline?> pipeline(String uid) => _db
-      .doc('pipelines/$uid')
-      .snapshots()
-      .map((s) => Pipeline.fromMap(s.data()));
+  Future<void> setSensorType(String deviceId, SensorType type) =>
+      _updateDevice(deviceId, {'sensorType': type.wire});
 
   @override
-  Future<void> savePipeline(String uid, Pipeline pipeline) => _db
-      .doc('pipelines/$uid')
-      .set({...pipeline.toMap(), 'updatedAt': FieldValue.serverTimestamp()});
+  Stream<Pipeline?> pipeline() =>
+      _db.doc(_pipelineDoc).snapshots().map((s) => Pipeline.fromMap(s.data()));
+
+  @override
+  Future<void> savePipeline(Pipeline pipeline) => _db.doc(_pipelineDoc).set({
+    ...pipeline.toMap(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
 }

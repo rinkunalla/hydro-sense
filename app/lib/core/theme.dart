@@ -7,13 +7,20 @@ abstract final class AppColors {
   static const frost = Color(0xFFF2F6FA);
   static const glacier = Color(0xFFDCE5EF);
   static const mist = Color(0xFFEEF1F7); // last background stop
-  static const deepCyan = Color(0xFF00789A);
-  static const royal = Color(0xFF2563EB); // middle of the button gradient
-  static const indigo = Color(0xFF4F46E5);
+  // Action colour (D68): steel teal replaces the cyan-to-indigo gradient,
+  // which was too saturated for the frost background. Only a screen's main
+  // button is filled; selected items use the pale tint with dark text.
+  static const action = Color(0xFF2E6B82);
+  static const actionTint = Color(0xFFDCEAF0);
+  static const onActionTint = Color(0xFF1F5266);
+  // Older names, kept so every use follows the new colour.
+  static const deepCyan = action;
+  static const royal = action;
+  static const indigo = action;
   static const ink = Color(0xFF0A1B2E);
   static const steel = Color(0xFF3A4A5E);
-  static const link = Color(0xFF4338CA);
-  static const tint = Color(0xFFE0F2F7);
+  static const link = onActionTint;
+  static const tint = actionTint;
   static const water = Color(0xFF22C3DD);
   static const solidGlass = Color(0xFFF7F9FC); // reduce-transparency fallback
   static const rim = Color(0xCCFFFFFF);
@@ -24,8 +31,9 @@ abstract final class AppColors {
   /// Background stops, top to bottom.
   static const backgroundStops = [frost, glacier, mist];
 
-  /// Primary button gradient stops.
-  static const buttonStops = [deepCyan, royal, indigo];
+  /// Primary button fill: one colour since D68 (kept as stops for the
+  /// widgets that paint it as a gradient).
+  static const buttonStops = [action, action];
 
   // Older names still used by the admin website.
   static const background = glacier;

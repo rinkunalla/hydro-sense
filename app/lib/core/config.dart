@@ -40,13 +40,12 @@ abstract final class AppConfig {
   // Data rules mirrored from the backend
   static const int nicknameMax = 24;
   static const int userNameMax = 60; // USER_NAME_MAX
-  static const int labelMax = 24; // LABEL_MAX
-  static const int restoreWindowDays = 30; // RESTORE_WINDOW_DAYS
+  // Staff usernames (D64): USERNAME_MIN / USERNAME_MAX.
+  static const int usernameMin = 3;
+  static const int usernameMax = 20;
   static const int lowBatteryPercent = 20;
-  static const double starterLowCutoff = 0.2; // STARTER_LOW_FLOW_CUTOFF
-  static const double starterNormalCutoff = 2.0; // STARTER_NORMAL_FLOW_CUTOFF
-  static const double userCutoffMin = 1.0; // USER_NORMAL_CUTOFF_MIN
-  static const double userCutoffMax = 30; // USER_NORMAL_CUTOFF_MAX
+  // Starter cutoffs and the admin's limit range are per sensor: SensorType
+  // in data/models.dart (D69).
   static const double userCutoffStep = 0.5;
   static const int minPasswordLength = 8;
   static final RegExp deviceIdPattern = RegExp(r'^[0-9A-F]{12}$');
@@ -94,6 +93,8 @@ abstract final class AppConfig {
 
   // Layout and accessibility
   static const double adminMaxContentWidth = 1200;
+  // History on the website: the phone layout's calendar, kept this wide.
+  static const double adminReadableWidth = 760;
   static const double adminRailBreakpoint = 800;
   static const double maxTextScale = 1.5;
   static const double minTapTarget = 48;

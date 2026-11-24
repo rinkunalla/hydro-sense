@@ -181,49 +181,68 @@ void main() {
       expect(ids(DeviceFilter.all, 'gar'), ['1']);
     });
 
-    test('website: users by pill and by name, mobile or email', () {
-      const a = AdminUser(
+    test('website: staff by name, username, mobile or email (D64)', () {
+      const a = StaffMember(
         uid: 'a',
         name: 'Juan Dela Cruz',
+        username: 'juan.dc',
         email: 'juan@example.com',
         phone: '639171234567',
-        passwordSet: true,
       );
-      const b = AdminUser(
+      const b = StaffMember(
         uid: 'b',
         name: 'Ana',
-        email: 'ana@example.com',
-        phone: '639180000000',
+        username: 'ana',
+        disabled: true,
       );
-      expect(userMatches(a, UserFilter.all, 'dela'), isTrue);
-      expect(userMatches(a, UserFilter.all, '0917 123'), isTrue);
-      expect(userMatches(a, UserFilter.all, 'ana@'), isFalse);
-      expect(userMatches(b, UserFilter.noPassword, ''), isTrue);
-      expect(userMatches(a, UserFilter.noPassword, ''), isFalse);
+      expect(staffMatches(a, 'dela'), isTrue);
+      expect(staffMatches(a, 'juan.d'), isTrue);
+      expect(staffMatches(a, '0917 123'), isTrue);
+      expect(staffMatches(a, 'ana@'), isFalse);
+      expect(staffMatches(b, ''), isTrue);
+      // Active first, then disabled.
+      expect(sortStaff([b, a]).map((s) => s.uid), ['a', 'b']);
     });
 
-    test(
-      'website: devices by ID, label or owner; activity by group and admin',
-      () {
-        const d = AdminDevice(
-          id: 'A4F00F6936B0',
-          label: 'Unit 1',
-          ownerName: 'Juan',
-        );
-        expect(deviceMatches(d, 'a4:f0'), isTrue);
-        expect(deviceMatches(d, 'unit1'), isTrue);
-        expect(deviceMatches(d, 'juan'), isTrue);
-        expect(deviceMatches(d, 'ana'), isFalse);
-        const e = AuditEntry(
-          id: '1',
-          action: 'device_removed',
-          adminEmail: 'x@a.b',
-        );
-        expect(auditMatches(e, AuditGroup.devices, null), isTrue);
-        expect(auditMatches(e, AuditGroup.users, null), isFalse);
-        expect(auditMatches(e, AuditGroup.all, 'y@a.b'), isFalse);
-      },
-    );
+    test('website: dashboard counts and what needs attention, worst first', () {
+      final views = [
+        view('D1', nickname: 'Tank'),
+        view('D2', nickname: 'Garden', flowStatus: 'Low Flow'),
+        view('D3', nickname: 'Main', flowStatus: 'No Flow'),
+        view('D4', nickname: 'Shed', online: false),
+        view('D5', registered: false),
+      ];
+      final c = countStatuses(views);
+      expect(
+        [c.normal, c.lowFlow, c.noFlow, c.offline, c.other],
+        [1, 1, 1, 1, 1],
+      );
+      expect(needAttention(views).map((v) => v.nickname), [
+        'Main',
+        'Garden',
+        'Shed',
+      ]);
+    });
+
+    test('website: History CSV quotes every field', () {
+      final csv = problemsCsv(
+        [
+          Problem(
+            id: 'p1',
+            deviceId: 'D1',
+            type: ProblemType.noFlow,
+            startedAt: DateTime(2026, 11, 3, 6, 10),
+          ),
+        ],
+        {'D1': 'Main "big" pipe'},
+      );
+      final lines = csv.split('\r\n');
+      expect(lines.first, '"Device","Device ID","Problem","Started","Ended"');
+      expect(
+        lines[1],
+        '"Main ""big"" pipe","D1","No water","2026-11-03 06:10","Ongoing"',
+      );
+    });
   });
 
   group('Offline on the server clock', () {
@@ -241,25 +260,6 @@ void main() {
         isTrue,
       );
       expect(silentTooLong(null, 30, testNow), isFalse);
-    });
-  });
-
-  group('Activity date dropdowns', () {
-    test('a year, a month or a single day', () {
-      expect(calendarWindow(2026, null, null), (
-        from: DateTime(2026),
-        to: DateTime(2027),
-      ));
-      expect(calendarWindow(2026, 11, null), (
-        from: DateTime(2026, 11),
-        to: DateTime(2026, 12),
-      ));
-      expect(calendarWindow(2026, 12, 31), (
-        from: DateTime(2026, 12, 31),
-        to: DateTime(2027),
-      ));
-      expect(daysInMonth(2028, 2), 29);
-      expect(daysInMonth(2026, 2), 28);
     });
   });
 
@@ -394,6 +394,8 @@ void main() {
             fleetProvider.overrideWith(
               (_) => Stream.value(Fleet([view('1', nickname: 'Garden Line')])),
             ),
+            // The admin may delete ended records (D63).
+            isAdminProvider.overrideWithValue(true),
             clockProvider.overrideWith((_) => Stream.value(now)),
             monthProblemsProvider.overrideWith(
               (_, _) => Stream.value(problems),
@@ -436,10 +438,10 @@ void main() {
       await t.pumpAndSettle();
       expect(find.text('No water · Garden Line'), findsNothing);
 
-      // An ongoing problem offers a note but no Delete.
+      // An ongoing problem: no notes in v3 (D66), and no Delete yet.
       await t.tap(find.text('Offline · Garden Line'));
       await t.pumpAndSettle();
-      expect(find.text('Save note'), findsOneWidget);
+      expect(find.text('Save note'), findsNothing);
       expect(find.text('Delete'), findsNothing);
       expect(find.textContaining("can't be deleted yet"), findsOneWidget);
       expect(t.takeException(), isNull);

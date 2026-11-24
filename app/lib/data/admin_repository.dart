@@ -1,98 +1,48 @@
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../core/config.dart';
+import 'models.dart' show SensorType;
 
-// Admin privacy: the admin site reads nothing from Firestore
-// directly; every admin call goes through a callable that returns only the
-// allowed fields. admin_privacy_test enforces this.
+// The admin website's account and device actions, each one a callable (v3,
+// D63, D64). The admin reads devices, live data, History and the pipeline
+// directly through the shared ClientRepository; only changes go through here.
 
 DateTime? _ms(Object? v) =>
     v is num ? DateTime.fromMillisecondsSinceEpoch(v.toInt()) : null;
 
-/// One row of adminListDevices.
-class AdminDevice {
-  const AdminDevice({
-    required this.id,
-    this.label,
-    this.ownerUid,
-    this.ownerName,
-    this.registered = false,
-    this.online = false,
-    this.lastSeen,
-    this.removedAt,
-    this.purgeAfter,
-  });
-
-  final String id;
-  final String? label;
-  final String? ownerUid;
-  final String? ownerName;
-  final bool registered;
-  final bool online;
-  final DateTime? lastSeen;
-  final DateTime? removedAt;
-  final DateTime? purgeAfter;
-
-  bool get removed => removedAt != null;
-
-  /// What the typed confirmation must match.
-  String get confirmText => label ?? id;
-
-  /// The label, else the ID: how the admin site names a device.
-  String get display => label ?? id;
-
-  factory AdminDevice.fromMap(Map<Object?, Object?> m) => AdminDevice(
-    id: m['id'] as String,
-    label: m['label'] as String?,
-    ownerUid: m['ownerUid'] as String?,
-    ownerName: m['ownerName'] as String?,
-    registered: m['registered'] == true,
-    online: m['online'] == true,
-    lastSeen: _ms(m['lastSeenMs']),
-    removedAt: _ms(m['removedAtMs']),
-    purgeAfter: _ms(m['purgeAfterMs']),
-  );
-}
-
-/// One row of adminListUsers (profile and status only).
-class AdminUser {
-  const AdminUser({
+/// One staff member from adminListStaff (D64).
+class StaffMember {
+  const StaffMember({
     required this.uid,
     required this.name,
-    required this.email,
-    required this.phone,
-    this.deviceCount = 0,
-    this.passwordSet = false,
-    this.suspended = false,
-    this.purgeAfter,
-    this.deletionRequestedAt,
+    required this.username,
+    this.email,
+    this.phone,
+    this.disabled = false,
     this.createdAt,
+    this.lastSignIn,
   });
 
   final String uid;
   final String name;
-  final String email;
+  final String username;
+  final String? email;
 
-  /// 639XXXXXXXXX
-  final String phone;
-  final int deviceCount;
-  final bool passwordSet;
-  final bool suspended;
-  final DateTime? purgeAfter;
-  final DateTime? deletionRequestedAt;
+  /// 639XXXXXXXXX, or null when the admin entered none.
+  final String? phone;
+  final bool disabled;
   final DateTime? createdAt;
+  final DateTime? lastSignIn;
 
-  factory AdminUser.fromMap(Map<Object?, Object?> m) => AdminUser(
+  factory StaffMember.fromMap(Map<Object?, Object?> m) => StaffMember(
     uid: m['uid'] as String,
     name: (m['name'] as String?) ?? '',
-    email: (m['email'] as String?) ?? '',
-    phone: (m['phone'] as String?) ?? '',
-    deviceCount: (m['deviceCount'] as num?)?.toInt() ?? 0,
-    passwordSet: m['passwordSet'] == true,
-    suspended: m['status'] == 'suspended',
-    purgeAfter: _ms(m['purgeAfterMs']),
-    deletionRequestedAt: _ms(m['deletionRequestedAtMs']),
+    username: (m['username'] as String?) ?? '',
+    email: m['email'] as String?,
+    phone: m['phone'] as String?,
+    disabled: m['status'] == 'disabled',
     createdAt: _ms(m['createdAtMs']),
+    lastSignIn: _ms(m['lastSignInMs']),
   );
 }
 
@@ -102,6 +52,7 @@ class AdminInfo {
     required this.uid,
     required this.email,
     this.name,
+    this.phone,
     this.invited = false,
     this.you = false,
     this.inviteSentAt,
@@ -113,6 +64,9 @@ class AdminInfo {
   final String uid;
   final String? name;
   final String email;
+
+  /// The admin's own number for SMS alerts (D65), or null.
+  final String? phone;
   final bool invited;
   final bool you;
   final DateTime? inviteSentAt;
@@ -126,6 +80,7 @@ class AdminInfo {
     uid: m['uid'] as String,
     name: m['name'] as String?,
     email: (m['email'] as String?) ?? '',
+    phone: m['phone'] as String?,
     invited: m['status'] == 'invited',
     you: m['you'] == true,
     inviteSentAt: _ms(m['inviteSentAtMs']),
@@ -135,63 +90,34 @@ class AdminInfo {
   );
 }
 
-/// One entry of the admin activity log.
-class AuditEntry {
-  const AuditEntry({
-    required this.id,
-    required this.action,
-    this.at,
-    this.adminEmail,
-    this.targetId,
-    this.targetName,
-  });
-
-  final String id;
-  final DateTime? at;
-  final String? adminEmail;
-  final String action;
-  final String? targetId;
-  final String? targetName;
-
-  factory AuditEntry.fromMap(Map<Object?, Object?> m) => AuditEntry(
-    id: m['id'] as String,
-    at: _ms(m['atMs']),
-    adminEmail: m['adminEmail'] as String?,
-    action: (m['action'] as String?) ?? '',
-    targetId: m['targetId'] as String?,
-    targetName: m['targetName'] as String?,
-  );
-}
-
-/// Every admin action, each one a callable. Errors are
-/// FirebaseFunctionsException with a details.code (EMAIL_IN_USE, PHONE_IN_USE,
-/// CONFIRM_MISMATCH, LAST_ADMIN, ...).
+/// Every admin change, each one a callable. Errors are
+/// FirebaseFunctionsException with a details.code (USERNAME_IN_USE,
+/// PHONE_IN_USE, CONFIRM_MISMATCH, LAST_ADMIN, DEVICE_EXISTS, ...).
 abstract class AdminRepository {
-  Future<List<AdminDevice>> devices();
-  Future<void> addAllowedDevice(String deviceId, {String? label});
-  Future<void> updateDeviceLabel(String deviceId, String? label);
-
-  /// uid null unassigns. Moving a device deletes its history.
-  Future<void> assignDevice(String deviceId, String? uid);
-  Future<void> removeDevice(String deviceId, {required String confirmLabel});
-  Future<void> restoreDevice(String deviceId);
-
-  Future<List<AdminUser>> users();
-
-  /// Returns the new user's uid.
-  Future<String> createUser({
+  Future<List<StaffMember>> staff();
+  Future<String> createStaff({
     required String name,
-    required String email,
-    required String mobile,
+    required String username,
+    required String password,
+    String? mobile,
+    String? email,
   });
-  Future<void> updateUser(
+
+  /// Only the given fields change; an empty mobile or email removes it.
+  Future<void> updateStaff(
     String uid, {
     String? name,
-    String? email,
+    String? username,
     String? mobile,
+    String? email,
+    bool? disabled,
   });
-  Future<void> deleteUser(String uid, {required String confirmName});
-  Future<void> restoreUser(String uid);
+  Future<void> resetStaffPassword(String uid, String password);
+  Future<void> deleteStaff(String uid, {required String confirmName});
+
+  /// Lists the ID and creates its records (Not set up yet).
+  Future<void> addDevice(String deviceId, {String? name, SensorType? sensor});
+  Future<void> removeDevice(String deviceId, {required String confirmName});
 
   Future<({List<AdminInfo> admins, bool belowRecommended})> admins();
   Future<void> inviteAdmin(String email);
@@ -200,23 +126,18 @@ abstract class AdminRepository {
   Future<void> removeAdmin(String uid);
   Future<void> updateMyAdminName(String name);
 
-  /// After every admin sign-in: marks an invited admin active and copies a
-  /// verified new email into the record.
+  /// The admin's own mobile for SMS alerts; empty removes it.
+  Future<void> updateMyAdminMobile(String mobile);
+
+  /// After every admin sign-in: marks an invited admin active, copies a
+  /// verified new email, and lets the account read the live channel.
   Future<void> syncMyAdmin();
   Future<void> signOutEverywhere();
 
-  /// Activity, newest first: a page of [limit] before [before], or only the
-  /// entries about [targetId] (a user or device).
-  Future<List<AuditEntry>> audit({
-    int limit = 100,
-    DateTime? before,
-    String? targetId,
-  });
-
-  /// Unauthenticated: always "ok", whether or not the email was invited.
+  /// Unauthenticated: emails a fresh setup link to an invited admin.
   Future<void> requestAdminSetup(String email);
 
-  /// Returns the admin's email, to sign in with right after.
+  /// Unauthenticated: sets the password with the emailed one-time token.
   Future<String> completeAdminSetup(String token, String password);
 }
 
@@ -235,79 +156,65 @@ class FunctionsAdminRepository implements AdminRepository {
   ];
 
   @override
-  Future<List<AdminDevice>> devices() async => [
-    for (final m in _rows(await _call('adminListDevices'), 'rows'))
-      AdminDevice.fromMap(m),
+  Future<List<StaffMember>> staff() async => [
+    for (final m in _rows(await _call('adminListStaff'), 'staff'))
+      StaffMember.fromMap(m),
   ];
 
   @override
-  Future<void> addAllowedDevice(String deviceId, {String? label}) =>
-      _call('addAllowedDevice', {
-        'deviceId': deviceId,
-        if (label != null && label.trim().isNotEmpty) 'label': label.trim(),
-      });
-
-  @override
-  Future<void> updateDeviceLabel(String deviceId, String? label) =>
-      _call('updateDeviceLabel', {
-        'deviceId': deviceId,
-        'label': (label == null || label.trim().isEmpty) ? null : label.trim(),
-      });
-
-  @override
-  Future<void> assignDevice(String deviceId, String? uid) =>
-      _call('assignDevice', {'deviceId': deviceId, 'uid': uid});
-
-  @override
-  Future<void> removeDevice(String deviceId, {required String confirmLabel}) =>
-      _call('removeDevice', {
-        'deviceId': deviceId,
-        'confirmLabel': confirmLabel,
-      });
-
-  @override
-  Future<void> restoreDevice(String deviceId) =>
-      _call('restoreDevice', {'deviceId': deviceId});
-
-  @override
-  Future<List<AdminUser>> users() async => [
-    for (final m in _rows(await _call('adminListUsers'), 'users'))
-      AdminUser.fromMap(m),
-  ];
-
-  @override
-  Future<String> createUser({
+  Future<String> createStaff({
     required String name,
-    required String email,
-    required String mobile,
+    required String username,
+    required String password,
+    String? mobile,
+    String? email,
   }) async {
-    final r = await _call('createUser', {
+    final r = await _call('createStaff', {
       'name': name,
-      'email': email,
-      'mobile': mobile,
+      'username': username,
+      'password': password,
+      'mobile': ?mobile,
+      'email': ?email,
     });
     return (r is Map ? r['uid'] as String? : null) ?? '';
   }
 
   @override
-  Future<void> updateUser(
+  Future<void> updateStaff(
     String uid, {
     String? name,
-    String? email,
+    String? username,
     String? mobile,
-  }) => _call('updateUser', {
+    String? email,
+    bool? disabled,
+  }) => _call('updateStaff', {
     'uid': uid,
     'name': ?name,
-    'email': ?email,
+    'username': ?username,
     'mobile': ?mobile,
+    'email': ?email,
+    'disabled': ?disabled,
   });
 
   @override
-  Future<void> deleteUser(String uid, {required String confirmName}) =>
-      _call('deleteUser', {'uid': uid, 'confirmName': confirmName});
+  Future<void> resetStaffPassword(String uid, String password) =>
+      _call('resetStaffPassword', {'uid': uid, 'password': password});
 
   @override
-  Future<void> restoreUser(String uid) => _call('restoreUser', {'uid': uid});
+  Future<void> deleteStaff(String uid, {required String confirmName}) =>
+      _call('deleteStaff', {'uid': uid, 'confirmName': confirmName});
+
+  @override
+  Future<void> addDevice(String deviceId, {String? name, SensorType? sensor}) =>
+      _call('addAllowedDevice', {
+        'deviceId': deviceId,
+        'name': ?name,
+        'sensorType': ?sensor?.wire,
+      });
+
+  @override
+  Future<void> removeDevice(String deviceId, {required String confirmName}) =>
+      _call('removeDevice', {'deviceId': deviceId, 'confirmName': confirmName});
 
   @override
   Future<({List<AdminInfo> admins, bool belowRecommended})> admins() async {
@@ -338,27 +245,14 @@ class FunctionsAdminRepository implements AdminRepository {
       _call('updateMyAdminName', {'name': name});
 
   @override
+  Future<void> updateMyAdminMobile(String mobile) =>
+      _call('updateMyAdminMobile', {'mobile': mobile});
+
+  @override
   Future<void> syncMyAdmin() => _call('syncMyAdmin');
 
   @override
   Future<void> signOutEverywhere() => _call('signOutEverywhere');
-
-  @override
-  Future<List<AuditEntry>> audit({
-    int limit = 100,
-    DateTime? before,
-    String? targetId,
-  }) async => [
-    for (final m in _rows(
-      await _call('listAdminAudit', {
-        'limit': limit,
-        'beforeMs': ?before?.millisecondsSinceEpoch,
-        'targetId': ?targetId,
-      }),
-      'entries',
-    ))
-      AuditEntry.fromMap(m),
-  ];
 
   @override
   Future<void> requestAdminSetup(String email) =>

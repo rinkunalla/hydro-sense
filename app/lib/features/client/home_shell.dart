@@ -96,9 +96,8 @@ class _Tab extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppSpace.pill),
-          gradient: selected
-              ? const LinearGradient(colors: AppColors.buttonStops)
-              : null,
+          // Selected: pale tint with dark text (D68), never a strong fill.
+          color: selected ? AppColors.actionTint : null,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -107,7 +106,7 @@ class _Tab extends StatelessWidget {
             Icon(
               icon,
               size: 22,
-              color: selected ? Colors.white : AppColors.deepCyan,
+              color: selected ? AppColors.onActionTint : AppColors.deepCyan,
             ),
             Text(
               label,
@@ -115,7 +114,7 @@ class _Tab extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: AppText.strong.copyWith(
                 fontSize: 12,
-                color: selected ? Colors.white : AppColors.ink,
+                color: selected ? AppColors.onActionTint : AppColors.ink,
               ),
             ),
           ],
