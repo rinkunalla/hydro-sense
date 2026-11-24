@@ -804,6 +804,22 @@ describe("device admin (D62, D63, D69)", () => {
 });
 
 describe("v2 -> v3 migration", () => {
+  // A v2 pipeline in the shape v3's rules accept; it names the removed device too.
+  const v2Pipeline = (name: string) => ({
+    name,
+    source: { name: "Tank", lat: 16.04, lng: 120.33 },
+    branches: [
+      {
+        id: "b1",
+        endName: "Home",
+        endLat: 16.05,
+        endLng: 120.33,
+        deviceIds: ["D0000000AAA1", "D0000000AAA2"],
+      },
+    ],
+    updatedAt: ts(T0 - H),
+  });
+
   async function seedV2() {
     const auth = getAuth();
     await auth.createUser({ uid: "owner", email: "owner@example.com", password: "secret123" });
@@ -867,8 +883,8 @@ describe("v2 -> v3 migration", () => {
       .collection(C.problems)
       .doc("p1")
       .set({ ownerUid: "owner", deviceId: "D0000000AAA1", note: "x" });
-    await db.collection(C.pipelines).doc("owner").set({ name: "Owner line", branches: [] });
-    await db.collection(C.pipelines).doc("ana").set({ name: "Ana line", branches: [] });
+    await db.collection(C.pipelines).doc("owner").set(v2Pipeline("Owner line"));
+    await db.collection(C.pipelines).doc("ana").set(v2Pipeline("Ana line"));
     await db.collection("admin_audit").doc("a1").set({ action: "user_deleted" });
     await db.collection("password_resets").doc("ana").set({ codeHash: "h" });
     await liveRef("D0000000AAA1").set({ ownerUid: "owner", removed: false, online: true });
@@ -925,9 +941,10 @@ describe("v2 -> v3 migration", () => {
     });
 
     // One pipeline; v2-only records gone; members and the live channel.
-    expect((await db.collection(C.pipelines).doc(PIPELINE_DOC).get()).get("name")).toBe(
-      "Owner line",
-    );
+    const main = (await db.collection(C.pipelines).doc(PIPELINE_DOC).get()).data()!;
+    expect(main.name).toBe("Owner line");
+    // The removed device drops out of the branch.
+    expect(main.branches[0].deviceIds).toEqual(["D0000000AAA1"]);
     expect((await db.collection(C.pipelines).get()).size).toBe(1);
     expect((await db.collection("admin_audit").get()).size).toBe(0);
     expect((await db.collection("password_resets").get()).size).toBe(0);
@@ -938,6 +955,29 @@ describe("v2 -> v3 migration", () => {
 
     const again = await migrateV3({ apply: true, ownerUid: "owner", nowMs: T0 });
     expect(again.steps).toEqual([]);
+  });
+
+  it("no owner: the default admin stays, and the only pipeline is kept when it fits", async () => {
+    await seedV2();
+    await db.collection(C.pipelines).doc("ana").delete();
+    const r = await migrateV3({ apply: true, ownerUid: null, nowMs: T0 });
+    expect(r.problems).toEqual(["no ownerUid given: nobody was made admin from a user account"]);
+    expect((await getAuth().getUser("owner")).customClaims).toMatchObject({ role: "user" });
+    const main = (await db.collection(C.pipelines).doc(PIPELINE_DOC).get()).data()!;
+    expect(main.name).toBe("Owner line");
+    expect(main.branches[0].deviceIds).toEqual(["D0000000AAA1"]);
+    expect((await db.collection(C.pipelines).get()).size).toBe(1);
+  });
+
+  it("no owner: a pipeline that does not fit v3 is deleted, not copied", async () => {
+    await seedV2();
+    await db.collection(C.pipelines).doc("ana").delete();
+    await db.collection(C.pipelines).doc("owner").set({ name: "Owner line", branches: [] });
+    const r = await migrateV3({ apply: true, ownerUid: null, nowMs: T0 });
+    expect(r.problems).toContain(
+      "pipelines/owner does not fit the v3 shape; draw it again on the website",
+    );
+    expect((await db.collection(C.pipelines).get()).size).toBe(0);
   });
 });
 

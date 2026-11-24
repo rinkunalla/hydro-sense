@@ -13,6 +13,7 @@
 import { getAuth, type UserRecord } from "firebase-admin/auth";
 import { FieldValue } from "firebase-admin/firestore";
 import { deleteDeviceData } from "../admin/ownership";
+import { PIPELINE_MAX_BRANCHES, PIPELINE_MAX_DEVICES_PER_BRANCH } from "../config";
 import { C, PIPELINE_DOC, db, rtdb, ts } from "../lib/db";
 import { mirrorDevice } from "../lib/liveStore";
 import { setMember } from "../lib/members";
@@ -49,6 +50,51 @@ function deletes(d: Record<string, unknown>, names: string[]): Record<string, un
 }
 
 const keysOf = (u: Record<string, unknown>) => Object.keys(u).sort().join(", ");
+
+const text = (v: unknown, max: number) =>
+  typeof v === "string" && v.trim().length > 0 && v.length <= max;
+const coord = (v: unknown, lim: number) => typeof v === "number" && Math.abs(v) <= lim;
+const onlyKeys = (v: unknown, keys: string[]) =>
+  typeof v === "object" && v !== null && Object.keys(v).every((k) => keys.includes(k));
+
+/**
+ * A v2 pipeline as the v3 `pipelines/main`, or null when it would not pass the
+ * v3 rules' validPipeline (same keys, names 1 to 40, at most 10 branches of 50
+ * devices). Device IDs no longer in `devices` are dropped.
+ */
+function v3Pipeline(d: Record<string, unknown>, known: Set<string>): Record<string, unknown> | null {
+  const source = d.source as Record<string, unknown> | undefined;
+  const branches = d.branches;
+  if (
+    !onlyKeys(d, ["name", "source", "branches", "updatedAt"]) ||
+    !text(d.name, 40) ||
+    !onlyKeys(source, ["name", "lat", "lng"]) ||
+    !text(source?.name, 40) ||
+    !coord(source?.lat, 90) ||
+    !coord(source?.lng, 180) ||
+    !Array.isArray(branches) ||
+    branches.length > PIPELINE_MAX_BRANCHES
+  ) {
+    return null;
+  }
+  const out: Record<string, unknown>[] = [];
+  for (const b of branches as Record<string, unknown>[]) {
+    if (
+      !onlyKeys(b, ["id", "endName", "endLat", "endLng", "deviceIds"]) ||
+      typeof b.id !== "string" ||
+      b.id.length > 40 ||
+      !text(b.endName, 40) ||
+      !coord(b.endLat, 90) ||
+      !coord(b.endLng, 180) ||
+      !Array.isArray(b.deviceIds) ||
+      b.deviceIds.length > PIPELINE_MAX_DEVICES_PER_BRANCH
+    ) {
+      return null;
+    }
+    out.push({ ...b, deviceIds: (b.deviceIds as unknown[]).filter((id) => known.has(String(id))) });
+  }
+  return { ...d, branches: out, updatedAt: FieldValue.serverTimestamp() };
+}
 
 /** A free username from an email's local part ("juan.dela.cruz" -> "juan.dela.cruz", then "juan.dela.cruz2"). */
 async function freeUsername(seed: string, taken: Set<string>): Promise<string | null> {
@@ -223,17 +269,25 @@ export async function migrateV3(opts: {
     }
   }
 
-  // 4. One pipeline: the owner's, if any.
+  // 4. One pipeline: the owner's; with no owner given, the only one there is,
+  // as long as it fits the v3 shape (the owner kept the default admin account).
   const pipelines = (await db.collection(C.pipelines).get()).docs.filter(
     (p) => p.id !== PIPELINE_DOC,
   );
-  const ownerPipe = pipelines.find((p) => p.id === ownerUid);
-  if (ownerPipe && !(await db.collection(C.pipelines).doc(PIPELINE_DOC).get()).exists) {
-    step(`pipelines/${PIPELINE_DOC}`, `copy from pipelines/${ownerPipe.id}`);
-    if (apply) await db.collection(C.pipelines).doc(PIPELINE_DOC).set(ownerPipe.data());
+  const kept =
+    pipelines.find((p) => p.id === ownerUid) ??
+    (ownerUid === null && pipelines.length === 1 ? pipelines[0] : undefined);
+  const knownDevices = new Set((await db.collection(C.devices).get()).docs.map((d) => d.id));
+  const keptData = kept ? v3Pipeline(kept.data(), knownDevices) : null;
+  if (kept && !keptData) {
+    report.problems.push(`pipelines/${kept.id} does not fit the v3 shape; draw it again on the website`);
+  }
+  if (kept && keptData && !(await db.collection(C.pipelines).doc(PIPELINE_DOC).get()).exists) {
+    step(`pipelines/${PIPELINE_DOC}`, `copy from pipelines/${kept.id}`);
+    if (apply) await db.collection(C.pipelines).doc(PIPELINE_DOC).set(keptData);
   }
   for (const p of pipelines) {
-    if (p.id !== ownerUid)
+    if (p.id !== kept?.id)
       report.problems.push(`pipelines/${p.id} belonged to another user; deleted`);
     step(`pipelines/${p.id}`, "delete");
     if (apply) await p.ref.delete();
