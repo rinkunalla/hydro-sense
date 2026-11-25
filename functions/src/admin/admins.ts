@@ -142,7 +142,7 @@ export const removeAdmin = onCall(async (request) => {
       throw fail(
         "failed-precondition",
         "LAST_ADMIN",
-        "You are the only admin. Invite another admin first.",
+        "You can't remove the only admin.",
       );
     }
     tx.delete(target.ref);
