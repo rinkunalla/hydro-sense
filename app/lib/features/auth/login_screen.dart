@@ -201,17 +201,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             child: const Text('Forgot password?'),
                           )
                         else ...[
-                          // Staff have no reset: the admin sets a new
-                          // password and creates accounts (D64).
+                          // Staff have no reset or sign-up: the admin creates
+                          // accounts and sets new passwords (D64).
                           const SizedBox(height: AppSpace.s),
                           Text(
-                            'Forgot your password? Ask your admin to set a new one.',
-                            textAlign: TextAlign.center,
-                            style: AppText.note,
-                          ),
-                          const SizedBox(height: AppSpace.xs),
-                          Text(
-                            'No account yet? Ask your admin to create one.',
+                            'Accounts and passwords are provided by your admin.',
                             textAlign: TextAlign.center,
                             style: AppText.note,
                           ),

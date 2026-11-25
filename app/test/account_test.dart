@@ -87,11 +87,7 @@ void main() {
     await t.pumpWidget(signInHarness(FakeAuth()));
     expect(find.text('Forgot password?'), findsNothing);
     expect(
-      find.text('Forgot your password? Ask your admin to set a new one.'),
-      findsOneWidget,
-    );
-    expect(
-      find.text('No account yet? Ask your admin to create one.'),
+      find.text('Accounts and passwords are provided by your admin.'),
       findsOneWidget,
     );
   });
