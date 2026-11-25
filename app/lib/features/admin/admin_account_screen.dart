@@ -389,16 +389,11 @@ class _Admins extends ConsumerStatefulWidget {
   ConsumerState<_Admins> createState() => _AdminsState();
 }
 
+/// The website's admins, with Remove for the others. There are no invites
+/// (2026-11-25): a new admin is added with tools/seed-admins.ts.
 class _AdminsState extends ConsumerState<_Admins> {
-  final _email = TextEditingController();
   bool _busy = false;
   String? _error;
-
-  @override
-  void dispose() {
-    _email.dispose();
-    super.dispose();
-  }
 
   Future<void> _act(Future<void> Function() f, String done) async {
     setState(() {
@@ -416,27 +411,9 @@ class _AdminsState extends ConsumerState<_Admins> {
     }
   }
 
-  Future<void> _invite() async {
-    final email = _email.text.trim();
-    if (!email.contains('@')) {
-      setState(() => _error = 'Enter a valid email address.');
-      return;
-    }
-    await _act(
-      () => ref.read(adminRepositoryProvider).inviteAdmin(email),
-      'Invite sent. The link works once and expires in 1 hour.',
-    );
-    if (_error == null) _email.clear();
-  }
-
   String _statusOf(AdminInfo a, DateTime now) {
     if (a.you) return 'You';
-    if (a.invited) {
-      if (a.inviteExpired) return 'Invite expired';
-      return a.inviteSentAt == null
-          ? 'Invited'
-          : 'Invited · link sent ${relativeAge(a.inviteSentAt!, now)}';
-    }
+    if (a.invited) return 'Setup not finished';
     return a.lastSignIn == null
         ? 'Active'
         : 'Active · last sign-in ${clockTime(a.lastSignIn!, now)}';
@@ -455,15 +432,6 @@ class _AdminsState extends ConsumerState<_Admins> {
         data: (d) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (d.belowRecommended)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpace.m),
-                child: AppBanner(
-                  icon: Icons.group_add_rounded,
-                  color: const Color(0xFFB87A00),
-                  text: "Add a second admin so you can't be locked out.",
-                ),
-              ),
             for (final a in d.admins)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: AppSpace.s),
@@ -481,26 +449,7 @@ class _AdminsState extends ConsumerState<_Admins> {
                         ],
                       ),
                     ),
-                    if (a.invited) ...[
-                      TextButton(
-                        onPressed: _busy
-                            ? null
-                            : () => _act(
-                                () => repo.resendAdminInvite(a.uid),
-                                'A new link was sent. It expires in 1 hour.',
-                              ),
-                        child: const Text('Resend'),
-                      ),
-                      TextButton(
-                        onPressed: _busy
-                            ? null
-                            : () => _act(
-                                () => repo.cancelAdminInvite(a.uid),
-                                'Invite cancelled.',
-                              ),
-                        child: const Text('Cancel invite'),
-                      ),
-                    ] else if (!a.you)
+                    if (!a.you && !a.invited)
                       TextButton(
                         onPressed: _busy
                             ? null
@@ -526,32 +475,6 @@ class _AdminsState extends ConsumerState<_Admins> {
                   ],
                 ),
               ),
-            const Divider(height: AppSpace.xl),
-            Text('Invite an admin', style: AppText.strong),
-            const SizedBox(height: AppSpace.s),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _email,
-                    enabled: !_busy,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                    onSubmitted: (_) => _invite(),
-                  ),
-                ),
-                const SizedBox(width: AppSpace.s),
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: PrimaryButton(
-                    label: 'Invite',
-                    busy: _busy,
-                    onPressed: _invite,
-                  ),
-                ),
-              ],
-            ),
             ErrorLine(_error),
           ],
         ),

@@ -13,9 +13,6 @@ export {
 } from "./admin/staff";
 export { addAllowedDevice, updateDevice, removeDevice } from "./admin/devices";
 export {
-  inviteAdmin,
-  resendAdminInvite,
-  cancelAdminInvite,
   requestAdminSetup,
   completeAdminSetup,
   removeAdmin,

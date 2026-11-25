@@ -176,7 +176,6 @@ class _AddStaffDialogState extends ConsumerState<_AddStaffDialog> {
   final _name = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
-  final _again = TextEditingController();
   final _mobile = TextEditingController();
   final _email = TextEditingController();
   bool _busy = false;
@@ -184,7 +183,7 @@ class _AddStaffDialogState extends ConsumerState<_AddStaffDialog> {
 
   @override
   void dispose() {
-    for (final c in [_name, _username, _password, _again, _mobile, _email]) {
+    for (final c in [_name, _username, _password, _mobile, _email]) {
       c.dispose();
     }
     super.dispose();
@@ -195,7 +194,7 @@ class _AddStaffDialogState extends ConsumerState<_AddStaffDialog> {
         ? Messages.nameEmpty
         : _username.text.trim().isEmpty
         ? 'Enter a username.'
-        : validateNewPassword(_password.text, _again.text);
+        : validatePassword(_password.text);
     if (problem != null) {
       setState(() => _error = problem);
       return;
@@ -247,16 +246,13 @@ class _AddStaffDialogState extends ConsumerState<_AddStaffDialog> {
               ),
             ),
             const SizedBox(height: AppSpace.s),
+            // Typed once and shown: the admin tells them this password.
             PasswordField(
               controller: _password,
-              label: 'First password',
+              label: 'Password',
+              helperText: 'At least 8 characters. Tell them this password.',
               enabled: !_busy,
-            ),
-            const SizedBox(height: AppSpace.s),
-            PasswordField(
-              controller: _again,
-              label: 'Password again',
-              enabled: !_busy,
+              startShown: true,
             ),
             const SizedBox(height: AppSpace.s),
             TextField(
@@ -477,19 +473,17 @@ class _ResetPasswordDialog extends ConsumerStatefulWidget {
 
 class _ResetPasswordDialogState extends ConsumerState<_ResetPasswordDialog> {
   final _a = TextEditingController();
-  final _b = TextEditingController();
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
     _a.dispose();
-    _b.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
-    final problem = validateNewPassword(_a.text, _b.text);
+    final problem = validatePassword(_a.text);
     if (problem != null) {
       setState(() => _error = problem);
       return;
@@ -523,12 +517,12 @@ class _ResetPasswordDialogState extends ConsumerState<_ResetPasswordDialog> {
             style: AppText.note,
           ),
           const SizedBox(height: AppSpace.m),
-          PasswordField(controller: _a, label: 'New password', enabled: !_busy),
-          const SizedBox(height: AppSpace.s),
           PasswordField(
-            controller: _b,
-            label: 'New password again',
+            controller: _a,
+            label: 'New password',
+            helperText: 'At least 8 characters. Tell them this password.',
             enabled: !_busy,
+            startShown: true,
           ),
           ErrorLine(_error),
         ],

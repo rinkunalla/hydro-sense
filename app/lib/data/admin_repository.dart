@@ -55,8 +55,6 @@ class AdminInfo {
     this.phone,
     this.invited = false,
     this.you = false,
-    this.inviteSentAt,
-    this.inviteExpired = false,
     this.lastSignIn,
     this.activatedAt,
   });
@@ -67,10 +65,10 @@ class AdminInfo {
 
   /// The admin's own number for SMS alerts (D65), or null.
   final String? phone;
+
+  /// Added with the seed tool and not set up yet (no password chosen).
   final bool invited;
   final bool you;
-  final DateTime? inviteSentAt;
-  final bool inviteExpired;
   final DateTime? lastSignIn;
   final DateTime? activatedAt;
 
@@ -83,8 +81,6 @@ class AdminInfo {
     phone: m['phone'] as String?,
     invited: m['status'] == 'invited',
     you: m['you'] == true,
-    inviteSentAt: _ms(m['inviteSentAtMs']),
-    inviteExpired: m['inviteExpired'] == true,
     lastSignIn: _ms(m['lastSignInMs']),
     activatedAt: _ms(m['activatedAtMs']),
   );
@@ -120,9 +116,6 @@ abstract class AdminRepository {
   Future<void> removeDevice(String deviceId, {required String confirmName});
 
   Future<({List<AdminInfo> admins, bool belowRecommended})> admins();
-  Future<void> inviteAdmin(String email);
-  Future<void> resendAdminInvite(String uid);
-  Future<void> cancelAdminInvite(String uid);
   Future<void> removeAdmin(String uid);
   Future<void> updateMyAdminName(String name);
 
@@ -224,18 +217,6 @@ class FunctionsAdminRepository implements AdminRepository {
       belowRecommended: r is Map && r['belowRecommended'] == true,
     );
   }
-
-  @override
-  Future<void> inviteAdmin(String email) =>
-      _call('inviteAdmin', {'email': email});
-
-  @override
-  Future<void> resendAdminInvite(String uid) =>
-      _call('resendAdminInvite', {'uid': uid});
-
-  @override
-  Future<void> cancelAdminInvite(String uid) =>
-      _call('cancelAdminInvite', {'uid': uid});
 
   @override
   Future<void> removeAdmin(String uid) => _call('removeAdmin', {'uid': uid});

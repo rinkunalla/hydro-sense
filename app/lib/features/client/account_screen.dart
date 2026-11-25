@@ -104,7 +104,7 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
                   row('Email', p?.email ?? 'None'),
                   const SizedBox(height: AppSpace.s),
                   Text(
-                    'Alerts reach you on this phone and on the mobile number and email above. Ask your admin to change your details or password.',
+                    'Alerts go to this phone and the contacts above. Your admin can change them.',
                     style: AppText.note,
                   ),
                 ],

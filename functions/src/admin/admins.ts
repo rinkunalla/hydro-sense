@@ -1,6 +1,7 @@
-// Admin accounts. Admins exist only through an invite (or
-// tools/seed-admins.ts) and set their password with a one-time setup link that
-// works once and expires in ADMIN_SETUP_TOKEN_TTL_S. Only the link's hash is stored.
+// Admin accounts. Admins are created only by tools/seed-admins.ts (no invites
+// on the website since 2026-11-25) and set their password with a one-time setup
+// link that works once and expires in ADMIN_SETUP_TOKEN_TTL_S. Only the link's
+// hash is stored.
 import { getAuth } from "firebase-admin/auth";
 import { HttpsError, onCall } from "firebase-functions/https";
 import {
@@ -81,77 +82,6 @@ export async function sendSetupLink(
     return "failed";
   }
 }
-
-export const inviteAdmin = onCall({ secrets: MAIL_SECRETS }, async (request) => {
-  const by = await requireAdmin(request);
-  const d = (request.data ?? {}) as Record<string, unknown>;
-  const email = parseEmail(d.email);
-  const name = d.name === undefined || d.name === "" ? email.split("@")[0]! : parseName(d.name);
-  const auth = getAuth();
-  let uid: string;
-  try {
-    uid = (await auth.createUser({ email, displayName: name })).uid;
-  } catch (e) {
-    if ((e as { code?: string }).code === "auth/email-already-exists") {
-      throw new HttpsError("already-exists", "Another account already uses this email.", {
-        code: "EMAIL_IN_USE",
-      });
-    }
-    throw e;
-  }
-  await auth.setCustomUserClaims(uid, { role: "admin" });
-  const nowMs = Date.now();
-  await adminRef(uid).set({
-    name,
-    email,
-    status: "invited",
-    invitedBy: by,
-    invitedAt: ts(nowMs),
-    inviteSentAt: null,
-    activatedAt: null,
-  });
-  return { uid, link: await sendSetupLink(uid, email, nowMs) };
-});
-
-async function invitedAdmin(uid: string) {
-  const snap = await adminRef(uid).get();
-  if (!snap.exists) throw fail("not-found", "USER_NOT_FOUND", "Admin not found.");
-  if (snap.get("status") !== "invited") {
-    throw fail("failed-precondition", "INVITE_NOT_PENDING", "This admin has already signed in.");
-  }
-  return snap;
-}
-
-export const resendAdminInvite = onCall({ secrets: MAIL_SECRETS }, async (request) => {
-  await requireAdmin(request);
-  const uid = parseUid((request.data as { uid?: unknown } | null)?.uid);
-  const admin = await invitedAdmin(uid);
-  const link = await sendSetupLink(uid, admin.get("email") as string);
-  if (link === "limited") {
-    throw fail(
-      "resource-exhausted",
-      "COOLDOWN",
-      "Too many setup links this hour. Try again later.",
-    );
-  }
-  return { uid, link };
-});
-
-export const cancelAdminInvite = onCall(async (request) => {
-  await requireAdmin(request);
-  const uid = parseUid((request.data as { uid?: unknown } | null)?.uid);
-  await invitedAdmin(uid);
-  await getAuth()
-    .deleteUser(uid)
-    .catch((e: { code?: string }) => {
-      if (e.code !== "auth/user-not-found") throw e;
-    });
-  const batch = db.batch();
-  batch.delete(adminRef(uid));
-  batch.delete(tokenRef(uid));
-  await batch.commit();
-  return { uid };
-});
 
 /** Unauthenticated: the same reply for every email (no enumeration). */
 export const requestAdminSetup = onCall({ secrets: MAIL_SECRETS }, async (request) => {

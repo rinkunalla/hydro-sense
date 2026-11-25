@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hydro_sense/core/glass.dart';
 import 'package:hydro_sense/core/theme.dart';
 import 'package:hydro_sense/data/admin_providers.dart';
@@ -85,12 +86,6 @@ class FakeAdmin implements AdminRepository {
   @override
   Future<({List<AdminInfo> admins, bool belowRecommended})> admins() async =>
       (admins: adminList, belowRecommended: belowRecommended);
-  @override
-  Future<void> inviteAdmin(String email) => _rec('invite $email');
-  @override
-  Future<void> resendAdminInvite(String uid) => _rec('resend $uid');
-  @override
-  Future<void> cancelAdminInvite(String uid) => _rec('cancel $uid');
   @override
   Future<void> removeAdmin(String uid) => _rec('removeAdmin $uid');
   @override
@@ -176,7 +171,7 @@ const ben = StaffMember(
 void main() {
   group('Shell, menu and banner', () {
     testWidgets(
-      'six menu items on wide screens, a menu under 800 px; syncs once',
+      'five menu items on wide screens, a menu under 800 px; syncs once',
       (t) async {
         final fake = FakeAdmin();
         Widget shell() =>
@@ -184,7 +179,6 @@ void main() {
         await pumpAdmin(t, fake, shell());
         for (final label in [
           'Dashboard',
-          'Map',
           'Devices',
           'History',
           'Staff',
@@ -192,6 +186,8 @@ void main() {
         ]) {
           expect(find.text(label), findsOneWidget);
         }
+        // The map is the Dashboard (2026-11-25); no Activity since v3.
+        expect(find.text('Map'), findsNothing);
         expect(find.text('Activity'), findsNothing);
         expect(fake.calls, contains('sync'));
         await pumpAdmin(t, fake, shell(), size: const Size(700, 900));
@@ -217,7 +213,77 @@ void main() {
         find.textContaining('2 areas need attention: Main'),
         findsOneWidget,
       );
-      expect(find.text('Open Dashboard'), findsOneWidget);
+      // No button: the banner itself is the link.
+      expect(find.text('Open Dashboard'), findsNothing);
+    });
+
+    testWidgets('tapping the banner opens the device, or the map for several', (
+      t,
+    ) async {
+      Future<String> tapBannerWith(List<DeviceView> devices) async {
+        final router = GoRouter(
+          initialLocation: '/staff',
+          routes: [
+            ShellRoute(
+              builder: (_, s, child) =>
+                  AdminShell(location: s.uri.path, child: child),
+              routes: [
+                GoRoute(path: '/staff', builder: (_, _) => const SizedBox()),
+                GoRoute(
+                  path: '/dashboard',
+                  builder: (_, s) => Text('dashboard ${s.uri.query}'),
+                ),
+                GoRoute(
+                  path: '/devices/:id',
+                  builder: (_, s) => Text('device ${s.pathParameters['id']}'),
+                ),
+              ],
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        t.view.physicalSize = const Size(1280, 900);
+        t.view.devicePixelRatio = 1;
+        addTearDown(t.view.reset);
+        await t.pumpWidget(const SizedBox());
+        await t.pumpWidget(
+          ProviderScope(
+            overrides: [
+              adminRepositoryProvider.overrideWithValue(FakeAdmin()),
+              repositoryProvider.overrideWithValue(FakeFleet(devices)),
+              uidProvider.overrideWithValue('admin1'),
+              roleProvider.overrideWith((_) async => 'admin'),
+              userProvider.overrideWith((_) => const Stream.empty()),
+              clockProvider.overrideWith((_) => Stream.value(testNow)),
+            ],
+            child: MaterialApp.router(
+              theme: buildLightTheme(),
+              routerConfig: router,
+            ),
+          ),
+        );
+        await t.pumpAndSettle();
+        await t.tap(find.textContaining('need'));
+        await t.pumpAndSettle();
+        return router.routerDelegate.currentConfiguration.uri.toString();
+      }
+
+      expect(
+        await tapBannerWith([
+          view('D3', nickname: 'Main', flowStatus: 'No Flow'),
+        ]),
+        '/devices/D3',
+      );
+      expect(find.text('device D3'), findsOneWidget);
+      expect(
+        await tapBannerWith([
+          view('D2', nickname: 'Garden', flowStatus: 'Low Flow'),
+          view('D3', nickname: 'Main', flowStatus: 'No Flow'),
+        ]),
+        '/dashboard?focus=problem',
+      );
+      // The Dashboard lists them beside its map, so no banner there.
+      expect(find.textContaining('need attention'), findsNothing);
     });
 
     testWidgets('no banner while every device is fine', (t) async {
@@ -268,32 +334,28 @@ void main() {
       expect(anaY, lessThan(benY));
     });
 
-    testWidgets('add: checks the password, then reports a taken username', (
+    testWidgets('add: one shown password, checked, then a taken username', (
       t,
     ) async {
       final fake = FakeAdmin();
       await pumpAdmin(t, fake, const StaffScreen());
       await t.tap(find.widgetWithText(PrimaryButton, 'Add staff'));
       await t.pumpAndSettle();
+      // One password box, shown as typed: the admin tells them the password.
+      final password = find.widgetWithText(TextField, 'Password');
+      expect(password, findsOneWidget);
+      expect(t.widget<TextField>(password).obscureText, isFalse);
+      expect(find.text('Password again'), findsNothing);
+
       await t.enterText(find.widgetWithText(TextField, 'Name'), 'Juan');
       await t.enterText(find.widgetWithText(TextField, 'Username'), 'juan');
-      await t.enterText(
-        find.widgetWithText(TextField, 'First password'),
-        'secret-12',
-      );
-      await t.enterText(
-        find.widgetWithText(TextField, 'Password again'),
-        'secret-13',
-      );
+      await t.enterText(password, 'short');
       await t.tap(find.widgetWithText(FilledButton, 'Add staff'));
       await t.pumpAndSettle();
-      expect(find.text("Passwords don't match."), findsOneWidget);
+      expect(find.text('Use at least 8 characters.'), findsOneWidget);
       expect(fake.calls, isEmpty);
 
-      await t.enterText(
-        find.widgetWithText(TextField, 'Password again'),
-        'secret-12',
-      );
+      await t.enterText(password, 'secret-12');
       fake.nextError = fail('USERNAME_IN_USE');
       await t.tap(find.widgetWithText(FilledButton, 'Add staff'));
       await t.pumpAndSettle();
@@ -347,11 +409,8 @@ void main() {
   });
 
   group('Account', () {
-    testWidgets('one admin: the hint; invite; the mobile for SMS alerts', (
-      t,
-    ) async {
+    testWidgets('admins without invites; the mobile for SMS alerts', (t) async {
       final fake = FakeAdmin()
-        ..belowRecommended = true
         ..adminList = [
           AdminInfo(
             uid: 'a1',
@@ -362,32 +421,26 @@ void main() {
             activatedAt: DateTime(2026, 11, 2),
             lastSignIn: now,
           ),
-          const AdminInfo(
-            uid: 'a2',
-            email: 'mark@x.ph',
-            invited: true,
-            inviteExpired: true,
-          ),
+          const AdminInfo(uid: 'a2', email: 'mark@x.ph', invited: true),
         ];
       await pumpAdmin(t, fake, const AdminAccountScreen());
-      expect(
-        find.text("Add a second admin so you can't be locked out."),
-        findsOneWidget,
-      );
       expect(find.text('Admin since Nov 2, 2026'), findsOneWidget);
       expect(find.text('0917 000 0009'), findsOneWidget);
-      await t.tap(find.text('Resend'));
-      await t.pumpAndSettle();
-      await t.enterText(find.widgetWithText(TextField, 'Email').last, 'z@x.ph');
-      await t.tap(find.widgetWithText(PrimaryButton, 'Invite'));
-      await t.pumpAndSettle();
+      // No invites on the website (2026-11-25).
+      expect(find.text('Invite an admin'), findsNothing);
+      expect(find.text('Resend'), findsNothing);
+      expect(
+        find.text("Add a second admin so you can't be locked out."),
+        findsNothing,
+      );
+      expect(find.text('Setup not finished'), findsOneWidget);
       await t.enterText(
         find.widgetWithText(TextField, 'Mobile number for SMS alerts'),
         '',
       );
       await t.tap(find.widgetWithText(SecondaryButton, 'Save').at(1));
       await t.pumpAndSettle();
-      expect(fake.calls, ['resend a2', 'invite z@x.ph', 'mobile ']);
+      expect(fake.calls, ['mobile ']);
     });
   });
 

@@ -6,13 +6,10 @@ import { getAuth } from "firebase-admin/auth";
 import type { CallableRequest } from "firebase-functions/https";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import {
-  cancelAdminInvite,
   completeAdminSetup,
-  inviteAdmin,
   listAdmins,
   removeAdmin,
   requestAdminSetup,
-  resendAdminInvite,
   signOutEverywhere,
   syncMyAdmin,
   updateMyAdminMobile,
@@ -232,15 +229,26 @@ describe("staff accounts (D64)", () => {
 describe("admin accounts", () => {
   const tokenFrom = (text: string) => decodeURIComponent(/setup\?token=(\S+)/.exec(text)![1]!);
 
-  it("invites an admin who sets a password once, then becomes active and a member on sign-in", async () => {
-    const { uid, link } = await inviteAdmin.run(asAdmin({ email: "Ana@Example.com", name: "Ana" }));
-    expect(link).toBe("sent");
-    expect((await db.collection(C.admins).doc(uid).get()).data()).toMatchObject({
-      email: "ana@example.com",
+  // An admin as tools/seed-admins.ts makes one: the admin claim and an invited
+  // record, no password yet (there are no invites on the website).
+  async function seedInvited(email: string, name = email.split("@")[0]!) {
+    const { uid } = await getAuth().createUser({ email, displayName: name });
+    await getAuth().setCustomUserClaims(uid, { role: "admin" });
+    await db.collection(C.admins).doc(uid).set({
+      name,
+      email,
       status: "invited",
-      invitedBy: "admin1",
+      invitedBy: null,
+      invitedAt: ts(Date.now()),
+      inviteSentAt: null,
+      activatedAt: null,
     });
-    expect((await getAuth().getUser(uid)).customClaims).toEqual({ role: "admin" });
+    return uid;
+  }
+
+  it("a seeded admin sets a password once with the emailed link, then is active and a member", async () => {
+    const uid = await seedInvited("ana@example.com", "Ana");
+    expect(await requestAdminSetup.run(call({ email: "Ana@Example.com" }))).toEqual({ ok: true });
     const token = tokenFrom(fake.mail.at(-1)!.text);
     expect(await codeOf(listAdmins.run(asAdmin({}, uid)))).toBe("NOT_ADMIN");
     expect(await member(uid)).toBeNull();
@@ -255,11 +263,14 @@ describe("admin accounts", () => {
     await syncMyAdmin.run(asAdmin({}, uid));
     expect((await db.collection(C.admins).doc(uid).get()).get("status")).toBe("active");
     expect(await member(uid)).toBe(true);
-    expect(await codeOf(resendAdminInvite.run(asAdmin({ uid })))).toBe("INVITE_NOT_PENDING");
+    // Active now: no more setup links.
+    fake.mail = [];
+    await requestAdminSetup.run(call({ email: "ana@example.com" }));
+    expect(fake.mail).toHaveLength(0);
   });
 
   it("requestAdminSetup replies the same and sends only to invited admins", async () => {
-    await inviteAdmin.run(asAdmin({ email: "ana@example.com" }));
+    await seedInvited("ana@example.com");
     fake.mail = [];
     for (const email of ["ana@example.com", "dana@example.com", "nobody@example.com", "bad"]) {
       expect(await requestAdminSetup.run(call({ email }))).toEqual({ ok: true });
@@ -268,9 +279,10 @@ describe("admin accounts", () => {
   });
 
   it("an expired or replaced link no longer works", async () => {
-    const { uid } = await inviteAdmin.run(asAdmin({ email: "ana@example.com" }));
+    const uid = await seedInvited("ana@example.com");
+    await requestAdminSetup.run(call({ email: "ana@example.com" }));
     const first = tokenFrom(fake.mail.at(-1)!.text);
-    await resendAdminInvite.run(asAdmin({ uid }));
+    await requestAdminSetup.run(call({ email: "ana@example.com" }));
     const second = tokenFrom(fake.mail.at(-1)!.text);
     expect(
       await codeOf(completeAdminSetup.run(call({ token: first, password: "admin-pass-1" }))),
@@ -282,17 +294,6 @@ describe("admin accounts", () => {
     expect(
       await codeOf(completeAdminSetup.run(call({ token: second, password: "admin-pass-1" }))),
     ).toBe("RESET_TOKEN_INVALID");
-  });
-
-  it("cancelling an invite deletes the Auth user and the record", async () => {
-    const { uid } = await inviteAdmin.run(asAdmin({ email: "ana@example.com" }));
-    await getAuth().createUser({ uid: "admin1", email: "dana@example.com" });
-    await cancelAdminInvite.run(asAdmin({ uid }));
-    expect((await db.collection(C.admins).doc(uid).get()).exists).toBe(false);
-    await expect(getAuth().getUser(uid)).rejects.toMatchObject({ code: "auth/user-not-found" });
-    expect(await codeOf(inviteAdmin.run(asAdmin({ email: "dana@example.com" })))).toBe(
-      "EMAIL_IN_USE",
-    );
   });
 
   it("removing: never yourself, never the last admin; access, membership and phone end at once", async () => {

@@ -18,10 +18,10 @@ class _Dest {
   final IconData icon;
 }
 
-/// The website menu (D67).
+/// The website menu (D67). The Dashboard is the map (2026-11-25), so there
+/// is no separate Map item; the pipeline editor (/map/edit) sits under it.
 const _destinations = [
   _Dest('/dashboard', 'Dashboard', Icons.dashboard_rounded),
-  _Dest('/map', 'Map', Icons.map_rounded),
   _Dest('/devices', 'Devices', Icons.water_drop_rounded),
   _Dest('/history', 'History', Icons.history_rounded),
   _Dest('/staff', 'Staff', Icons.people_alt_rounded),
@@ -61,6 +61,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
   }
 
   int get _index {
+    // The pipeline editor (/map/edit) belongs to the Dashboard's map.
     final i = _destinations.indexWhere(
       (d) => widget.location.startsWith(d.path),
     );
@@ -220,7 +221,8 @@ class _AdminShellState extends ConsumerState<AdminShell> {
           child: Column(
             children: [
               bar,
-              AlertBanner(onDashboard: widget.location == '/dashboard'),
+              // The Dashboard lists the same devices beside its map.
+              if (widget.location != '/dashboard') const AlertBanner(),
               Expanded(
                 child: Align(
                   alignment: Alignment.topCenter,
@@ -242,12 +244,11 @@ class _AdminShellState extends ConsumerState<AdminShell> {
 
 /// The website's on-screen alert (D65): while the site is open, every device
 /// that has no water, low flow or is offline, worst first. It follows the
-/// live data, so it shows as soon as the device reports the problem.
+/// live data, so it shows as soon as the device reports the problem. Tapping
+/// it opens that device's Details, or the Dashboard's map when several devices
+/// need attention. Not shown on the Dashboard, which lists them beside its map.
 class AlertBanner extends ConsumerWidget {
-  const AlertBanner({super.key, this.onDashboard = false});
-
-  /// The Dashboard lists the same devices, so the banner drops its link there.
-  final bool onDashboard;
+  const AlertBanner({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -271,22 +272,30 @@ class AlertBanner extends ConsumerWidget {
         ),
         child: Semantics(
           liveRegion: true,
-          child: GlassPanel(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpace.m,
-              vertical: AppSpace.s,
-            ),
-            child: Row(
-              children: [
-                Icon(worst.icon, color: worst.strong),
-                const SizedBox(width: AppSpace.s),
-                Expanded(child: Text(text, style: AppText.strong)),
-                if (!onDashboard)
-                  TextButton(
-                    onPressed: () => context.go('/dashboard'),
-                    child: const Text('Open Dashboard'),
-                  ),
-              ],
+          button: true,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppSpace.cardRadius),
+              onTap: () => context.go(
+                items.length == 1
+                    ? '/devices/${items.first.id}'
+                    : '/dashboard?focus=problem',
+              ),
+              child: GlassPanel(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpace.m,
+                  vertical: AppSpace.s,
+                ),
+                child: Row(
+                  children: [
+                    Icon(worst.icon, color: worst.strong),
+                    const SizedBox(width: AppSpace.s),
+                    Expanded(child: Text(text, style: AppText.strong)),
+                    const Icon(Icons.chevron_right_rounded),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

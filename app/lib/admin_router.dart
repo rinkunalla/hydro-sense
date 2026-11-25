@@ -15,7 +15,6 @@ import 'features/client/device_detail_screen.dart';
 import 'features/client/devices_screen.dart';
 import 'features/client/edit_pipeline_screen.dart';
 import 'features/client/history_screen.dart';
-import 'features/client/map_screen.dart';
 import 'features/auth/reset_password_screen.dart';
 import 'router.dart' show redirectFor;
 
@@ -38,7 +37,8 @@ Widget _readable(Widget child) => Align(
 
 /// The web build: admin only (D63, D67). The monitoring pages are the app's
 /// own screens on the same paths (/devices, /devices/:id, /devices/history,
-/// /map, /map/edit), so their links work unchanged inside the admin shell.
+/// /map/edit; /map opens the dashboard's map), so their links work unchanged
+/// inside the admin shell.
 final adminRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _AuthRefresh(ref);
   ref.onDispose(refresh.dispose);
@@ -92,15 +92,26 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, state, child) =>
             AdminShell(location: state.uri.path, child: child),
         routes: [
-          page('/dashboard', const DashboardScreen()),
+          // The map is the dashboard (2026-11-25): /dashboard?device=ID or
+          // ?focus=problem centres it, as /map did.
           GoRoute(
-            path: '/map',
+            path: '/dashboard',
             pageBuilder: (_, s) => NoTransitionPage(
-              child: MapScreen(
+              key: ValueKey(s.uri.query),
+              child: DashboardScreen(
                 focusProblem: s.uri.queryParameters['focus'] == 'problem',
                 focusDevice: s.uri.queryParameters['device'],
               ),
             ),
+          ),
+          // The app's screens still link to /map ("Show on map", leaving the
+          // pipeline editor); on the website that is the dashboard. The
+          // editor keeps its own page.
+          GoRoute(
+            path: '/map',
+            redirect: (_, s) => s.uri.path == '/map'
+                ? '/dashboard${s.uri.hasQuery ? '?${s.uri.query}' : ''}'
+                : null,
             routes: [
               GoRoute(
                 path: 'edit',

@@ -183,7 +183,12 @@ void main() {
     expect(find.text('Change'), findsNothing);
     expect(find.widgetWithText(SwitchListTile, 'SMS'), findsNothing);
     expect(find.textContaining('account deletion'), findsNothing);
-    expect(find.textContaining('Ask your admin'), findsOneWidget);
+    expect(
+      find.text(
+        'Alerts go to this phone and the contacts above. Your admin can change them.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Sign out'), findsOneWidget);
   });
 

@@ -45,6 +45,7 @@ class PasswordField extends StatefulWidget {
     this.onSubmitted,
     this.textInputAction,
     this.showTips = false,
+    this.startShown = false,
   });
 
   final TextEditingController controller;
@@ -59,12 +60,16 @@ class PasswordField extends StatefulWidget {
   /// suggested, never enforced).
   final bool showTips;
 
+  /// Start with the password visible: for a password someone types for
+  /// another person (the admin setting a staff password, then telling them).
+  final bool startShown;
+
   @override
   State<PasswordField> createState() => _PasswordFieldState();
 }
 
 class _PasswordFieldState extends State<PasswordField> {
-  bool _shown = false;
+  late bool _shown = widget.startShown;
 
   @override
   Widget build(BuildContext context) {
