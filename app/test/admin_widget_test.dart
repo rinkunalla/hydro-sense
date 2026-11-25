@@ -18,6 +18,7 @@ import 'package:hydro_sense/features/admin/admin_setup_screen.dart';
 import 'package:hydro_sense/features/admin/admin_shell.dart';
 import 'package:hydro_sense/features/admin/dashboard_screen.dart';
 import 'package:hydro_sense/features/admin/staff_screen.dart';
+import 'package:hydro_sense/features/client/map_screen.dart';
 import 'package:hydro_sense/router.dart';
 
 import 'test_data.dart';
@@ -217,7 +218,7 @@ void main() {
       expect(find.text('Open Dashboard'), findsNothing);
     });
 
-    testWidgets('tapping the banner opens the device, or the map for several', (
+    testWidgets('tapping the banner opens the map right at the problem', (
       t,
     ) async {
       Future<String> tapBannerWith(List<DeviceView> devices) async {
@@ -268,13 +269,15 @@ void main() {
         return router.routerDelegate.currentConfiguration.uri.toString();
       }
 
+      // One device: the map centred on it, its pin ringed.
       expect(
         await tapBannerWith([
           view('D3', nickname: 'Main', flowStatus: 'No Flow'),
         ]),
-        '/devices/D3',
+        '/dashboard?device=D3',
       );
-      expect(find.text('device D3'), findsOneWidget);
+      expect(find.text('dashboard device=D3'), findsOneWidget);
+      // Several: the map centred on the problem section of the pipeline.
       expect(
         await tapBannerWith([
           view('D2', nickname: 'Garden', flowStatus: 'Low Flow'),
@@ -282,8 +285,8 @@ void main() {
         ]),
         '/dashboard?focus=problem',
       );
-      // The Dashboard lists them beside its map, so no banner there.
-      expect(find.textContaining('need attention'), findsNothing);
+      // The Dashboard is only the map now, so the banner shows there too.
+      expect(find.textContaining('need attention'), findsOneWidget);
     });
 
     testWidgets('no banner while every device is fine', (t) async {
@@ -298,7 +301,7 @@ void main() {
   });
 
   group('Dashboard', () {
-    testWidgets('counts and the devices that need attention', (t) async {
+    testWidgets('only the map, no side cards', (t) async {
       await pumpAdmin(
         t,
         FakeAdmin(),
@@ -306,18 +309,13 @@ void main() {
         devices: [
           view('D1', nickname: 'Tank'),
           view('D2', nickname: 'Main', flowStatus: 'No Flow'),
-          view('D3', nickname: 'Shed', online: false),
         ],
       );
-      expect(find.text('Needs attention now'), findsOneWidget);
-      expect(find.text('Main'), findsOneWidget);
-      expect(find.text('Shed'), findsOneWidget);
-      expect(find.text('Tank'), findsNothing);
-    });
-
-    testWidgets('empty: points to the Devices page', (t) async {
-      await pumpAdmin(t, FakeAdmin(), const DashboardScreen());
-      expect(find.textContaining('No devices yet'), findsOneWidget);
+      expect(find.byType(MapScreen), findsOneWidget);
+      expect(find.text('Needs attention now'), findsNothing);
+      expect(find.text('No water'), findsNothing);
+      // The admin's pipeline button is on the map.
+      expect(find.text('Draw pipeline'), findsOneWidget);
     });
   });
 
@@ -409,7 +407,7 @@ void main() {
   });
 
   group('Account', () {
-    testWidgets('admins without invites; the mobile for SMS alerts', (t) async {
+    testWidgets('no admins list; the mobile for SMS alerts', (t) async {
       final fake = FakeAdmin()
         ..adminList = [
           AdminInfo(
@@ -426,14 +424,11 @@ void main() {
       await pumpAdmin(t, fake, const AdminAccountScreen());
       expect(find.text('Admin since Nov 2, 2026'), findsOneWidget);
       expect(find.text('0917 000 0009'), findsOneWidget);
-      // No invites on the website (2026-11-25).
+      // No admins list and no invites on the website (2026-11-25).
+      expect(find.text('Admins'), findsNothing);
+      expect(find.text('mark@x.ph'), findsNothing);
       expect(find.text('Invite an admin'), findsNothing);
-      expect(find.text('Resend'), findsNothing);
-      expect(
-        find.text("Add a second admin so you can't be locked out."),
-        findsNothing,
-      );
-      expect(find.text('Setup not finished'), findsOneWidget);
+      expect(find.text('Remove'), findsNothing);
       await t.enterText(
         find.widgetWithText(TextField, 'Mobile number for SMS alerts'),
         '',

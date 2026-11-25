@@ -122,12 +122,14 @@ class _FleetBodyState extends ConsumerState<_FleetBody> {
                 ),
               ),
             ),
-            // History for every device: labelled, not a bare icon.
-            SecondaryButton(
-              label: 'History',
-              icon: Icons.history_rounded,
-              onPressed: () => context.push('/devices/history'),
-            ),
+            // History for every device: labelled, not a bare icon. The
+            // website has History in its menu, so only the app shows it here.
+            if (!isAdmin)
+              SecondaryButton(
+                label: 'History',
+                icon: Icons.history_rounded,
+                onPressed: () => context.push('/devices/history'),
+              ),
             // Admin only (D63): add a device by its ID.
             if (isAdmin) ...[
               const SizedBox(width: AppSpace.s),

@@ -15,8 +15,9 @@ import '../../data/providers.dart';
 import 'admin_widgets.dart';
 import 'change_password_dialog.dart';
 
-/// Account: my profile (with the mobile for SMS alerts, D65) and security on
-/// the left, the admins on the right.
+/// Account: my profile (with the mobile for SMS alerts, D65) and security,
+/// side by side on a wide screen. There is no admins list (2026-11-25):
+/// admins are added and removed with tools/seed-admins.ts.
 class AdminAccountScreen extends ConsumerWidget {
   const AdminAccountScreen({super.key});
 
@@ -24,15 +25,8 @@ class AdminAccountScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final wide =
         MediaQuery.sizeOf(context).width >= AppConfig.adminRailBreakpoint;
-    const left = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Profile(),
-        SizedBox(height: AppSpace.l),
-        _Security(),
-      ],
-    );
-    const right = _Admins();
+    const left = _Profile();
+    const right = _Security();
     return ListView(
       padding: const EdgeInsets.all(AppSpace.l),
       children: [
@@ -377,107 +371,6 @@ class _Security extends ConsumerWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _Admins extends ConsumerStatefulWidget {
-  const _Admins();
-
-  @override
-  ConsumerState<_Admins> createState() => _AdminsState();
-}
-
-/// The website's admins, with Remove for the others. There are no invites
-/// (2026-11-25): a new admin is added with tools/seed-admins.ts.
-class _AdminsState extends ConsumerState<_Admins> {
-  bool _busy = false;
-  String? _error;
-
-  Future<void> _act(Future<void> Function() f, String done) async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await f();
-      ref.invalidate(adminsProvider);
-      if (mounted) showToast(context, done);
-    } catch (e) {
-      if (mounted) setState(() => _error = adminErrorText(e));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  String _statusOf(AdminInfo a, DateTime now) {
-    if (a.you) return 'You';
-    if (a.invited) return 'Setup not finished';
-    return a.lastSignIn == null
-        ? 'Active'
-        : 'Active · last sign-in ${clockTime(a.lastSignIn!, now)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final data = ref.watch(adminsProvider);
-    final repo = ref.read(adminRepositoryProvider);
-    final now = DateTime.now();
-    return AdminCard(
-      title: 'Admins',
-      child: data.when(
-        loading: () => const LinearProgressIndicator(),
-        error: (e, _) => ErrorLine(adminErrorText(e)),
-        data: (d) => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final a in d.admins)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpace.s),
-                child: Row(
-                  children: [
-                    Avatar(a.display, size: 36),
-                    const SizedBox(width: AppSpace.m),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(a.display, style: AppText.strong),
-                          Text(a.email, style: AppText.note),
-                          Text(_statusOf(a, now), style: AppText.note),
-                        ],
-                      ),
-                    ),
-                    if (!a.you && !a.invited)
-                      TextButton(
-                        onPressed: _busy
-                            ? null
-                            : () async {
-                                final ok = await confirmAction(
-                                  context,
-                                  title: 'Remove ${a.display}?',
-                                  message:
-                                      "Remove ${a.display} as an admin? They can't "
-                                      'sign in to the admin website any more.',
-                                  buttonLabel: 'Remove',
-                                  destructive: true,
-                                );
-                                if (ok) {
-                                  await _act(
-                                    () => repo.removeAdmin(a.uid),
-                                    '${a.display} is no longer an admin.',
-                                  );
-                                }
-                              },
-                        child: const Text('Remove'),
-                      ),
-                  ],
-                ),
-              ),
-            ErrorLine(_error),
-          ],
-        ),
       ),
     );
   }

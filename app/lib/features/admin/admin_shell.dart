@@ -221,8 +221,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
           child: Column(
             children: [
               bar,
-              // The Dashboard lists the same devices beside its map.
-              if (widget.location != '/dashboard') const AlertBanner(),
+              const AlertBanner(),
               Expanded(
                 child: Align(
                   alignment: Alignment.topCenter,
@@ -245,8 +244,9 @@ class _AdminShellState extends ConsumerState<AdminShell> {
 /// The website's on-screen alert (D65): while the site is open, every device
 /// that has no water, low flow or is offline, worst first. It follows the
 /// live data, so it shows as soon as the device reports the problem. Tapping
-/// it opens that device's Details, or the Dashboard's map when several devices
-/// need attention. Not shown on the Dashboard, which lists them beside its map.
+/// it opens the Dashboard's map right where the problem is: centred on the
+/// device with its pin ringed, or on the problem section of the pipeline when
+/// several devices need attention (2026-11-25).
 class AlertBanner extends ConsumerWidget {
   const AlertBanner({super.key});
 
@@ -279,7 +279,7 @@ class AlertBanner extends ConsumerWidget {
               borderRadius: BorderRadius.circular(AppSpace.cardRadius),
               onTap: () => context.go(
                 items.length == 1
-                    ? '/devices/${items.first.id}'
+                    ? '/dashboard?device=${items.first.id}'
                     : '/dashboard?focus=problem',
               ),
               child: GlassPanel(
