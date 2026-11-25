@@ -266,12 +266,16 @@ class MapPillButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.busy = false,
+    this.iconAngle = 0,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback? onTap;
   final bool busy;
+
+  /// Turns the icon (radians, clockwise): the compass arrow points to north.
+  final double iconAngle;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -299,7 +303,10 @@ class MapPillButton extends StatelessWidget {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2.2),
                       )
-                    : Icon(icon, size: 20, color: AppColors.deepCyan),
+                    : Transform.rotate(
+                        angle: iconAngle,
+                        child: Icon(icon, size: 20, color: AppColors.deepCyan),
+                      ),
                 const SizedBox(width: AppSpace.s),
                 // Wraps instead of overflowing with large text.
                 Flexible(

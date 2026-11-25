@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +12,7 @@ import '../../core/glass.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/places.dart';
+import '../../data/pipeline.dart';
 import '../../data/pipeline_logic.dart';
 import '../../data/providers.dart';
 import 'map_tiles.dart';
@@ -51,6 +54,46 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   /// The place picked from a search and the phone's own position, if asked for.
   Place? _picked;
+
+  /// The camera's rotation now (degrees, (-180, 180]); followed from map
+  /// events so the compass and Save this direction stay current.
+  double _rotation = 0;
+  bool _rotationSet = false;
+  bool _saving = false;
+
+  void _followRotation(MapCamera camera) {
+    final r = normalRotation(camera.rotation);
+    if ((r - _rotation).abs() > 0.5 && mounted) setState(() => _rotation = r);
+  }
+
+  /// Compass: back to north up, or (when already north up) to the saved direction.
+  void _compass(double saved) {
+    final to = _rotation.abs() > 0.5 ? 0.0 : saved;
+    _map.rotate(to);
+    setState(() => _rotation = to);
+  }
+
+  /// Admin only (D63): the map's current direction becomes everyone's.
+  Future<void> _saveDirection(Pipeline p) async {
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(repositoryProvider)
+          .savePipeline(p.copyWith(rotation: _rotation));
+      if (mounted) {
+        showToast(
+          context,
+          _rotation.abs() < 0.5
+              ? 'Map saved as north up for everyone.'
+              : 'Map direction saved for everyone.',
+        );
+      }
+    } catch (_) {
+      if (mounted) showToast(context, Messages.saveFailed);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   void _onError() {
     _tileErrors++;
@@ -100,7 +143,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   /// Opens straight on the devices (or the problem segment), so the map
   /// never loads the whole country first and then jumps.
-  MapOptions _options(List<LatLng> all, List<LatLng> problem, LatLng? device) {
+  MapOptions _options(
+    List<LatLng> all,
+    List<LatLng> problem,
+    LatLng? device, {
+    double rotation = 0,
+  }) {
+    // Opens in the saved direction (fitting already allows for it). The
+    // options are rebuilt on every redraw, so only the first one sets it.
+    if (!_rotationSet) {
+      _rotation = normalRotation(rotation);
+      _rotationSet = true;
+    }
     final target = device != null
         ? [device]
         : widget.focusProblem && problem.length == 2
@@ -108,6 +162,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         : all;
     if (device != null) _centredOn = widget.focusDevice;
     void onEvent(MapEvent e) {
+      _followRotation(e.camera);
       if (e is MapEventMoveEnd ||
           e is MapEventFlingAnimationEnd ||
           e is MapEventDoubleTapZoomEnd) {
@@ -122,6 +177,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           padding: const EdgeInsets.all(AppConfig.mapFitPadding),
           maxZoom: 18,
         ),
+        initialRotation: rotation,
         minZoom: AppConfig.mapMinZoom,
         maxZoom: AppConfig.mapMaxZoom,
         onMapReady: _ready,
@@ -137,6 +193,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           : device != null
           ? AppConfig.placeZoom
           : AppConfig.mapDefaultZoom,
+      initialRotation: rotation,
       minZoom: AppConfig.mapMinZoom,
       maxZoom: AppConfig.mapMaxZoom,
       onMapReady: _ready,
@@ -536,7 +593,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         else
                           FlutterMap(
                             mapController: _map,
-                            options: _options(placed, problem, focusAt),
+                            options: _options(
+                              placed,
+                              problem,
+                              focusAt,
+                              rotation: p?.rotation ?? 0,
+                            ),
                             children: [
                               baseLayer(session, view, onError: _onError),
                               PolylineLayer(polylines: lines),
@@ -571,6 +633,31 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
+                                // Admin only: make this direction everyone's.
+                                if (p != null &&
+                                    ref.watch(isAdminProvider) &&
+                                    (_rotation - p.rotation).abs() > 0.5) ...[
+                                  MapPillButton(
+                                    label: 'Save this direction',
+                                    icon: Icons.save_rounded,
+                                    busy: _saving,
+                                    onTap: () => _saveDirection(p),
+                                  ),
+                                  const SizedBox(height: AppSpace.s),
+                                ],
+                                // The arrow points to north on screen.
+                                if (_rotation.abs() > 0.5 ||
+                                    (p?.rotation ?? 0).abs() > 0.5) ...[
+                                  MapPillButton(
+                                    label: _rotation.abs() > 0.5
+                                        ? 'North up'
+                                        : 'Saved direction',
+                                    icon: Icons.navigation_rounded,
+                                    iconAngle: _rotation * math.pi / 180,
+                                    onTap: () => _compass(p?.rotation ?? 0),
+                                  ),
+                                  const SizedBox(height: AppSpace.s),
+                                ],
                                 if (_home.isNotEmpty) ...[
                                   MapPillButton(
                                     label: p == null

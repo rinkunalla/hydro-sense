@@ -65,27 +65,42 @@ class Pipeline {
     required this.name,
     required this.source,
     this.branches = const [],
+    this.rotation = 0,
   });
 
   final String name;
   final PipePoint source;
   final List<Branch> branches;
 
+  /// The map direction everyone opens with, in degrees (flutter_map's camera
+  /// rotation, (-180, 180]); 0 is north up. Set by the admin (2026-11-25).
+  final double rotation;
+
   Pipeline copyWith({
     String? name,
     PipePoint? source,
     List<Branch>? branches,
+    double? rotation,
   }) => Pipeline(
     name: name ?? this.name,
     source: source ?? this.source,
     branches: branches ?? this.branches,
+    rotation: rotation == null ? this.rotation : _normal(rotation),
   );
 
+  static double _normal(double degrees) {
+    var r = degrees % 360;
+    if (r > 180) r -= 360;
+    return r;
+  }
+
   /// Without updatedAt: the repository adds the server time the rules require.
+  /// The rotation is stored only when the map is turned.
   Map<String, Object> toMap() => {
     'name': name,
     'source': {'name': source.name, 'lat': source.lat, 'lng': source.lng},
     'branches': [for (final b in branches) b.toMap()],
+    if (rotation != 0) 'rotation': rotation,
   };
 
   static Pipeline? fromMap(Map<String, dynamic>? m) {
@@ -104,6 +119,9 @@ class Pipeline {
             in (m['branches'] is List ? m['branches'] as List : const []))
           ?Branch.fromMap(b),
       ],
+      rotation: m['rotation'] is num
+          ? _normal((m['rotation'] as num).toDouble())
+          : 0,
     );
   }
 }

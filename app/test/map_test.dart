@@ -11,6 +11,7 @@ import 'package:hydro_sense/core/theme.dart';
 import 'package:hydro_sense/data/models.dart';
 import 'package:hydro_sense/data/pipeline.dart';
 import 'package:hydro_sense/data/providers.dart';
+import 'package:hydro_sense/data/repository.dart';
 import 'package:hydro_sense/features/client/edit_pipeline_screen.dart';
 import 'package:hydro_sense/features/client/map_screen.dart';
 import 'package:hydro_sense/features/client/map_tiles.dart';
@@ -20,14 +21,30 @@ import 'test_data.dart';
 const source = PipePoint('Main water tank', 16.0400, 120.3300);
 const home = PipePoint('Home', 16.0500, 120.3300);
 
+/// Records the pipelines the screens save (the map direction, 2026-11-25).
+class SavingRepo implements ClientRepository {
+  final saved = <Pipeline>[];
+
+  @override
+  Future<void> savePipeline(Pipeline pipeline) async => saved.add(pipeline);
+
+  @override
+  Future<void> setManualPin(String deviceId, double? lat, double? lng) async {}
+
+  @override
+  dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
 Widget harness(
   Widget screen, {
   List<DeviceView> views = const [],
   Pipeline? pipeline,
   MyLocation? location,
   bool admin = true,
+  SavingRepo? repo,
 }) => ProviderScope(
   overrides: [
+    if (repo != null) repositoryProvider.overrideWithValue(repo),
     // The pipeline editor is the admin's (D63); staff only view the map.
     isAdminProvider.overrideWithValue(admin),
     fleetProvider.overrideWith((_) => Stream.value(Fleet(views))),
@@ -326,6 +343,119 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('Discard your changes?'), findsNothing);
     expect(find.text('Edit pipeline'), findsOneWidget);
+  });
+  group('map direction (2026-11-25)', () {
+    const turned = Pipeline(
+      name: 'Farm pipeline',
+      source: source,
+      branches: [
+        Branch(id: 'b1', end: home, deviceIds: ['North tank']),
+      ],
+      rotation: 35,
+    );
+
+    testWidgets('staff: opens turned, compass to north, no Save', (t) async {
+      await phone(t);
+      await t.pumpWidget(
+        harness(
+          const MapScreen(),
+          views: [at('North tank', 16.043)],
+          pipeline: turned,
+          admin: false,
+        ),
+      );
+      await t.pump();
+      await t.pump();
+      final camera = MapCamera.of(t.element(find.byType(MarkerLayer)));
+      expect(camera.rotation, closeTo(35, 0.01));
+      expect(find.text('North up'), findsOneWidget);
+      expect(find.text('Save this direction'), findsNothing);
+      await t.tap(find.text('North up'));
+      await t.pump();
+      expect(MapCamera.of(t.element(find.byType(MarkerLayer))).rotation, 0);
+      // Back to everyone's direction from the same button.
+      expect(find.text('Saved direction'), findsOneWidget);
+      expect(find.text('Save this direction'), findsNothing);
+    });
+
+    testWidgets('admin: turning away offers Save this direction', (t) async {
+      await phone(t);
+      final repo = SavingRepo();
+      await t.pumpWidget(
+        harness(
+          const MapScreen(),
+          views: [at('North tank', 16.043)],
+          pipeline: turned,
+          repo: repo,
+        ),
+      );
+      await t.pump();
+      await t.pump();
+      expect(find.text('Save this direction'), findsNothing);
+      await t.tap(find.text('North up'));
+      await t.pump();
+      await t.tap(find.text('Save this direction'));
+      await t.pump();
+      expect(repo.saved.single.rotation, 0);
+      expect(repo.saved.single.branches.single.deviceIds, ['North tank']);
+    });
+
+    testWidgets('north up: no compass at all', (t) async {
+      await phone(t);
+      await t.pumpWidget(
+        harness(
+          const MapScreen(),
+          views: [at('North tank', 16.043)],
+          pipeline: turned.copyWith(rotation: 0),
+        ),
+      );
+      await t.pump();
+      await t.pump();
+      expect(find.text('North up'), findsNothing);
+      expect(find.text('Saved direction'), findsNothing);
+    });
+
+    testWidgets('Edit pipeline: Source at the top, kept through Save', (
+      t,
+    ) async {
+      await phone(t);
+      final repo = SavingRepo();
+      await t.pumpWidget(
+        harness(
+          const EditPipelineScreen(),
+          views: [at('North tank', 16.043)],
+          pipeline: turned.copyWith(rotation: 0),
+          repo: repo,
+        ),
+      );
+      await t.pump();
+      await t.pump();
+      // The editor's list builds lazily: scroll down to the section.
+      final atTop = find.widgetWithText(SecondaryButton, 'Source at the top');
+      await t.scrollUntilVisible(
+        atTop,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await t.pumpAndSettle();
+      await t.tap(atTop);
+      await t.pump();
+      expect(
+        find.text('Source at the top'),
+        findsNWidgets(2),
+      ); // label + button
+      // Save sits in the header, scrolled away above: back up to it.
+      final save = find.widgetWithText(PrimaryButton, 'Save');
+      await t.scrollUntilVisible(
+        save,
+        -300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await t.tap(save);
+      await t.pump();
+      // home is due north of the source: the map turns half way round.
+      expect(repo.saved.single.rotation.abs(), closeTo(180, 0.01));
+    });
   });
 }
 

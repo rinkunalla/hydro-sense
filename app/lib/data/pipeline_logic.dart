@@ -98,3 +98,44 @@ String? mapBanner(Branch b, List<DeviceView> ordered) {
       : ordered[stop.fromIndex].nickname;
   return 'Problem on the ${b.end.name} branch · Water stops between $from and $to';
 }
+
+/// A map rotation in degrees, normalised to (-180, 180]; 0 is north up.
+double normalRotation(double degrees) {
+  var r = degrees % 360;
+  if (r > 180) r -= 360;
+  if (r <= -180) r += 360;
+  return r;
+}
+
+/// Where "Source at the top" points the pipeline: the first branch's end
+/// point, or the middle of the placed devices when there is no branch yet.
+PipePoint? pipelineToward(Pipeline p, Iterable<DeviceView> views) {
+  if (p.branches.isNotEmpty) return p.branches.first.end;
+  final placed = [
+    for (final v in views)
+      if (v.hasLocation) v,
+  ];
+  if (placed.isEmpty) return null;
+  final lat = placed.map((v) => v.device.lat!).reduce((a, b) => a + b);
+  final lng = placed.map((v) => v.device.lng!).reduce((a, b) => a + b);
+  return PipePoint('', lat / placed.length, lng / placed.length);
+}
+
+/// The map rotation (degrees, flutter_map's camera convention) that puts
+/// [source] at the top of the screen with the pipeline running straight down
+/// to [toward]. Works in Web Mercator, the projection the map draws in, so
+/// "straight down" is exact on screen. Null when the two points coincide.
+double? rotationForSourceAtTop(PipePoint source, PipePoint toward) {
+  double rad(double d) => d * math.pi / 180;
+  // Mercator x grows east, y grows north; on an unrotated screen y grows down.
+  double mercY(double lat) => math.log(math.tan(math.pi / 4 + rad(lat) / 2));
+  final dx = rad(toward.lng - source.lng);
+  final dyScreen = -(mercY(toward.lat) - mercY(source.lat));
+  if (dx.abs() < 1e-12 && dyScreen.abs() < 1e-12) return null;
+  // Angle of the source -> toward vector from "straight down" (positive
+  // toward the left of the screen). flutter_map's camera rotation turns the
+  // drawing the other way, so the camera needs the negative (checked in
+  // pipeline_test.dart with flutter_map's own MapCamera projection).
+  final fromDown = math.atan2(-dx, dyScreen) * 180 / math.pi;
+  return normalRotation(-fromDown);
+}

@@ -205,6 +205,18 @@ describe("the one pipeline", () => {
     const big = { ...branch("b1"), deviceIds: Array.from({ length: 51 }, (_, i) => `D${i}`) };
     await assertFails(setDoc(doc(admin.fs, "pipelines/main"), pipeline([big])));
   });
+
+  it("keeps a map direction between -180 and 180 degrees; staff cannot set it", async () => {
+    for (const rotation of [-179.5, 0, 35, 180]) {
+      await assertSucceeds(setDoc(doc(admin.fs, "pipelines/main"), { ...pipeline(), rotation }));
+    }
+    for (const rotation of [-180, 181, 360, "north"]) {
+      await assertFails(setDoc(doc(admin.fs, "pipelines/main"), { ...pipeline(), rotation }));
+    }
+    await assertFails(
+      setDoc(doc(staffA.fs, "pipelines/main"), { ...pipeline(), rotation: 90 }),
+    );
+  });
 });
 
 describe("accounts", () => {

@@ -1,5 +1,8 @@
 // Pipeline logic (acceptance).
+import 'package:flutter/painting.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:hydro_sense/data/models.dart';
 import 'package:hydro_sense/data/pipeline.dart';
 import 'package:hydro_sense/data/pipeline_logic.dart';
@@ -144,5 +147,82 @@ void main() {
     );
     expect(DeviceView(d, null).device.lat, 16.1);
     expect(DeviceView(d, null).hasGps, isTrue);
+  });
+
+  group('map direction', () {
+    test('normalises any angle to (-180, 180]', () {
+      expect(normalRotation(0), 0);
+      expect(normalRotation(190), -170);
+      expect(normalRotation(-190), 170);
+      expect(normalRotation(180), 180);
+      expect(normalRotation(-180), 180);
+      expect(normalRotation(720 + 45), 45);
+    });
+
+    test(
+      'Source at the top puts the end straight below the source on screen',
+      () {
+        const source = PipePoint('Tank', 17.0890, 120.9770);
+        // Eight directions around the source, a few hundred metres away.
+        for (final (dLat, dLng) in [
+          (0.004, 0.0),
+          (0.003, 0.003),
+          (0.0, 0.004),
+          (-0.003, 0.003),
+          (-0.004, 0.0),
+          (-0.003, -0.003),
+          (0.0, -0.004),
+          (0.003, -0.003),
+        ]) {
+          final end = PipePoint('End', source.lat + dLat, source.lng + dLng);
+          final r = rotationForSourceAtTop(source, end)!;
+          final camera = MapCamera(
+            crs: const Epsg3857(),
+            center: LatLng(source.lat, source.lng),
+            zoom: 16,
+            rotation: r,
+            nonRotatedSize: const Size(800, 600),
+          );
+          final s = camera.latLngToScreenOffset(LatLng(source.lat, source.lng));
+          final e = camera.latLngToScreenOffset(LatLng(end.lat, end.lng));
+          expect(
+            e.dy,
+            greaterThan(s.dy + 10),
+            reason: 'end below, d=($dLat,$dLng) r=$r',
+          );
+          expect(
+            (e.dx - s.dx).abs(),
+            lessThan(0.5),
+            reason: 'straight down, r=$r',
+          );
+        }
+      },
+    );
+
+    test('an end due south needs no turn; due north turns half way', () {
+      const source = PipePoint('Tank', 17.0, 121.0);
+      expect(
+        rotationForSourceAtTop(source, const PipePoint('', 16.99, 121.0)),
+        closeTo(0, 1e-9),
+      );
+      expect(
+        rotationForSourceAtTop(
+          source,
+          const PipePoint('', 17.01, 121.0),
+        )!.abs(),
+        closeTo(180, 1e-9),
+      );
+      expect(rotationForSourceAtTop(source, source), isNull);
+    });
+
+    test('rotation is saved only when the map is turned', () {
+      const p = Pipeline(name: 'Line', source: PipePoint('Tank', 17.0, 121.0));
+      expect(p.toMap().containsKey('rotation'), isFalse);
+      final turned = p.copyWith(rotation: 200);
+      expect(turned.rotation, -160);
+      expect(turned.toMap()['rotation'], -160);
+      expect(Pipeline.fromMap(turned.toMap())!.rotation, -160);
+      expect(Pipeline.fromMap(p.toMap())!.rotation, 0);
+    });
   });
 }

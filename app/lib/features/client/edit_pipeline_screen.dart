@@ -40,6 +40,10 @@ class _EditPipelineState extends ConsumerState<EditPipelineScreen> {
   List<String> _order = [];
   final _pins = <String, PinChange>{};
 
+  /// The map direction everyone opens with (degrees; 0 is north up). Kept
+  /// through Save, so editing the pipeline never resets it (2026-11-25).
+  double _rotation = 0;
+
   @override
   void dispose() {
     _name.dispose();
@@ -57,6 +61,7 @@ class _EditPipelineState extends ConsumerState<EditPipelineScreen> {
     _endName.text = b?.end.name ?? 'End';
     _source = p == null ? null : LatLng(p.source.lat, p.source.lng);
     _end = b == null ? null : LatLng(b.end.lat, b.end.lng);
+    _rotation = p?.rotation ?? 0;
     final known =
         b?.deviceIds.where((id) => views.any((v) => v.id == id)) ?? [];
     final rest = views.where((v) => !known.contains(v.id));
@@ -181,6 +186,7 @@ class _EditPipelineState extends ConsumerState<EditPipelineScreen> {
                   .toList(),
             ),
           ],
+          rotation: _rotation,
         ),
       );
       if (!mounted) return;
@@ -420,10 +426,76 @@ class _EditPipelineState extends ConsumerState<EditPipelineScreen> {
               GlassPanel(
                 child: point('End point', _endName, _end, (p) => _end = p),
               ),
+              const SizedBox(height: AppSpace.m),
+              const SectionLabel('Map direction'),
+              GlassPanel(child: _direction()),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+extension on _EditPipelineState {
+  /// How everyone's map opens: north up, or turned so the source is at the
+  /// top. Any other direction is set by turning the map (Ctrl and drag, or two
+  /// fingers) and tapping Save this direction there.
+  Widget _direction() {
+    final source = _source;
+    final end = _end;
+    final atTop = source == null || end == null
+        ? null
+        : rotationForSourceAtTop(
+            PipePoint('', source.latitude, source.longitude),
+            PipePoint('', end.latitude, end.longitude),
+          );
+    final r = _rotation;
+    final now = r.abs() < 0.5
+        ? 'North up'
+        : atTop != null && (r - atTop).abs() < 0.5
+        ? 'Source at the top'
+        : 'Turned ${r.round()}°';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(now, style: AppText.strong),
+        const SizedBox(height: AppSpace.xs),
+        Text(
+          'How the map opens for everyone. For any other direction, turn the '
+          'map (Ctrl and drag, or two fingers) and tap Save this direction.',
+          style: AppText.note,
+        ),
+        const SizedBox(height: AppSpace.m),
+        Wrap(
+          spacing: AppSpace.s,
+          runSpacing: AppSpace.s,
+          children: [
+            SecondaryButton(
+              label: 'North up',
+              icon: Icons.navigation_rounded,
+              onPressed: r.abs() < 0.5
+                  ? null
+                  : () => _changed(() => _rotation = 0),
+            ),
+            SecondaryButton(
+              label: 'Source at the top',
+              icon: Icons.vertical_align_top_rounded,
+              onPressed: atTop == null || (r - atTop).abs() < 0.5
+                  ? null
+                  : () => _changed(() => _rotation = atTop),
+            ),
+          ],
+        ),
+        if (atTop == null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpace.s),
+            child: Text(
+              'Set the source and the end point to turn the map toward them.',
+              style: AppText.note,
+            ),
+          ),
+      ],
     );
   }
 }

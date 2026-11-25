@@ -63,7 +63,9 @@ service cloud.firestore {
     }
 
     function validPipeline(d) {
-      return d.keys().hasOnly(['name', 'source', 'branches', 'updatedAt'])
+      return d.keys().hasOnly(['name', 'source', 'branches', 'updatedAt', 'rotation'])
+        // The map direction everyone opens with, in degrees (2026-11-25).
+        && (!('rotation' in d) || (d.rotation is number && d.rotation > -180 && d.rotation <= 180))
         && textOf(d.name, 40)
         && d.source is map && d.source.keys().hasOnly(['name', 'lat', 'lng'])
         && textOf(d.source.name, 40) && validLat(d.source.lat) && validLng(d.source.lng)
